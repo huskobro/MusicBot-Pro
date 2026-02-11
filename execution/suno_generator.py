@@ -192,30 +192,30 @@ class SunoGenerator:
             logger.error(f"process_row failed: {e}")
             return False
 
-    def _wait_and_download(self, title, rid, progress_callback=None):
-        """Polls for completion and triggers download via context menu."""
+    def _wait_and_download(self, title, rid, progress_callback=None, index=0):
+        """Polls for completion and triggers download via context menu. index=0 for top song."""
         try:
-            logger.info(f"Waiting for {title} (ID: {rid}) to finish generating...")
+            logger.info(f"Waiting for {title} (ID: {rid}) to finish generating (Row Index: {index})...")
             if progress_callback: progress_callback(rid, "Generating Music... (Polling) ⏳")
             
             # Polling loop (Up to 10 minutes)
             found_ready = False
             for attempt in range(120): # 120 * 5s = 600s
                 try:
-                    # Look for the top song row in the library (right side)
-                    # Ready items show their duration (e.g. 3:45)
-                    top_row = self.tab.locator("div.clip-row").first
-                    if top_row.is_visible():
-                        # The user mentioned duration is a clear indicator.
-                        # Duration is typically a span or div with numbers (e.g., 2:30).
-                        # We also check that "Generating" text is gone for that specific row.
-                        if not top_row.locator("text='Generating'").is_visible():
-                            # Find the duration text (format M:SS)
-                            duration_loc = top_row.locator("text=/\\d:\\d{2}/")
-                            if duration_loc.count() > 0 and duration_loc.first.is_visible():
-                                logger.info(f"Detected duration: {duration_loc.first.inner_text()}")
-                                found_ready = True
-                                break
+                    # Look for the specific song row in the library (right side)
+                    rows = self.tab.locator("div.clip-row")
+                    if rows.count() > index:
+                        target_row = rows.nth(index)
+                        if target_row.is_visible():
+                            # Duration check as suggested by user
+                            if not target_row.locator("text='Generating'").is_visible():
+                                duration_loc = target_row.locator("text=/\\d:\\d{2}/")
+                                if duration_loc.count() > 0 and duration_loc.first.is_visible():
+                                    logger.info(f"Detected duration: {duration_loc.first.inner_text()}")
+                                    found_ready = True
+                                    break
+                    elif attempt > 10: # If row not found after some time
+                        logger.warning(f"Row index {index} not found yet.")
                 except Exception as pe:
                     logger.debug(f"Polling check failed: {pe}")
                 time.sleep(5)
@@ -226,20 +226,24 @@ class SunoGenerator:
 
             if progress_callback: progress_callback(rid, "Downloading Audio... ⬇️")
             
-            # Find the "More" button of the latest item
+            # Find the "More" button of the target item
             try:
-                # 1. Target the 'More' button of the top row precisely
-                top_row = self.tab.locator("div.clip-row").first
-                target_more = top_row.locator("button.context-menu-button")
+                rows = self.tab.locator("div.clip-row")
+                if rows.count() <= index:
+                     logger.error(f"Row {index} disappeared during download phase.")
+                     return True
+                
+                target_row = rows.nth(index)
+                target_more = target_row.locator("button.context-menu-button")
                 
                 if not target_more.is_visible():
-                    target_more = self.tab.locator("button[aria-label*='More' i]").first
+                    target_more = self.tab.locator("button[aria-label*='More' i]").nth(index)
 
                 if not target_more.is_visible():
-                    logger.error("Could not find a visible 'More' button for download.")
+                    logger.error(f"Could not find visible 'More' button for row {index}.")
                     return True
 
-                logger.info("Clicking 'More' menu...")
+                logger.info(f"Clicking 'More' menu for row {index}...")
                 target_more.scroll_into_view_if_needed()
                 time.sleep(1)
                 target_more.click()
@@ -258,24 +262,34 @@ class SunoGenerator:
                 target_dl.hover()
                 time.sleep(1.5)
                 
-                # 3. Find "Audio" in the sub-menu - specific for MP3
-                target_audio = self.tab.locator("button[aria-label*='MP3' i]").first
-                if not target_audio.is_visible():
-                    target_audio = self.tab.get_by_text("Audio", exact=True).first
-                    if not target_audio.is_visible():
-                        target_audio = self.tab.locator("button:has-text('Audio')").first
+                # 3. Find "Audio" in the sub-menu - Prioritize WAV per user request
+                # We try WAV first, then MP3
+                target_audio = None
+                for fmt in ["WAV", "MP3", "Audio"]:
+                    loc = self.tab.locator(f"button[aria-label*='{fmt}' i]").first
+                    if loc.is_visible():
+                        target_audio = loc
+                        logger.info(f"Targeting {fmt} format.")
+                        break
+                
+                if not target_audio or not target_audio.is_visible():
+                    # Last ditch effort
+                    target_audio = self.tab.locator("button:has-text('Audio')").first
 
                 if not target_audio.is_visible():
                     logger.error("Could not find 'Audio' download button.")
                     return True
 
-                logger.info("Clicking 'Audio' to download...")
+                # Determine extension based on what we clicked (simple guess)
+                ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() else "mp3"
+                
+                logger.info(f"Clicking {ext.upper()} to download...")
                 # Setup download listener
                 with self.tab.expect_download(timeout=120000) as download_info:
                     target_audio.click()
                 
                 download = download_info.value
-                save_path = os.path.join(self.output_dir, f"{rid}.mp3")
+                save_path = os.path.join(self.output_dir, f"{rid}.{ext}")
                 download.save_as(save_path)
                 logger.info(f"Successfully downloaded to: {save_path}")
                 return True
@@ -283,10 +297,6 @@ class SunoGenerator:
             except Exception as dl_err:
                 logger.error(f"Download interaction failed: {dl_err}")
                 return True 
-                
-        except Exception as e:
-            logger.error(f"Wait/Download error: {e}")
-            return True 
                 
         except Exception as e:
             logger.error(f"Wait/Download error: {e}")
