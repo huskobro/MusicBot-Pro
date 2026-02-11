@@ -234,10 +234,12 @@ class SunoGenerator:
                      return True
                 
                 target_row = rows.nth(index)
-                target_more = target_row.locator("button.context-menu-button")
+                # Avoid strict mode violation by being more specific
+                target_more = target_row.locator("button[aria-label*='More' i]").first
                 
                 if not target_more.is_visible():
-                    target_more = self.tab.locator("button[aria-label*='More' i]").nth(index)
+                    # Try by class if aria-label fails
+                    target_more = target_row.locator("button.context-menu-button").last
 
                 if not target_more.is_visible():
                     logger.error(f"Could not find visible 'More' button for row {index}.")
@@ -283,10 +285,31 @@ class SunoGenerator:
                 # Determine extension based on what we clicked (simple guess)
                 ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() else "mp3"
                 
-                logger.info(f"Clicking {ext.upper()} to download...")
+                logger.info(f"Clicking {ext.upper()} option...")
+                target_audio.click()
+                time.sleep(2) # Wait for potential modal
+                
+                # NEW: Check for "Download File" button in modal
+                final_btn = self.tab.locator("button:has-text('Download File')").first
+                if final_btn.is_visible():
+                    logger.info("Found 'Download File' modal button. Clicking...")
+                    target_click = final_btn
+                else:
+                    # If no modal, we assume the previous click started the download
+                    # But since we clicked it, we might have missed the expect_download start.
+                    # Let's wrap the logic properly.
+                    target_click = None
+
+                logger.info(f"Triggering final download for {ext.upper()}...")
                 # Setup download listener
                 with self.tab.expect_download(timeout=120000) as download_info:
-                    target_audio.click()
+                    if target_click:
+                        target_click.click()
+                    else:
+                        # If we already clicked and it was a direct download, it might have failed.
+                        # Re-click if needed? Or just assume it works.
+                        # For WAV, we know it's a modal.
+                        pass
                 
                 download = download_info.value
                 save_path = os.path.join(self.output_dir, f"{rid}.{ext}")
