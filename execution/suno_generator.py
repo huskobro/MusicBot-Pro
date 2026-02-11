@@ -201,19 +201,23 @@ class SunoGenerator:
             # Polling loop (Up to 10 minutes)
             found_ready = False
             for attempt in range(120): # 120 * 5s = 600s
-                # Look for a Play button or wait for 'Generating' to disappear.
-                # In the list, ready items have a duration and a Play button.
-                # We target the first item in the workspace (right side).
                 try:
-                    # check if the first item's 'More' button is ready
-                    first_more = self.tab.locator("button[aria-label*='More' i]").first
-                    if first_more.is_visible():
-                        # Also check if it's NOT generating anymore
-                        # Suno often has a progress ring/spinner
-                        if not self.tab.locator("div:has-text('Generating')").first.is_visible():
-                             found_ready = True
-                             break
-                except: pass
+                    # Look for the top song row in the library (right side)
+                    # Ready items show their duration (e.g. 3:45)
+                    top_row = self.tab.locator("div.clip-row").first
+                    if top_row.is_visible():
+                        # The user mentioned duration is a clear indicator.
+                        # Duration is typically a span or div with numbers (e.g., 2:30).
+                        # We also check that "Generating" text is gone for that specific row.
+                        if not top_row.locator("text='Generating'").is_visible():
+                            # Find the duration text (format M:SS)
+                            duration_loc = top_row.locator("text=/\\d:\\d{2}/")
+                            if duration_loc.count() > 0 and duration_loc.first.is_visible():
+                                logger.info(f"Detected duration: {duration_loc.first.inner_text()}")
+                                found_ready = True
+                                break
+                except Exception as pe:
+                    logger.debug(f"Polling check failed: {pe}")
                 time.sleep(5)
             
             if not found_ready:
@@ -224,25 +228,14 @@ class SunoGenerator:
             
             # Find the "More" button of the latest item
             try:
-                # 1. Target the 'More' button. There might be many (one per song in list).
-                # We want the one at the top of the main library/workspace list.
-                # Usually, the ones in the main list are visible in the right panel.
-                more_btns = self.tab.locator("button[aria-label*='More' i]")
-                target_more = None
-                for i in range(more_btns.count()):
-                    btn = more_btns.nth(i)
-                    if btn.is_visible():
-                        # Ensure it's in the workspace area (usually x > 400)
-                        box = btn.bounding_box()
-                        if box and box['x'] > 400:
-                            target_more = btn
-                            break
+                # 1. Target the 'More' button of the top row precisely
+                top_row = self.tab.locator("div.clip-row").first
+                target_more = top_row.locator("button.context-menu-button")
                 
-                if not target_more:
-                    # Fallback to the very first visible one
-                    target_more = more_btns.first if more_btns.first.is_visible() else None
+                if not target_more.is_visible():
+                    target_more = self.tab.locator("button[aria-label*='More' i]").first
 
-                if not target_more:
+                if not target_more.is_visible():
                     logger.error("Could not find a visible 'More' button for download.")
                     return True
 
@@ -253,45 +246,28 @@ class SunoGenerator:
                 time.sleep(2)
                 
                 # 2. Find "Download" in the context menu
-                # Suno's context menu items often have specific container classes
-                download_selectors = [
-                    "div[role='menuitem']:has-text('Download')",
-                    "text='Download'",
-                    "button:has-text('Download')"
-                ]
-                
-                target_dl = None
-                for sel in download_selectors:
-                    loc = self.tab.locator(sel).first
-                    if loc.is_visible():
-                        target_dl = loc
-                        break
-                
-                if not target_dl:
-                    logger.error("Could not find 'Download' menu item.")
-                    # Try a blind hover if we can find the text at least
+                target_dl = self.tab.locator("button:has-text('Download')").first
+                if not target_dl.is_visible():
                     target_dl = self.tab.get_by_text("Download", exact=True).first
+                
+                if not target_dl.is_visible():
+                    logger.error("Could not find 'Download' menu item.")
+                    return True
 
                 logger.info("Hovering 'Download'...")
                 target_dl.hover()
                 time.sleep(1.5)
                 
-                # 3. Find "Audio" in the sub-menu
-                audio_selectors = [
-                    "div[role='menuitem']:has-text('Audio')",
-                    "text='Audio'",
-                    "button:has-text('Audio')"
-                ]
-                
-                target_audio = None
-                for sel in audio_selectors:
-                    loc = self.tab.locator(sel).first
-                    if loc.is_visible():
-                        target_audio = loc
-                        break
-                
-                if not target_audio:
-                     target_audio = self.tab.get_by_text("Audio", exact=True).first
+                # 3. Find "Audio" in the sub-menu - specific for MP3
+                target_audio = self.tab.locator("button[aria-label*='MP3' i]").first
+                if not target_audio.is_visible():
+                    target_audio = self.tab.get_by_text("Audio", exact=True).first
+                    if not target_audio.is_visible():
+                        target_audio = self.tab.locator("button:has-text('Audio')").first
+
+                if not target_audio.is_visible():
+                    logger.error("Could not find 'Audio' download button.")
+                    return True
 
                 logger.info("Clicking 'Audio' to download...")
                 # Setup download listener
@@ -307,6 +283,10 @@ class SunoGenerator:
             except Exception as dl_err:
                 logger.error(f"Download interaction failed: {dl_err}")
                 return True 
+                
+        except Exception as e:
+            logger.error(f"Wait/Download error: {e}")
+            return True 
                 
         except Exception as e:
             logger.error(f"Wait/Download error: {e}")
