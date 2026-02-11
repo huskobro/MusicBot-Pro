@@ -24,12 +24,15 @@ class SunoGenerator:
 
     def run(self, max_count=None, target_ids=None, progress_callback=None):
         try:
-            self.browser.start()
+            if not self.browser.context:
+                self.browser.start()
+            
             if self.startup_delay > 0:
                 if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
                 time.sleep(self.startup_delay)
+            
             self.browser.goto(self.base_url, page=self.tab)
-            time.sleep(3) 
+            time.sleep(5) # Increased wait for Suno load
 
             if "login" in self.tab.url or self.browser.is_visible("text='Log In'", page=self.tab):
                 logger.warning("--- LOGIN REQUIRED ---")

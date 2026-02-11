@@ -152,16 +152,19 @@ class BrowserController:
         return p.inner_text(selector)
 
     @r_try()
-    def wait_for_selector(self, selector, timeout=10000, page=None):
-        """Waits for an element to appear."""
+    def wait_for_selector(self, selector, timeout=60000, page=None):
+        """Waits for an element to appear (Increased timeout to 60s)."""
         p = page if page else self.page
-        logger.info(f"Waiting for selector: {selector}")
+        logger.info(f"Waiting for selector: {selector} (timeout={timeout})")
         p.wait_for_selector(selector, timeout=timeout)
 
     @r_try()
     def is_visible(self, selector, page=None):
-        """Checks if an element is visible."""
+        """Checks if an element is visible (Wait briefly first)."""
         p = page if page else self.page
+        try:
+            p.wait_for_selector(selector, timeout=2000)
+        except: pass
         return p.is_visible(selector)
 
     def screenshot(self, path, page=None):

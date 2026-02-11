@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, scrolledtext
 import logging
+import time
 import threading
 import os
 import sys
@@ -453,72 +454,78 @@ class MusicBotGUI:
         try:
             input_xlsx, output_xlsx, output_media = self.get_data_paths()
             
-            # Callback to update UI
             def progress_callback(rid, text):
-                # Schedule UI update on main thread
-                if rid == "global": # Handle global messages
+                if rid == "global":
                     self.status_var.set(text)
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
 
-            # SHARED BROWSER INSTANCE
-            from browser_controller import BrowserController
-            shared_browser = BrowserController(headless=False)
+            # Process EACH song ID individually with a fresh browser session if needed
+            # Or group them but isolate the high-risk steps
             
-            try:
-                # 1. Gemini Lyrics & Art Prompts
-                if self.var_run_lyrics.get():
-                    self.status_var.set(f"Step 1/2: Generating Lyrics & Art for {len(target_ids)} songs...")
-                    from gemini_prompter import GeminiPrompter
-                    gemini = GeminiPrompter(
-                        metadata_path=input_xlsx, 
-                        output_path=output_xlsx,
-                        headless=False,
-                        use_gemini_lyrics=self.config["gemini_lyrics"],
-                        generate_visual=self.config["gemini_visual"],
-                        generate_video=self.config["gemini_video"],
-                        generate_style=self.config["gemini_style"],
-                        startup_delay=self.config.get("startup_delay", 5),
-                        browser=shared_browser
-                    )
-                    gemini.run(max_count=len(target_ids), target_ids=target_ids, progress_callback=progress_callback)
+            for idx, song_id in enumerate(target_ids):
+                self.status_var.set(f"Processing Song {idx+1}/{len(target_ids)} (ID: {song_id})")
+                
+                from browser_controller import BrowserController
+                # Start a fresh browser for this specific song to prevent state buildup/timeout issues
+                song_browser = BrowserController(headless=False)
+                
+                try:
+                    song_browser.start()
+                    
+                    # 1. Gemini
+                    if self.var_run_lyrics.get():
+                        from gemini_prompter import GeminiPrompter
+                        gemini = GeminiPrompter(
+                            metadata_path=input_xlsx, 
+                            output_path=output_xlsx,
+                            headless=False,
+                            use_gemini_lyrics=self.config["gemini_lyrics"],
+                            generate_visual=self.config["gemini_visual"],
+                            generate_video=self.config["gemini_video"],
+                            generate_style=self.config["gemini_style"],
+                            startup_delay=self.config.get("startup_delay", 2),
+                            browser=song_browser
+                        )
+                        gemini.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
 
-                # 2. Suno Music
-                if self.var_run_music.get():
-                    self.status_var.set(f"Step 2/2: Generating Music for {len(target_ids)} songs...")
-                    from suno_generator import SunoGenerator
-                    suno = SunoGenerator(
-                        metadata_path=output_xlsx, 
-                        output_dir=output_media, 
-                        delay=self.config["suno_delay"],
-                        startup_delay=self.config.get("startup_delay", 5),
-                        browser=shared_browser
-                    )
-                    suno.run(max_count=len(target_ids), target_ids=target_ids, progress_callback=progress_callback)
+                    # 2. Suno
+                    if self.var_run_music.get():
+                        from suno_generator import SunoGenerator
+                        suno = SunoGenerator(
+                            metadata_path=output_xlsx, 
+                            output_dir=output_media, 
+                            delay=5, # Reduced internal delay as we restart browser
+                            startup_delay=self.config.get("startup_delay", 2),
+                            browser=song_browser
+                        )
+                        suno.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
 
-                # 3. Gemini Art Prompts (Step 3a)
-                if self.var_run_art_prompt.get():
-                    self.status_var.set(f"Step 3a: Generating Art Prompts for {len(target_ids)} songs...")
-                    from gemini_prompter import GeminiPrompter
-                    gemini_art = GeminiPrompter(output_path=output_xlsx, headless=False, startup_delay=self.config.get("startup_delay", 5), browser=shared_browser)
-                    gemini_art.generate_art_prompts(max_count=len(target_ids), target_ids=target_ids, progress_callback=progress_callback)
+                    # 3. Art Prompt
+                    if self.var_run_art_prompt.get():
+                        from gemini_prompter import GeminiPrompter
+                        gemini_art = GeminiPrompter(output_path=output_xlsx, headless=False, browser=song_browser)
+                        gemini_art.generate_art_prompts(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
 
-                # 4. Gemini Art Images (Step 3b)
-                if self.var_run_art_image.get():
-                    self.status_var.set(f"Step 3b: Generating Images for {len(target_ids)} songs...")
-                    from gemini_prompter import GeminiPrompter
-                    gemini_art_img = GeminiPrompter(output_path=output_xlsx, headless=False, startup_delay=self.config.get("startup_delay", 5), browser=shared_browser)
-                    gemini_art_img.generate_art_images(max_count=len(target_ids), target_ids=target_ids, progress_callback=progress_callback)
+                    # 4. Art Image
+                    if self.var_run_art_image.get():
+                        from gemini_prompter import GeminiPrompter
+                        gemini_art_img = GeminiPrompter(output_path=output_xlsx, headless=False, browser=song_browser)
+                        gemini_art_img.generate_art_images(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
+
+                except Exception as song_err:
+                    logger.error(f"Error on song {song_id}: {song_err}")
+                    progress_callback(song_id, f"Error: {song_err} ❌")
+                finally:
+                    song_browser.stop()
+                    time.sleep(2) # Brief cooldown between songs
             
-            finally:
-                shared_browser.stop()
-            
-            self.status_var.set("All Steps Completed! 🎉")
-            messagebox.showinfo("Success", "Selected steps completed successfully!")
+            self.status_var.set("Batch Finished! 🎉")
+            messagebox.showinfo("Success", f"Finished {len(target_ids)} songs.")
             
         except Exception as e:
-            logger.error(f"Process Error: {e}")
-            messagebox.showerror("Error", f"Process Failed: {e}")
+            logger.error(f"Batch Process error: {e}")
+            messagebox.showerror("Complete Failure", f"The entire process stopped: {e}")
         finally:
             self.enable_buttons()
             self.load_data()

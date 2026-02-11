@@ -59,11 +59,90 @@ Main title: “{title}”
              self.art_master_prompt = default_art
 
     def run(self, max_count=None, target_ids=None, progress_callback=None):
-        # ... (Run logic remains mostly same, just slight prompt tweaks if needed) ...
-        # I need to preserve the run logic but ensure I don't break it by missing the code block.
-        # Since I am replacing __init__ and adding load_prompts, I should target lines 1-56.
-        # But wait, run() starts at line 57.
-        pass # Placeholder for thought process.
+        try:
+            if not self.browser.context:
+                self.browser.start()
+            
+            if self.startup_delay > 0:
+                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
+                time.sleep(self.startup_delay)
+            
+            self.browser.goto(self.base_url, page=self.tab)
+            time.sleep(3) 
+
+            # Check if login is needed
+            if "accounts.google.com" in self.tab.url:
+                logger.warning("--- LOGIN REQUIRED ---")
+                if progress_callback: progress_callback("global", "Gemini Login Required! Please check Chrome.")
+                time.sleep(1)
+
+            if not os.path.exists(self.metadata_path):
+                logger.error("Input file not found.")
+                return 0
+
+            # Load pending rows logic
+            import openpyxl
+            wb = openpyxl.load_workbook(self.metadata_path)
+            ws = wb.active
+            headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            
+            pending_rows = []
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                status_val = str(row[headers.get('status', ws.max_column)]).lower() if 'status' in headers else ""
+                if "done" in status_val or "completed" in status_val: continue
+                
+                rid = str(row[headers.get('id', 0)])
+                if target_ids and rid not in target_ids:
+                    continue
+                
+                pending_rows.append({'id': rid, 'row_idx': i, 'theme': row[headers.get('prompt', 1)], 'style': row[headers.get('style', 2)]})
+            
+            if not pending_rows:
+                logger.info("Nothing to process in Gemini.")
+                return 0
+
+            if max_count: pending_rows = pending_rows[:max_count]
+
+            processed_count = 0
+            for i, rowdata in enumerate(pending_rows):
+                row_id = rowdata['id']
+                theme = rowdata['theme']
+                style = rowdata['style']
+                
+                logger.info(f"Processing Song {i+1}/{len(pending_rows)} ID: {row_id}")
+                if progress_callback: progress_callback(row_id, "Gemini Analysis... 🧠")
+                
+                result = self.generate_content(theme, style=style)
+                if result:
+                    self.update_output_data(row_id, result)
+                    if progress_callback: progress_callback(row_id, "Analysis Complete! ✅")
+                    
+                    if self.generate_visual:
+                        if progress_callback: progress_callback(row_id, "Designing Cover Art... 🎨")
+                        art_prompt = result.get('cover_art_prompt')
+                        if art_prompt:
+                             img_path = self._generate_and_download_image(art_prompt, row_id)
+                             if img_path:
+                                  self.update_output_data(row_id, {"cover_art_path": img_path, "status": "Done"})
+                                  if progress_callback: progress_callback(row_id, "Art Ready! 📷")
+                             else:
+                                  if progress_callback: progress_callback(row_id, "Image Failed ❌")
+
+                    processed_count += 1
+                else:
+                    if progress_callback: progress_callback(row_id, "Error: Generation Failed ❌")
+                    logger.error("   -> Failed.")
+                
+                if i < len(pending_rows) - 1:
+                    time.sleep(5)
+            
+            return processed_count
+
+        except Exception as e:
+            logger.error(f"Gemini error: {e}")
+            if progress_callback: progress_callback("global", f"Gemini Process Error: {e}")
+        finally:
+             logger.info("Gemini finished.")
 
     # ... (Actual run implementation logic) ...
 
