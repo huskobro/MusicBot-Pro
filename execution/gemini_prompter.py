@@ -1,0 +1,606 @@
+
+import time
+import os
+import logging
+import openpyxl
+from browser_controller import BrowserController
+from openpyxl.styles import PatternFill
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class GeminiPrompter:
+    def __init__(self, metadata_path="data/input_songs.xlsx", output_path="data/output_results.xlsx", headless=False, 
+                 use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, browser=None):
+        self.metadata_path = metadata_path
+        self.output_path = output_path
+        self.use_gemini_lyrics = use_gemini_lyrics
+        self.generate_visual = generate_visual
+        self.generate_video = generate_video
+        self.generate_style = generate_style
+        self.startup_delay = startup_delay
+        self.browser = browser if browser else BrowserController(headless=headless)
+        self.tab = self.browser.get_page("gemini")
+        self.base_url = "https://gemini.google.com/app"
+        
+        # Load Prompts
+        self.prompts_path = os.path.join(os.path.dirname(metadata_path), "prompts.json")
+        self.load_prompts()
+
+    def load_prompts(self):
+        import json
+        default_lyrics = """Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün. Suno.ai modelinin en iyi şekilde besteleyebilmesi için, sana vereceğim temalarda içerik oluşturmanı istiyorum.
+Tema: {theme}
+Lütfen şu formatta yanıt ver (başka bir şey yazma, markdown kullanma):
+Başlık: [Şarkı Başlığı]
+Sözler:
+[Şarkı Sözleri... (Intro, Verse 1, Chorus, Verse 2, Bridge, Outro etiketleriyle, Türkçe, vurucu ve kafiyeli)]
+Stil: [Müzik tarzı, enstrümanlar ve tempo (Örn: Lo-fi, Melancholic Piano, 90bpm)]
+Görsel Prompt: [Albüm kapağı için İngilizce, detaylı Stable Diffusion promptu]
+Video Prompt: [Müzik videosu için İngilizce, detaylı video üretim promptu]
+"""
+        default_art = """Create a high-quality YouTube music thumbnail inspired by modern romantic/lofi/ballad compilation channels...
+Main title: “{title}”
+""" 
+
+        if os.path.exists(self.prompts_path):
+            try:
+                with open(self.prompts_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.master_prompt_template = data.get("lyrics_master_prompt", default_lyrics)
+                    self.art_master_prompt = data.get("art_master_prompt", default_art)
+            except Exception as e:
+                logger.error(f"Error loading prompts.json: {e}")
+                self.master_prompt_template = default_lyrics
+                self.art_master_prompt = default_art
+        else:
+             self.master_prompt_template = default_lyrics
+             self.art_master_prompt = default_art
+
+    def run(self, max_count=None, target_ids=None, progress_callback=None):
+        # ... (Run logic remains mostly same, just slight prompt tweaks if needed) ...
+        # I need to preserve the run logic but ensure I don't break it by missing the code block.
+        # Since I am replacing __init__ and adding load_prompts, I should target lines 1-56.
+        # But wait, run() starts at line 57.
+        pass # Placeholder for thought process.
+
+    # ... (Actual run implementation logic) ...
+
+
+    def run(self, max_count=None, target_ids=None, progress_callback=None):
+        try:
+            # 1. Read Metadata from Input XLSX
+            if not os.path.exists(self.metadata_path):
+                logger.error(f"Input Metadata file not found: {self.metadata_path}")
+                return 0
+
+            # Ensure Output exists
+            if not os.path.exists(self.output_path):
+                logger.info("Output file missing. Initializing from input...")
+                import shutil
+                shutil.copy(self.metadata_path, self.output_path)
+
+            wb_in = openpyxl.load_workbook(self.metadata_path)
+            ws_in = wb_in.active
+            
+            headers_in = {}
+            for cell in ws_in[1]:
+                if cell.value:
+                    headers_in[str(cell.value).lower()] = cell.column - 1
+            
+            # Load Output
+            wb_out = openpyxl.load_workbook(self.output_path)
+            ws_out = wb_out.active
+            headers_out = {}
+            for cell in ws_out[1]:
+                if cell.value:
+                    headers_out[str(cell.value).lower()] = cell.column - 1
+
+            rows_data = []
+            
+            # --- Auto-Validation & ID Generation ---
+            input_updates_needed = False
+            import uuid
+            
+            # Identify headers
+            id_col_idx = headers_in.get("id")
+            prompt_col_idx = headers_in.get("prompt")
+            
+            if prompt_col_idx is None:
+                logger.error("Input file missing 'prompt' column.")
+                return 0
+
+            for i, row in enumerate(ws_in.iter_rows(min_row=2), start=2):
+                r_id = row[id_col_idx].value if id_col_idx is not None else None
+                r_prompt = row[prompt_col_idx].value
+                
+                if not r_prompt: continue # Skip empty prompts
+                
+                # Auto-generate ID if missing
+                if not r_id:
+                    new_id = str(uuid.uuid4())[:8]
+                    row[id_col_idx].value = new_id
+                    r_id = new_id
+                    input_updates_needed = True
+                
+                # Filter by target_ids if provided
+                if target_ids and str(r_id) not in target_ids:
+                    continue
+
+                rows_data.append({
+                    "id": str(r_id),
+                    "prompt": r_prompt,
+                    "style": row[headers_in["style"]].value if "style" in headers_in else "",
+                    "_row_idx": i
+                })
+            
+            if input_updates_needed:
+                wb_in.save(self.metadata_path)
+            
+            # --- START SYNC: Update Output Styles from Input ---
+            sync_count = 0
+            # ... (Sync Logic Omitted for brevity, logic maintained implicitly if not changed) ...
+            # Wait, I must include content if I replace the block.
+            # I should use SEARCH/REPLACE blocks more targetedly to avoid re-pasting entire files.
+            # But the tool requires contiguous replacement.
+            # I'll restart the replacement chunk from line 57 to the start of the loop to inject the callback.
+
+   # ... Retrying with better strategy: Just change the def line and the loop.
+
+            if not os.path.exists(self.metadata_path):
+                logger.error(f"Input Metadata file not found: {self.metadata_path}")
+                return 0
+
+            # Ensure Output exists
+            if not os.path.exists(self.output_path):
+                logger.info("Output file missing. Initializing from input...")
+                import shutil
+                shutil.copy(self.metadata_path, self.output_path)
+
+            wb_in = openpyxl.load_workbook(self.metadata_path)
+            ws_in = wb_in.active
+            
+            headers_in = {}
+            for cell in ws_in[1]:
+                if cell.value:
+                    headers_in[str(cell.value).lower()] = cell.column - 1
+            
+            # Load Output
+            wb_out = openpyxl.load_workbook(self.output_path)
+            ws_out = wb_out.active
+            headers_out = {}
+            for cell in ws_out[1]:
+                if cell.value:
+                    headers_out[str(cell.value).lower()] = cell.column - 1
+
+            rows_data = []
+            
+            # --- Auto-Validation & ID Generation ---
+            input_updates_needed = False
+            import uuid
+            
+            # Identify headers
+            id_col_idx = headers_in.get("id")
+            prompt_col_idx = headers_in.get("prompt")
+            
+            if prompt_col_idx is None:
+                logger.error("Input file missing 'prompt' column.")
+                return 0
+
+            for i, row in enumerate(ws_in.iter_rows(min_row=2), start=2):
+                r_id = row[id_col_idx].value if id_col_idx is not None else None
+                r_prompt = row[prompt_col_idx].value
+                
+                if not r_prompt: continue # Skip empty prompts
+                
+                # Auto-generate ID if missing
+                if not r_id:
+                    new_id = str(uuid.uuid4())[:8]
+                    row[id_col_idx].value = new_id
+                    r_id = new_id
+                    input_updates_needed = True
+                
+                # Filter by target_ids if provided
+                if target_ids and str(r_id) not in target_ids:
+                    continue
+
+                rows_data.append({
+                    "id": str(r_id),
+                    "prompt": r_prompt,
+                    "style": row[headers_in["style"]].value if "style" in headers_in else "",
+                    "_row_idx": i
+                })
+            
+            if input_updates_needed:
+                wb_in.save(self.metadata_path)
+            
+            # --- START SYNC: Update Output Styles from Input ---
+            sync_count = 0
+            id_col_out = headers_out.get("id")
+            style_col_out = headers_out.get("style")
+
+            if id_col_out is not None and style_col_out is not None:
+                # Create a map of ID -> Row Index for Output sheet for faster lookup
+                out_id_map = {}
+                for r_idx, row in enumerate(ws_out.iter_rows(min_row=2), start=2):
+                    # row is tuple of cells
+                    if id_col_out < len(row):
+                        val = row[id_col_out].value
+                        if val: out_id_map[str(val)] = r_idx
+                
+                # Iterate Input and Update Output
+                for r_in in rows_data:
+                    rid = str(r_in.get("id", ""))
+                    style_val = r_in.get("style", "")
+                    
+                    if rid in out_id_map and style_val:
+                        target_row_idx = out_id_map[rid]
+                        # Check current value
+                        current_cell = ws_out.cell(row=target_row_idx, column=style_col_out+1)
+                        if str(current_cell.value) != str(style_val):
+                             current_cell.value = style_val
+                             sync_count += 1
+            
+            if sync_count > 0:
+                wb_out.save(self.output_path)
+                logger.info(f"Synced styles for {sync_count} existing songs.")
+            # --- END SYNC ---
+
+            # Filter pending rows
+            done_ids = set()
+            # Reload to get latest state in memory? (wb_out is already updated in memory)
+            # Actually wb_out is active, so we just iterate it.
+            for r in ws_out.iter_rows(min_row=2, values_only=True):
+                rid_val = r[headers_out.get('id', 0)]
+                if rid_val is None: continue
+                rid = str(rid_val)
+                
+                lyrics = r[headers_out.get('lyrics', -1)] if 'lyrics' in headers_out else None
+                visual = r[headers_out.get('visual_prompt', -1)] if 'visual_prompt' in headers_out else None
+                video = r[headers_out.get('video_prompt', -1)] if 'video_prompt' in headers_out else None
+                style = r[headers_out.get('style', -1)] if 'style' in headers_out else None
+                
+                is_done = True
+                if self.use_gemini_lyrics and not lyrics: is_done = False
+                if self.generate_visual and not visual: is_done = False
+                if self.generate_video and not video: is_done = False
+                if self.generate_style and not style: is_done = False
+                
+                if is_done:
+                    done_ids.add(rid)
+
+            pending_rows = []
+            for r in rows_data:
+                rid = str(r.get("id", ""))
+                if rid not in done_ids and r.get("prompt"):
+                    pending_rows.append(r)
+            
+            if not pending_rows:
+                logger.info("No rows found needing Gemini update.")
+                return 0
+
+            # Apply max_count
+            if max_count and max_count > 0:
+                pending_rows = pending_rows[:max_count]
+
+            logger.info(f"Processing {len(pending_rows)} songs.")
+
+            # 2. Start Browser
+            self.browser.start()
+            self.tab.bring_to_front()
+            if self.startup_delay > 0:
+                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
+                time.sleep(self.startup_delay)
+
+            self.browser.goto(self.base_url, page=self.tab)
+
+            # Login Check
+            if "accounts.google.com" in self.tab.url:
+                logger.warning("--- LOGIN REQUIRED ---")
+                if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
+                # We don't use input() here anymore to avoid blocking the GUI thread if possible,
+                # but for simplicity in this flow we might still need a wait.
+                # Actually, the user can just log in in the opened tab.
+                time.sleep(5) 
+            
+            # 3. Process Rows
+            processed_count = 0
+            for i, row in enumerate(pending_rows):
+                theme = row.get("prompt")
+                row_id = row.get("id")
+                style = row.get("style") # Extract input style
+                
+                logger.info(f"Generating content for: {theme} (ID: {row_id}, Style: {style})")
+                if progress_callback: progress_callback(row_id, "Generating Content...")
+                
+                result = self.generate_content(theme, style)
+                
+                if result:
+                    if progress_callback: progress_callback(row_id, "Content Generated ✅")
+                    self.update_output_data(row_id, result)
+                    processed_count += 1
+                else:
+                    if progress_callback: progress_callback(row_id, "Error: Generation Failed ❌")
+                    logger.error("   -> Failed.")
+                
+                if i < len(pending_rows) - 1:
+                    time.sleep(10)
+            
+            return processed_count
+
+        except Exception as e:
+            logger.error(f"Gemini error: {e}")
+            raise e # Re-raise to let GUI handle it
+        finally:
+             logger.info("Gemini finished.")
+
+    def generate_content(self, theme, style=None):
+        try:
+            input_box = None
+            possible_selectors = ["div[contenteditable='true']", "textarea[aria-label*='prompt']", "textarea"]
+            for selector in possible_selectors:
+                if self.browser.is_visible(selector, page=self.tab):
+                    input_box = selector
+                    break
+            
+            if not input_box: return None
+
+            full_prompt = self.master_prompt_template.format(theme=theme)
+            
+            # Inject style instruction if provided
+            if style:
+                full_prompt += f"\n\n[ÖNEMLİ] Hedef Müzik Tarzı: {style}\nLütfen tüm çıktıları (sözler, görsel, video, stil) bu tarza uygun hazırla."
+
+            self.browser.fill(input_box, full_prompt, page=self.tab)
+            time.sleep(1)
+            self.tab.keyboard.press("Enter")
+            
+            time.sleep(15) 
+            
+            response_text = None
+            candidates = self.tab.locator("message-content").all() 
+            if not candidates: candidates = self.tab.locator(".model-response-text").all()
+            if candidates: response_text = candidates[-1].inner_text()
+            
+            if not response_text: return None
+            
+            result = {}
+            lines = response_text.split('\n')
+            current_section = None
+            buffer = []
+            
+            for line in lines:
+                clean_line = line.strip()
+                lower_line = clean_line.lower()
+                
+                if lower_line.startswith("başlık:"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    result["title"] = clean_line.split(":", 1)[1].strip()
+                    current_section = None
+                    buffer = []
+                elif lower_line.startswith("sözler:"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "lyrics"
+                    buffer = []
+                elif lower_line.startswith("stil:"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "style"
+                    buffer = []
+                elif lower_line.startswith("görsel prompt:"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "visual_prompt"
+                    buffer = []
+                elif lower_line.startswith("video prompt:"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "video_prompt"
+                    buffer = []
+                else:
+                    if current_section: buffer.append(line)
+            
+            if current_section: result[current_section] = "\n".join(buffer).strip()
+            
+            # Unify art prompt naming
+            if "visual_prompt" in result:
+                result["cover_art_prompt"] = result["visual_prompt"]
+                
+            return result
+        except: return None
+
+    
+    def generate_art_prompts(self, max_count=None, target_ids=None, progress_callback=None):
+        """Step 3a: Generates ONLY the text prompt for Cover Art."""
+        return self._run_art_step(mode="prompt", max_count=max_count, target_ids=target_ids, progress_callback=progress_callback)
+
+    def generate_art_images(self, max_count=None, target_ids=None, progress_callback=None):
+        """Step 3b: Generates Image from existing 'cover_art_prompt'."""
+        return self._run_art_step(mode="image", max_count=max_count, target_ids=target_ids, progress_callback=progress_callback)
+
+    def _run_art_step(self, mode="prompt", max_count=None, target_ids=None, progress_callback=None):
+        try:
+            if not os.path.exists(self.output_path): return 0
+            
+            wb = openpyxl.load_workbook(self.output_path)
+            ws = wb.active
+            headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            
+            rows_to_process = []
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                rid = str(row[headers.get('id', 0)]) if 'id' in headers else ""
+                
+                if target_ids and rid not in target_ids: continue
+                
+                # Needs cover_art_prompt but NO cover_art_path
+                prompt_val = row[headers.get('cover_art_prompt')] if 'cover_art_prompt' in headers else None
+                path_val = row[headers.get('cover_art_path')] if 'cover_art_path' in headers else None
+                if prompt_val and not path_val:
+                    rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers, "art_prompt": prompt_val})
+
+            if not rows_to_process: return 0
+            if max_count: rows_to_process = rows_to_process[:max_count]
+            
+            self.browser.start()
+            self.tab.bring_to_front()
+            if self.startup_delay > 0:
+                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
+                time.sleep(self.startup_delay)
+            self.browser.goto(self.base_url, page=self.tab)
+            
+            # Login Check
+            if "accounts.google.com" in self.tab.url:
+                 if progress_callback: progress_callback("global", "Login Required!")
+                 time.sleep(5)
+
+            count = 0
+            for item in rows_to_process:
+                rid = item['id']
+                
+                if mode == "prompt":
+                    if progress_callback: progress_callback(rid, "Generating Art Prompt...")
+                    # Get Data
+                    row = item["row"]
+                    headers = item["headers"]
+                    title = row[headers.get('title', 0)] or ""
+                    
+                    # Fill Master Prompt
+                    full_prompt = self.art_master_prompt.replace("{title}", str(title))
+                    
+                    # Send
+                    result_text = self._send_and_get_text(full_prompt)
+                    if result_text:
+                        self.update_output_data(rid, {"cover_art_prompt": result_text})
+                        if progress_callback: progress_callback(rid, "Prompt Generated ✅")
+                        count += 1
+                    else:
+                        if progress_callback: progress_callback(rid, "Prompt Failed ❌")
+
+                elif mode == "image":
+                    if progress_callback: progress_callback(rid, "Generating Image... 🎨")
+                    art_prompt = item["art_prompt"]
+                    
+                    # Trigger Image Gen
+                    img_trigger = f"Generate an image based on this description:\n\n{art_prompt}"
+                    save_path = self._generate_and_download_image(img_trigger, rid)
+                    
+                    if save_path:
+                        self.update_output_data(rid, {"cover_art_path": save_path})
+                        if progress_callback: progress_callback(rid, "Image Saved 🖼️")
+                        count += 1
+                    else:
+                        if progress_callback: progress_callback(rid, "Image Failed ❌")
+            
+            return count
+        except Exception as e:
+            logger.error(f"Art Error: {e}")
+            raise e
+        finally:
+            logger.info("Art Step Finished")
+
+    def _send_and_get_text(self, prompt):
+        try:
+            input_box = None
+            possible_selectors = ["div[contenteditable='true']", "textarea[aria-label*='prompt']", "textarea"]
+            for selector in possible_selectors:
+                if self.browser.is_visible(selector, page=self.tab):
+                    input_box = selector
+                    break
+            
+            if not input_box: return None
+            
+            self.browser.fill(input_box, prompt, page=self.tab)
+            time.sleep(1)
+            self.tab.keyboard.press("Enter")
+            time.sleep(10) # Wait for text gen
+            
+            candidates = self.tab.locator("message-content").all()
+            if candidates: return candidates[-1].inner_text().strip()
+            return None
+        except: return None
+
+    def _generate_and_download_image(self, prompt, rid):
+        try:
+            input_box = "div[contenteditable='true']"
+            if not self.browser.is_visible(input_box, page=self.tab): return None
+            
+            self.browser.fill(input_box, prompt, page=self.tab)
+            self.tab.keyboard.press("Enter")
+            
+            # Wait for Image
+            time.sleep(20) 
+            
+            # Find Image
+            images = self.tab.locator("img").all()
+            target_img = None
+            if images:
+                for img in reversed(images):
+                    try:
+                        box = img.bounding_box()
+                        if box and box['width'] > 200 and box['height'] > 200:
+                            target_img = img
+                            break
+                    except: continue
+            
+            if target_img:
+                img_dir = os.path.join(os.path.dirname(self.output_path), "images")
+                os.makedirs(img_dir, exist_ok=True)
+                save_path = os.path.join(img_dir, f"{rid}.png")
+                target_img.screenshot(path=save_path)
+                return save_path
+            return None
+        except: return None
+
+    
+    
+    def close(self):
+        # We no longer stop the browser here, as it's shared/managed by the GUI
+        pass
+
+    def update_output_data(self, row_id, data):
+        try:
+            wb = openpyxl.load_workbook(self.output_path)
+            ws = wb.active
+            col_map = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
+            
+            # Ensure columns exist
+            for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "status", "cover_art_prompt", "cover_art_path"]:
+                if key not in col_map:
+                    new_idx = ws.max_column + 1
+                    ws.cell(row=1, column=new_idx, value=key)
+                    col_map[key] = new_idx
+            
+            target_row = None
+            id_col = col_map.get("id", 1)
+            for row in range(2, ws.max_row + 1):
+                if str(ws.cell(row=row, column=id_col).value) == str(row_id):
+                    target_row = row
+                    break
+            
+            if not target_row: target_row = ws.max_row + 1
+            
+            fill_new = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            
+            # Helper to update cell if empty or force update(though we default to skip if exists)
+            def update_cell(col_name, new_value):
+                if col_name in col_map:
+                    cell = ws.cell(row=target_row, column=col_map[col_name])
+                    if not cell.value: # Only update if empty
+                        cell.value = new_value
+                        cell.fill = fill_new
+            
+            ws.cell(row=target_row, column=col_map["id"], value=row_id)
+            
+            if "title" in data: update_cell("title", data["title"])
+            if self.use_gemini_lyrics and "lyrics" in data: update_cell("lyrics", data["lyrics"])
+            if self.generate_style and "style" in data: update_cell("style", data["style"])
+            if self.generate_visual and "visual_prompt" in data: update_cell("visual_prompt", data["visual_prompt"])
+            if self.generate_video and "video_prompt" in data: update_cell("video_prompt", data["video_prompt"])
+            if "cover_art_prompt" in data: update_cell("cover_art_prompt", data["cover_art_prompt"])
+            if "cover_art_path" in data: update_cell("cover_art_path", data["cover_art_path"])
+            
+            wb.save(self.output_path)
+        except Exception as e:
+            logger.error(f"Save error: {e}")
+
+if __name__ == "__main__":
+    gemini = GeminiPrompter()
+    gemini.run()
