@@ -510,12 +510,22 @@ Main title: “{title}”
                 if target_ids and rid not in target_ids: continue
                 
                 # Needs cover_art_prompt but NO cover_art_path
-                prompt_val = row[headers.get('cover_art_prompt')] if 'cover_art_prompt' in headers else None
-                path_val = row[headers.get('cover_art_path')] if 'cover_art_path' in headers else None
-                if prompt_val and not path_val:
-                    rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers, "art_prompt": prompt_val})
+                p_idx = headers.get('cover_art_prompt')
+                i_idx = headers.get('cover_art_path')
+                prompt_val = row[p_idx] if p_idx is not None else None
+                path_val = row[i_idx] if i_idx is not None else None
+                
+                if mode == "prompt":
+                    if not prompt_val or str(prompt_val).strip() == "":
+                        rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers})
+                elif mode == "image":
+                    if prompt_val and not path_val:
+                        rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers, "art_prompt": prompt_val})
 
-            if not rows_to_process: return 0
+            if not rows_to_process:
+                logger.info(f"Nothing to process for Step 3 (Mode: {mode})")
+                return 0
+            
             if max_count: rows_to_process = rows_to_process[:max_count]
             
             self.browser.start()

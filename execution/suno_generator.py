@@ -85,7 +85,7 @@ class SunoGenerator:
                 if progress_callback: progress_callback(rid, "Generating Music... 🎵")
                 
                 try:
-                    success = self.process_row(row_dict)
+                    success = self.process_row(row_dict, progress_callback=progress_callback)
                     if success:
                         self.update_row_status(row_dict['_row_idx'], "Generated")
                         if progress_callback: progress_callback(rid, "Music Generated! 🎵")
@@ -106,43 +106,169 @@ class SunoGenerator:
         finally:
             logger.info("Suno finished.")
 
-    def process_row(self, row):
+    def process_row(self, row, progress_callback=None):
         prompt = row.get("prompt", "")
         lyrics = row.get("lyrics", "")
         style = row.get("style", "")
         title = row.get("title", "Song")
+        rid = str(row.get("id", "song"))
         
         content = lyrics if str(lyrics).strip() else prompt
         
         try:
+            # Clear old stuff if needed or ensure we are on create page
             if not self.browser.is_visible("textarea", page=self.tab):
                 self.tab.locator("button:has-text('Custom')").first.click()
                 time.sleep(2)
 
             textareas = [t for t in self.tab.locator("textarea").all() if t.is_visible()]
-            if not textareas: return False
+            if not textareas: 
+                logger.error("No textareas found on Suno.")
+                return False
 
-            # Fill
-            input_title = self.tab.locator("input[placeholder*='title' i]").first
+            # Fills
+            input_title = None
+            title_loc = self.tab.locator("input[placeholder*='title' i]")
+            for i in range(title_loc.count()):
+                if title_loc.nth(i).is_visible():
+                    input_title = title_loc.nth(i)
+                    break
             
+            # If still None, try a broader search within the Create column
+            if not input_title:
+                title_loc_alt = self.tab.locator("input[aria-label*='title' i]")
+                for i in range(title_loc_alt.count()):
+                    if title_loc_alt.nth(i).is_visible():
+                        input_title = title_loc_alt.nth(i)
+                        break
+
             def fill_field(el, val):
                 if not el or not val: return
-                el.click()
-                self.tab.keyboard.press("Meta+A")
-                self.tab.keyboard.press("Backspace")
-                el.type(str(val), delay=10)
+                try:
+                    logger.info(f"Filling field with value: {str(val)[:20]}...")
+                    # Critical: Ensure it's in view
+                    el.scroll_into_view_if_needed()
+                    time.sleep(1)
+                    el.click()
+                    # Use keyboard for maximum stability in Suno's custom components
+                    self.tab.keyboard.press("Meta+A")
+                    self.tab.keyboard.press("Backspace")
+                    time.sleep(0.5)
+                    self.tab.keyboard.type(str(val), delay=50) # Slower typing
+                    time.sleep(1)
+                except Exception as fe:
+                    logger.warning(f"Fill failed for field: {fe}")
 
+            # 1. Lyrics/Prompt
             fill_field(textareas[0], content)
-            if len(textareas) > 1: fill_field(textareas[1], style)
-            if input_title.is_visible(): fill_field(input_title, title)
+            
+            # 2. Style
+            if len(textareas) > 1:
+                fill_field(textareas[1], style)
+            
+            # 3. Title (Critical: Scroll and Fill)
+            if input_title:
+                fill_field(input_title, title)
+            else:
+                logger.warning("Could not find visible Song Title input field.")
 
-            create_btn = self.tab.get_by_role("button", name="Create").last
+            # Click Create
+            create_btn = self.tab.locator("button:has-text('Create')").filter(has_not_text="Custom").last
+            if not create_btn.is_visible():
+                create_btn = self.tab.get_by_role("button", name="Create").last
+
             if create_btn.is_enabled():
+                logger.info(f"Clicking Create for: {title}")
                 create_btn.click()
-                time.sleep(5)
-                return True
+                time.sleep(10) # Wait for generation to start
+                
+                # NEW: Wait and Download
+                success = self._wait_and_download(title, rid, progress_callback)
+                return success
+            
+            logger.error("Create button not enabled or not found.")
             return False
-        except: return False
+        except Exception as e:
+            logger.error(f"process_row failed: {e}")
+            return False
+
+    def _wait_and_download(self, title, rid, progress_callback=None):
+        """Polls for completion and triggers download via context menu."""
+        try:
+            logger.info(f"Waiting for {title} to finish generating...")
+            if progress_callback: progress_callback(rid, "Generating Music... (Polling) ⏳")
+            
+            # Polling loop (Up to 10 minutes)
+            found_ready = False
+            for attempt in range(120): # 120 * 5s = 600s
+                # Strategy: Search for 'More' buttons in the list. 
+                # Freshly generated songs might have a specific indicator.
+                # In Suno, the top item is usually the one.
+                # We'll check if the play button or title matches? No, just poll for presence of 'More' buttons.
+                more_btns = self.tab.locator("button[aria-label*='More' i]").all()
+                if not more_btns:
+                    # Try alternate selector if aria-label is missing
+                    more_btns = self.tab.locator("button >> svg >> .. >> .. >> button").all()
+                
+                if len(more_btns) > 0:
+                    # Wait for 'Generating' overlay to disappear if it exists
+                    if not self.tab.locator("text='Generating'").first.is_visible():
+                        # Just to be sure, wait for the first button to be click-able
+                        if more_btns[0].is_visible():
+                            found_ready = True
+                            break
+                time.sleep(5)
+            
+            if not found_ready:
+                logger.warning("Generation timed out or could not detect completion.")
+                return True 
+
+            if progress_callback: progress_callback(rid, "Downloading Audio... ⬇️")
+            
+            # Find the "More" button of the latest item
+            try:
+                # Suno's workspace list
+                # Use a specific locator for the 'More' button in the list to avoid sidebars
+                # The screenshot shows the workspace on the right.
+                more_loc = self.tab.locator("button[aria-label*='More' i]").first
+                if not more_loc.is_visible():
+                     # Fallback: find by SVG content or position
+                     more_loc = self.tab.locator("div[role='listitem'] button").first
+                
+                more_loc.scroll_into_view_if_needed()
+                time.sleep(1)
+                more_loc.click()
+                time.sleep(2)
+                
+                # The menu is now open. Find "Download"
+                download_menu = self.tab.get_by_text("Download", exact=True).first
+                if not download_menu.is_visible():
+                    download_menu = self.tab.locator("text='Download'").first
+                
+                download_menu.hover()
+                time.sleep(1)
+                
+                # Find "Audio" in the sub-menu
+                audio_btn = self.tab.get_by_text("Audio", exact=True).first
+                if not audio_btn.is_visible():
+                    audio_btn = self.tab.locator("text='Audio'").first
+
+                # Setup download listener
+                with self.tab.expect_download(timeout=90000) as download_info:
+                    audio_btn.click()
+                
+                download = download_info.value
+                save_path = os.path.join(self.output_dir, f"{rid}.mp3")
+                download.save_as(save_path)
+                logger.info(f"Successfully downloaded to: {save_path}")
+                return True
+            except Exception as dl_err:
+                logger.error(f"Download interaction failed: {dl_err}")
+                return True 
+                
+        except Exception as e:
+            logger.error(f"Wait/Download error: {e}")
+            return True
 
     def close(self):
         # Browser is shared, don't stop here
