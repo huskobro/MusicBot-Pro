@@ -3,6 +3,7 @@ import time
 import os
 import logging
 import openpyxl
+import re
 from browser_controller import BrowserController
 
 # Configure logging
@@ -182,9 +183,13 @@ class SunoGenerator:
                 create_btn.click()
                 time.sleep(10) # Wait for generation to start
                 
-                # NEW: Wait and Download
-                success = self._wait_and_download(title, rid, progress_callback)
-                return success
+                # NEW: Wait and Download BOTH versions
+                # Suno generates 2 versions. We'll try to download both.
+                logger.info(f"Triggering dual download for {rid}...")
+                s1 = self._wait_and_download(title, rid, progress_callback, index=0, suffix="1")
+                s2 = self._wait_and_download(title, rid, progress_callback, index=1, suffix="2")
+                
+                return s1 or s2
             
             logger.error("Create button not enabled or not found.")
             return False
@@ -192,7 +197,7 @@ class SunoGenerator:
             logger.error(f"process_row failed: {e}")
             return False
 
-    def _wait_and_download(self, title, rid, progress_callback=None, index=0):
+    def _wait_and_download(self, title, rid, progress_callback=None, index=0, suffix="1"):
         """Polls for completion and triggers download via context menu. index=0 for top song."""
         try:
             logger.info(f"Waiting for {title} (ID: {rid}) to finish generating (Row Index: {index})...")
@@ -312,7 +317,13 @@ class SunoGenerator:
                         pass
                 
                 download = download_info.value
-                save_path = os.path.join(self.output_dir, f"{rid}.{ext}")
+                
+                # Sanitize title for filename
+                clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+                clean_title = re.sub(r'[-\s]+', '_', clean_title)
+                filename = f"{rid}_{clean_title}_{suffix}.{ext}"
+                
+                save_path = os.path.join(self.output_dir, filename)
                 download.save_as(save_path)
                 logger.info(f"Successfully downloaded to: {save_path}")
                 return True

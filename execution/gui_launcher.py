@@ -80,6 +80,15 @@ class SettingsDialog(tk.Toplevel):
         f_prompts.pack(fill="x", padx=10, pady=5)
         ttk.Button(f_prompts, text="📝 Edit Master Prompts", command=self.open_prompt_editor).pack(fill="x")
         
+        # Language Settings
+        f_lang = ttk.LabelFrame(self, text="Language & Regional", padding=10)
+        f_lang.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(f_lang, text="Target Lyrics Language:").pack(anchor="w")
+        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese"], state="readonly")
+        self.combo_lang.set(config.get("target_language", "Turkish"))
+        self.combo_lang.pack(fill="x", pady=2)
+
         # Buttons
         f_btn = ttk.Frame(self, padding=10)
         f_btn.pack(fill="x", side="bottom")
@@ -96,6 +105,7 @@ class SettingsDialog(tk.Toplevel):
             self.config["gemini_video"] = self.var_video.get()
             self.config["suno_delay"] = int(self.entry_delay.get())
             self.config["startup_delay"] = int(self.entry_startup.get())
+            self.config["target_language"] = self.combo_lang.get()
             self.destroy()
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for delay.")
@@ -163,7 +173,8 @@ class MusicBotGUI:
         self.config = {
             "gemini_lyrics": True, "gemini_style": True, "gemini_visual": True, "gemini_video": False,
             "suno_delay": 15, "startup_delay": 5,
-            "metadata_path": input_path
+            "metadata_path": input_path,
+            "target_language": "Turkish"
         }
         
         # --- STYLES ---
@@ -476,18 +487,19 @@ class MusicBotGUI:
                     # 1. Gemini
                     if self.var_run_lyrics.get():
                         from gemini_prompter import GeminiPrompter
-                        gemini = GeminiPrompter(
-                            metadata_path=input_xlsx, 
+                        prompter = GeminiPrompter(
+                            metadata_path=input_xlsx, # Keep input_xlsx as it's the source for prompts
                             output_path=output_xlsx,
                             headless=False,
                             use_gemini_lyrics=self.config["gemini_lyrics"],
                             generate_visual=self.config["gemini_visual"],
                             generate_video=self.config["gemini_video"],
                             generate_style=self.config["gemini_style"],
-                            startup_delay=self.config.get("startup_delay", 2),
+                            startup_delay=self.config["startup_delay"], # Changed from .get with default
+                            language=self.config.get("target_language", "Turkish"), # Added new argument
                             browser=song_browser
                         )
-                        gemini.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
+                        prompter.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
 
                     # 2. Suno
                     if self.var_run_music.get():

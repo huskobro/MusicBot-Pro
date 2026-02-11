@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 class GeminiPrompter:
     def __init__(self, metadata_path="data/input_songs.xlsx", output_path="data/output_results.xlsx", headless=False, 
-                 use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, browser=None):
+                 use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
+                 language="Turkish", browser=None):
         self.metadata_path = metadata_path
         self.output_path = output_path
         self.use_gemini_lyrics = use_gemini_lyrics
@@ -20,6 +21,7 @@ class GeminiPrompter:
         self.generate_video = generate_video
         self.generate_style = generate_style
         self.startup_delay = startup_delay
+        self.language = language
         self.browser = browser if browser else BrowserController(headless=headless)
         self.tab = self.browser.get_page("gemini")
         self.base_url = "https://gemini.google.com/app"
@@ -32,10 +34,12 @@ class GeminiPrompter:
         import json
         default_lyrics = """Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün. Suno.ai modelinin en iyi şekilde besteleyebilmesi için, sana vereceğim temalarda içerik oluşturmanı istiyorum.
 Tema: {theme}
+Language: {language} (IMPORTANT: Use only {language} for lyrics and title)
+
 Lütfen şu formatta yanıt ver (başka bir şey yazma, markdown kullanma):
-Başlık: [Şarkı Başlığı]
+Başlık: [{language} dilinde şarkı başlığı]
 Sözler:
-[Şarkı Sözleri... (Intro, Verse 1, Chorus, Verse 2, Bridge, Outro etiketleriyle, Türkçe, vurucu ve kafiyeli)]
+[{language} dilinde, vurucu ve kafiyeli şarkı sözleri... (Intro, Verse 1, Chorus, Verse 2, Bridge, Outro etiketleriyle)]
 Stil: [Müzik tarzı, enstrümanlar ve tempo (Örn: Lo-fi, Melancholic Piano, 90bpm)]
 Görsel Prompt: [Albüm kapağı için İngilizce, detaylı Stable Diffusion promptu]
 Video Prompt: [Müzik videosu için İngilizce, detaylı video üretim promptu]
@@ -425,11 +429,11 @@ Main title: “{title}”
             
             if not input_box: return None
 
-            full_prompt = self.master_prompt_template.format(theme=theme)
+            full_prompt = self.master_prompt_template.format(theme=theme, language=self.language)
             
             # Inject style instruction if provided
             if style:
-                full_prompt += f"\n\n[ÖNEMLİ] Hedef Müzik Tarzı: {style}\nLütfen tüm çıktıları (sözler, görsel, video, stil) bu tarza uygun hazırla."
+                full_prompt += f"\n\n[IMPORTANT] Target Music Style: {style}\nPlease ensure all outputs (lyrics, art, video, style) follow this style precisely."
 
             self.browser.fill(input_box, full_prompt, page=self.tab)
             time.sleep(1)
