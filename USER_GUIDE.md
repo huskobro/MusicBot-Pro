@@ -1,34 +1,45 @@
 # MusicBot Pro - Kullanım Kılavuzu 🚀
 
-Bu rehber, şarkı üretimi sürecini nasıl başlatacağınızı ve yöneteceğinizi açıklar.
+MusicBot Pro, şarkı üretim sürecinizi tek bir **Proje Dosyası** üzerinden yönetmenizi sağlar.
 
-## 1. Hazırlık (Input Dosyası) 📝
-Evet, süreci başlatmak için sadece **`input_songs.xlsx`** dosyasını güncellemeniz yeterlidir.
+## 1. Proje Oluşturma (Başlangıç) ✨
+Yeni bir şarkı listesi üzerinde çalışmaya başlamak için:
 
-- **Dosyayı Açın**: Dashboard üzerindeki **"📂 Open Input XLSX"** butonuna basın.
-- **Veri Girin**:
-    - **prompt**: Şarkının temasını yazın (Örn: "Yağmurlu bir gecede yalnızlık").
-    - **style**: (Opsiyonel) İstediğiniz tarzı yazın (Örn: "Dark Lofi, Jazz").
-    - **id**: Boş bırakabilirsiniz, program otomatik benzersiz ID atar.
-- **Kaydedin**: Excel dosyasını kaydedip kapatın.
+1.  Uygulamayı açın.
+2.  Üst menüdeki **"✨ New Project"** butonuna tıklayın.
+3.  Projenize bir isim verin (Örn: `Album_2025_Pop`) ve **Kaydet** deyin.
+4.  Program, sizin için gerekli tüm sütunlara sahip tertemiz bir Excel şablonu oluşturacak ve otomatik olarak yükleyecektir.
 
-## 2. Programı Çalıştırma ⚙️
-- **Dashboard'u Açın**: Şarkılarınız listede görünecektir.
-- **Şarkıları Seçin**: Listeden üretmek istediğiniz şarkıları Shift veya Cmd tuşuyla seçin.
-- **Adımları Belirleyin**:
-    - **Run Gemini**: Söz ve görsel prompt üretimi.
-    - **Run Suno**: Otomatik müzik üretimi.
-- **Start**: **"🚀 Run Selected Songs"** butonuna basın.
+## 2. Şarkı Ekleme ve Düzenleme 📝
+Oluşturduğunuz proje dosyası artık dashboard'da yüklü.
 
-## 3. Sonuçları Görüntüleme 📂
-- **Sözler & Veriler**: **"📊 Open Output XLSX"** butonuna basarak Gemini'nin ürettiği tüm detayları (sözler, stil, görsel promptlar) görebilirsiniz.
-- **Görseller**: Üretilen albüm kapakları otomatik olarak **"🖼️ Open Image Folder"** butonundaki klasöre kaydedilir.
-- **Müzikler**: Suno'da üretilen şarkılar Suno kütüphanenizde ve tanımlı medya klasörünüzde yer alır.
+- **Dosyayı Açın**: Bilgisayarınızda oluşturduğunuz Excel dosyasını (`Documents/MusicBot_Workspace` içindedir) açın.
+- **Şarkı Girin**:
+    - **id**: Şarkıya benzersiz bir kod verin (Örn: `POP_01`).
+    - **prompt**: Şarkının konusunu veya hissini anlatın (Örn: "Bir yaz günü sahil kenarında neşeli bir gün").
+    - **style**: (Opsiyonel) Müzik tarzını yazın.
+- **Kaydedin**: Excel'i kaydedip kapatın.
+- **Yenileyin**: Uygulamada **"🔄 Refresh"** butonuna basarak listeyi güncelleyin.
 
-## 💡 Önemli İpuçları
-- **Tarayıcı Oturumu**: Program her şarkı için tarayıcıyı açıp kapatır. Bu kararlılık için tasarlanmıştır, müdahale etmeyiniz.
-- **Giriş Gerekirse**: Eğer Google veya Suno oturumunuz kapandıysa, tarayıcı açıldığında manuel olarak giriş yapın. Program giriş yaptıktan sonra otomatik devam edecektir.
-- **Settings**: Bekleme sürelerini veya hangi verilerin üretileceğini "⚙️ Settings" kısmından değiştirebilirsiniz.
+## 3. Üretime Başlama ⚙️
+- **Şarkı Seçimi**: Listeden işlemek istediğiniz şarkıları seçin (veya hepsini).
+- **Adımları Seçin**:
+    - **Lyrics**: Gemini ile söz yazdırır.
+    - **Music**: Suno ile müzik besteler.
+    - **Art**: Albüm kapağı tasarlar.
+- **Başlat**: **"🚀 Run Selected Songs"** butonuna basın.
+
+## 4. Kayıtlı Projeyi Açma 📂
+Daha önce çalıştığınız bir projeye devam etmek için:
+
+- **"📂 Load Project"** butonuna tıklayın.
+- `MusicBot_Workspace` klasöründeki `.xlsx` dosyanızı seçin.
+- Kaldığınız yerden devam edebilirsiniz!
+
+## 💡 İpuçları
+- **Chromium**: Program her şarkı için özel bir tarayıcı oturumu açar. Lütfen müdahale etmeyin.
+- **Veriler**: Tüm müzikler, görseller ve veriler `Documents/MusicBot_Workspace` altında düzenli bir şekilde saklanır.
+- **Ayarlar**: API anahtarları veya bekleme süreleri için **"⚙️ Settings"** menüsünü kullanın.
 
 ---
 *Keyifli üretimler!* 🎵

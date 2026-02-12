@@ -1,8 +1,8 @@
-
 import time
 import os
 import logging
 import openpyxl
+import traceback
 from browser_controller import BrowserController
 from openpyxl.styles import PatternFill
 
@@ -11,11 +11,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class GeminiPrompter:
-    def __init__(self, metadata_path="data/input_songs.xlsx", output_path="data/output_results.xlsx", headless=False, 
+    def __init__(self, project_file, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
                  language="Turkish", browser=None):
-        self.metadata_path = metadata_path
-        self.output_path = output_path
+        self.project_file = project_file
+        # Backward compatibility for internal methods
+        self.output_path = project_file
+        self.metadata_path = project_file
+        
         self.use_gemini_lyrics = use_gemini_lyrics
         self.generate_visual = generate_visual
         self.generate_video = generate_video
@@ -27,7 +30,7 @@ class GeminiPrompter:
         self.base_url = "https://gemini.google.com/app"
         
         # Load Prompts
-        self.prompts_path = os.path.join(os.path.dirname(metadata_path), "prompts.json")
+        self.prompts_path = os.path.join(os.path.dirname(self.metadata_path), "prompts.json")
         self.load_prompts()
 
     def load_prompts(self):
@@ -429,7 +432,8 @@ Main title: “{title}”
             
             if not input_box: return None
 
-            full_prompt = self.master_prompt_template.format(theme=theme, language=self.language)
+            # Using .replace() instead of .format() for better robustness against unknown braces in template
+            full_prompt = self.master_prompt_template.replace("{theme}", str(theme)).replace("{language}", str(self.language))
             
             # Inject style instruction if provided
             if style:
@@ -439,14 +443,35 @@ Main title: “{title}”
             time.sleep(1)
             self.tab.keyboard.press("Enter")
             
-            time.sleep(15) 
-            
+            # --- Akıllı Polling (Smart Polling) ---
+            # Wait for Gemini to finish typing by checking if the text content stops changing
+            logger.info("Waiting for Gemini response to stabilize...")
+            max_wait = 120
+            start_time = time.time()
+            last_text = ""
+            stable_count = 0
             response_text = None
-            candidates = self.tab.locator("message-content").all() 
-            if not candidates: candidates = self.tab.locator(".model-response-text").all()
-            if candidates: response_text = candidates[-1].inner_text()
             
-            if not response_text: return None
+            while time.time() - start_time < max_wait:
+                candidates = self.tab.locator("message-content").all() 
+                if not candidates: candidates = self.tab.locator(".model-response-text").all()
+                
+                if candidates:
+                    current_text = candidates[-1].inner_text()
+                    if current_text and current_text == last_text:
+                        stable_count += 1
+                        if stable_count >= 3: # Stable for 3 checks (approx 3-6 seconds)
+                            response_text = current_text
+                            break
+                    else:
+                        last_text = current_text
+                        stable_count = 0
+                
+                time.sleep(2)
+            
+            if not response_text:
+                logger.error("Gemini response timed out or returned no content.")
+                return None
             
             result = {}
             lines = response_text.split('\n')
@@ -488,7 +513,10 @@ Main title: “{title}”
                 result["cover_art_prompt"] = result["visual_prompt"]
                 
             return result
-        except: return None
+        except Exception as e: 
+            logger.error(f"Gemini Step Error: {e}")
+            logger.error(traceback.format_exc())
+            return None
 
     
     def generate_art_prompts(self, max_count=None, target_ids=None, progress_callback=None):

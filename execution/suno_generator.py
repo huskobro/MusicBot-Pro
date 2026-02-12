@@ -11,8 +11,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class SunoGenerator:
-    def __init__(self, metadata_path="data/output_results.xlsx", output_dir="data/output", delay=10, startup_delay=5, browser=None):
-        self.metadata_path = metadata_path
+    def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None):
+        self.project_file = project_file
+        self.metadata_path = project_file # Backward compat
+        
         self.output_dir = output_dir
         self.delay = delay
         self.startup_delay = startup_delay

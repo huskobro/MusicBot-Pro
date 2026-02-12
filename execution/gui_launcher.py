@@ -1,12 +1,15 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, scrolledtext
+from tkinter import ttk, messagebox, simpledialog, scrolledtext, filedialog
 import logging
 import time
 import threading
 import os
 import sys
+import shutil
 import openpyxl
+import json
 from openpyxl.styles import PatternFill
+from browser_controller import BrowserController
 
 # Configure logging
 # We will configure basic stdout logging here, but the GUI will add its own handler later.
@@ -38,31 +41,65 @@ class GuiLogger(logging.Handler):
         self.text_widget.after(0, append)
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, parent, config):
+    def __init__(self, parent, config, app_instance):
         super().__init__(parent)
         self.title("⚙️ Settings")
-        self.geometry("350x300")
+        self.geometry("450x650") # Larger for tabs
         self.config = config
         self.parent = parent
+        self.app = app_instance
         
-        # Gemini Settings
-        f_gemini = ttk.LabelFrame(self, text="Gemini Settings", padding=10)
+        # Notebook for Tabs
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # --- TAB 1: General Settings ---
+        self.tab_general = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_general, text="General & Defaults")
+        
+        # Scrollable area for General Tab
+        canvas = tk.Canvas(self.tab_general, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.tab_general, orient="vertical", command=canvas.yview)
+        scroll_frame = ttk.Frame(canvas)
+        
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 1. Default Checked Steps
+        f_defaults = ttk.LabelFrame(scroll_frame, text="Default Run Steps (Checked on Start)", padding=10)
+        f_defaults.pack(fill="x", padx=10, pady=5)
+        
+        self.var_def_lyrics = tk.BooleanVar(value=config.get("default_run_lyrics", True))
+        ttk.Checkbutton(f_defaults, text="1. Lyrics & Prompts", variable=self.var_def_lyrics).pack(anchor="w")
+        self.var_def_music = tk.BooleanVar(value=config.get("default_run_music", True))
+        ttk.Checkbutton(f_defaults, text="2. Suno Music", variable=self.var_def_music).pack(anchor="w")
+        self.var_def_art_p = tk.BooleanVar(value=config.get("default_run_art_prompt", True))
+        ttk.Checkbutton(f_defaults, text="3. Art Prompts", variable=self.var_def_art_p).pack(anchor="w")
+        self.var_def_art_i = tk.BooleanVar(value=config.get("default_run_art_image", True))
+        ttk.Checkbutton(f_defaults, text="4. Cover Images", variable=self.var_def_art_i).pack(anchor="w")
+
+        # 2. Gemini Generation Logic
+        f_gemini = ttk.LabelFrame(scroll_frame, text="Gemini Content Logic", padding=10)
         f_gemini.pack(fill="x", padx=10, pady=5)
         
         self.var_lyrics = tk.BooleanVar(value=config.get("gemini_lyrics", True))
-        ttk.Checkbutton(f_gemini, text="Generate Lyrics", variable=self.var_lyrics).pack(anchor="w")
-        
+        ttk.Checkbutton(f_gemini, text="Generate Lyrics (vs just Title)", variable=self.var_lyrics).pack(anchor="w")
         self.var_style = tk.BooleanVar(value=config.get("gemini_style", True))
         ttk.Checkbutton(f_gemini, text="Generate Music Style", variable=self.var_style).pack(anchor="w")
-        
         self.var_visual = tk.BooleanVar(value=config.get("gemini_visual", True))
-        ttk.Checkbutton(f_visual := ttk.Frame(f_gemini), text="Generate Visual Prompts", variable=self.var_visual).pack(anchor="w")
-        
+        ttk.Checkbutton(f_gemini, text="Generate Visual Prompts", variable=self.var_visual).pack(anchor="w")
         self.var_video = tk.BooleanVar(value=config.get("gemini_video", False))
         ttk.Checkbutton(f_gemini, text="Generate Video Prompts", variable=self.var_video).pack(anchor="w")
         
-        # Suno Settings
-        f_suno = ttk.LabelFrame(self, text="Automation Settings", padding=10)
+        # 3. Automation Delays
+        f_suno = ttk.LabelFrame(scroll_frame, text="Automation Delays", padding=10)
         f_suno.pack(fill="x", padx=10, pady=5)
         
         ttk.Label(f_suno, text="Suno Gen Delay (s):").pack(anchor="w")
@@ -75,66 +112,40 @@ class SettingsDialog(tk.Toplevel):
         self.entry_startup.insert(0, str(config.get("startup_delay", 5)))
         self.entry_startup.pack(fill="x", pady=2)
         
-        # Prompts
-        f_prompts = ttk.LabelFrame(self, text="Master Prompts", padding=10)
-        f_prompts.pack(fill="x", padx=10, pady=5)
-        ttk.Button(f_prompts, text="📝 Edit Master Prompts", command=self.open_prompt_editor).pack(fill="x")
-        
-        # Language Settings
-        f_lang = ttk.LabelFrame(self, text="Language & Regional", padding=10)
+        # 4. Language
+        f_lang = ttk.LabelFrame(scroll_frame, text="Language & Regional", padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
-        
-        ttk.Label(f_lang, text="Target Lyrics Language:").pack(anchor="w")
         self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese"], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
-        # Buttons
+        # 5. Browser Action
+        f_browser = ttk.LabelFrame(scroll_frame, text="Browser Action", padding=10)
+        f_browser.pack(fill="x", padx=10, pady=5)
+        ttk.Button(f_browser, text="🌐 Open Chrome for Login", command=self.open_chrome).pack(fill="x")
+
+        # --- TAB 2: Master Prompts Editor ---
+        self.tab_prompts = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_prompts, text="Master Prompts")
+        
+        self.prompts_path = os.path.join(os.path.dirname(config.get("metadata_path", "")), "prompts.json")
+        
+        ttk.Label(self.tab_prompts, text="Lyrics Master Prompt (Gemini):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_lyrics = scrolledtext.ScrolledText(self.tab_prompts, height=10, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_lyrics.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        ttk.Label(self.tab_prompts, text="Art Master Prompt (Thumbnail):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_art = scrolledtext.ScrolledText(self.tab_prompts, height=10, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_art.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        self.load_prompts_data()
+
+        # Save Button
         f_btn = ttk.Frame(self, padding=10)
         f_btn.pack(fill="x", side="bottom")
-        ttk.Button(f_btn, text="Save & Close", command=self.save_settings).pack(fill="x")
+        ttk.Button(f_btn, text="💾 Save All Settings & Prompts", command=self.save_settings).pack(fill="x")
 
-    def open_prompt_editor(self):
-        PromptEditor(self, self.config.get("metadata_path", "data/input_songs.xlsx"))
-
-    def save_settings(self):
-        try:
-            self.config["gemini_lyrics"] = self.var_lyrics.get()
-            self.config["gemini_style"] = self.var_style.get()
-            self.config["gemini_visual"] = self.var_visual.get()
-            self.config["gemini_video"] = self.var_video.get()
-            self.config["suno_delay"] = int(self.entry_delay.get())
-            self.config["startup_delay"] = int(self.entry_startup.get())
-            self.config["target_language"] = self.combo_lang.get()
-            self.destroy()
-        except ValueError:
-            messagebox.showerror("Error", "Please enter valid numbers for delay.")
-
-class PromptEditor(tk.Toplevel):
-    def __init__(self, parent, metadata_path):
-        super().__init__(parent)
-        self.title("📝 Edit Master Prompts")
-        self.geometry("600x600")
-        self.prompts_path = os.path.join(os.path.dirname(metadata_path), "prompts.json")
-        
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.txt_lyrics = self._add_tab("Lyrics Prompt")
-        self.txt_art = self._add_tab("Art Prompt")
-        
-        self.load_prompts()
-        
-        ttk.Button(self, text="Save Prompts", command=self.save_prompts).pack(pady=10)
-        
-    def _add_tab(self, title):
-        f = ttk.Frame(self.notebook)
-        self.notebook.add(f, text=title)
-        txt = scrolledtext.ScrolledText(f, wrap=tk.WORD, font=("Consolas", 10))
-        txt.pack(fill="both", expand=True, padx=5, pady=5)
-        return txt
-
-    def load_prompts(self):
+    def load_prompts_data(self):
         import json
         if os.path.exists(self.prompts_path):
             try:
@@ -142,22 +153,47 @@ class PromptEditor(tk.Toplevel):
                     data = json.load(f)
                     self.txt_lyrics.insert("1.0", data.get("lyrics_master_prompt", ""))
                     self.txt_art.insert("1.0", data.get("art_master_prompt", ""))
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to load prompts: {e}")
+            except: pass
 
-    def save_prompts(self):
-        import json
-        data = {
-            "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
-            "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
-        }
+    def open_chrome(self):
+        self.destroy() 
+        self.app.open_chrome_profile()
+
+    def save_settings(self):
         try:
+            # 1. Config Object Update
+            self.config["gemini_lyrics"] = self.var_lyrics.get()
+            self.config["gemini_style"] = self.var_style.get()
+            self.config["gemini_visual"] = self.var_visual.get()
+            self.config["gemini_video"] = self.var_video.get()
+            self.config["suno_delay"] = int(self.entry_delay.get())
+            self.config["startup_delay"] = int(self.entry_startup.get())
+            self.config["target_language"] = self.combo_lang.get()
+            
+            # Defaults Config
+            self.config["default_run_lyrics"] = self.var_def_lyrics.get()
+            self.config["default_run_music"] = self.var_def_music.get()
+            self.config["default_run_art_prompt"] = self.var_def_art_p.get()
+            self.config["default_run_art_image"] = self.var_def_art_i.get()
+            
+            # 2. Prompts Data Update
+            import json
+            prompt_data = {
+                "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
+                "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
+            }
             with open(self.prompts_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            messagebox.showinfo("Success", "Prompts saved successfully!")
+                json.dump(prompt_data, f, indent=4, ensure_ascii=False)
+            
+            # 3. Request App Level Save
+            # Note: app_instance must have save_settings(config)
+            if hasattr(self.app, "save_settings"):
+                self.app.save_settings(self.config)
+            
+            messagebox.showinfo("Success", "Settings and Prompts saved successfully!")
             self.destroy()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save prompts: {e}")
+            messagebox.showerror("Error", f"Failed to save: {e}")
 
 class MusicBotGUI:
     def __init__(self, root):
@@ -165,17 +201,22 @@ class MusicBotGUI:
         self.root.title("MusicBot Pro Dashboard")
         self.root.geometry("1100x800")
         
-        # Apply Light Theme Styles
-        self.setup_styles()
-        
         # Configuration (Default Values)
         input_path, _, _ = self.get_data_paths()
         self.config = {
             "gemini_lyrics": True, "gemini_style": True, "gemini_visual": True, "gemini_video": False,
             "suno_delay": 15, "startup_delay": 5,
             "metadata_path": input_path,
-            "target_language": "Turkish"
+            "target_language": "Turkish",
+            "default_run_lyrics": True,
+            "default_run_music": True,
+            "default_run_art_prompt": True,
+            "default_run_art_image": True
         }
+        self.load_settings()
+        
+        # Apply Light Theme Styles (Constructs UI)
+        self.setup_styles()
         
         # --- STYLES ---
     def setup_styles(self):
@@ -210,20 +251,32 @@ class MusicBotGUI:
                         rowheight=30, 
                         font=("Helvetica", 10))
         style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"), background="#e1e4e8")
-        style.map("Treeview", background=[("selected", accent_color)], foreground=[("selected", white)])
+        style.map("Treeview", background=[("selected", accent_color)], foreground=[("selected", "white")])
 
         # --- LAYOUT ---
+        self.setup_ui()
         
+    def setup_ui(self):
         # Top Bar
         self.f_top = ttk.Frame(self.root, padding=10)
         self.f_top.pack(fill="x")
         
         ttk.Button(self.f_top, text="⚙️ Settings", command=self.open_settings).pack(side="right", padx=5)
-        ttk.Button(self.f_top, text="🔄 Refresh", command=self.load_data).pack(side="right", padx=5)
+        ttk.Button(self.f_top, text="🔄 Refresh", command=self.load_project_data).pack(side="right", padx=5)
         
         ttk.Label(self.f_top, text="MusicBot Pro", style="Header.TLabel").pack(side="left", padx=5)
-        ttk.Button(self.f_top, text="📂 Input", command=lambda: self.open_xlsx("input")).pack(side="left", padx=5)
-        ttk.Button(self.f_top, text="📂 Output", command=lambda: self.open_xlsx("output")).pack(side="left", padx=2)
+        
+        # Unified "Load Project" Button
+        self.btn_new = ttk.Button(self.f_top, text="✨ New Project", command=self.create_new_project)
+        self.btn_new.pack(side="left", padx=5)
+        
+        self.btn_load = ttk.Button(self.f_top, text="📂 Load Project", command=self.load_project_file)
+        self.btn_load.pack(side="left", padx=5)
+        
+        # Project Status Label
+        self.lbl_project = ttk.Label(self.f_top, text="No Project Loaded", font=("Helvetica", 10, "italic"), foreground="gray")
+        self.lbl_project.pack(side="left", padx=10)
+        
         ttk.Button(self.f_top, text="🖼️ Images", command=self.open_image_folder).pack(side="left", padx=2)
 
         # Filter
@@ -280,7 +333,7 @@ class MusicBotGUI:
         
         self.log_text = scrolledtext.ScrolledText(self.f_log, height=8, state='disabled', font=("Consolas", 9))
         self.log_text.pack(fill="both", expand=True)
-        self.log_text.configure(bg=white, fg=text_color)
+        self.log_text.configure(bg="#ffffff", fg="#333333")
         
         # Connect Logger
         self.gui_handler = GuiLogger(self.log_text)
@@ -297,20 +350,19 @@ class MusicBotGUI:
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(self.f_bottom, textvariable=self.status_var, font=("Helvetica", 10, "italic")).pack(side="bottom", anchor="w")
 
-        f_steps = ttk.Frame(self.f_bottom)
+        # Checkboxes for Run Steps
+        f_steps = ttk.LabelFrame(self.f_bottom, text="Run Steps", padding=5)
         f_steps.pack(fill="x", pady=5)
         
-        ttk.Label(f_steps, text="Run Steps:").pack(side="left")
-        self.var_run_lyrics = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f_steps, text="1. Lyrics", variable=self.var_run_lyrics).pack(side="left", padx=5)
-        self.var_run_music = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f_steps, text="2. Music", variable=self.var_run_music).pack(side="left", padx=5)
+        self.var_run_lyrics = tk.BooleanVar(value=self.config.get("default_run_lyrics", True))
+        self.var_run_music = tk.BooleanVar(value=self.config.get("default_run_music", True))
+        self.var_run_art_prompt = tk.BooleanVar(value=self.config.get("default_run_art_prompt", True))
+        self.var_run_art_image = tk.BooleanVar(value=self.config.get("default_run_art_image", True))
         
-        self.var_run_art_prompt = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f_steps, text="3a. Art Prompts", variable=self.var_run_art_prompt).pack(side="left", padx=5)
-        
-        self.var_run_art_image = tk.BooleanVar(value=True)
-        ttk.Checkbutton(f_steps, text="3b. Art Images", variable=self.var_run_art_image).pack(side="left", padx=5)
+        ttk.Checkbutton(f_steps, text="1. Generate Lyrics & Prompts (Gemini)", variable=self.var_run_lyrics).pack(anchor="w")
+        ttk.Checkbutton(f_steps, text="2. Generate Music (Suno)", variable=self.var_run_music).pack(anchor="w")
+        ttk.Checkbutton(f_steps, text="3. Generate Art Prompts (Gemini)", variable=self.var_run_art_prompt).pack(anchor="w")
+        ttk.Checkbutton(f_steps, text="4. Generate Cover Images (Gemini)", variable=self.var_run_art_image).pack(anchor="w")
         
         self.btn_run = ttk.Button(self.f_bottom, text="▶ START SELECTED", style="Action.TButton", command=self.start_process)
         self.btn_run.pack(fill="x", pady=5)
@@ -320,7 +372,36 @@ class MusicBotGUI:
         self.filtered_ids = []
         
         # Initial Load
-        self.load_data()
+        self.load_project_data() # Load last project or show no project
+
+    def load_settings(self):
+        """Loads settings from settings.json in workspace."""
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        settings_path = os.path.join(workspace, "settings.json")
+        if os.path.exists(settings_path):
+            try:
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    saved_config = json.load(f)
+                    self.config.update(saved_config)
+                logger.info("✅ Settings loaded from settings.json")
+            except Exception as e:
+                logger.error(f"Failed to load settings: {e}")
+
+    def save_settings(self, new_config=None):
+        """Saves current config to settings.json in workspace."""
+        if new_config:
+            self.config.update(new_config)
+            
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        os.makedirs(workspace, exist_ok=True)
+        settings_path = os.path.join(workspace, "settings.json")
+        
+        try:
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=4, ensure_ascii=False)
+            logger.info("✅ Settings saved to settings.json")
+        except Exception as e:
+            logger.error(f"Failed to save settings: {e}")
 
     def update_progress(self, rid, text):
         """Updates the progress text for a specific row ID."""
@@ -330,70 +411,156 @@ class MusicBotGUI:
             # self.tree.see(rid)
         
     def open_settings(self):
-        SettingsDialog(self.root, self.config)
+        # Pass the path to prompts.json for the PromptEditor
+        prompts_path = self.get_prompts_path()
+        self.config["metadata_path"] = prompts_path # This is a bit of a hack, but PromptEditor expects metadata_path
+        SettingsDialog(self.root, self.config, self)
 
-    def load_data(self):
-        """Loads and merges data from Input and Output excels."""
-        input_path, output_path, _ = self.get_data_paths()
+    def create_new_project(self):
+        """Creates a new project file from template."""
         
-        # Clear tree
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # 1. Define Workspace
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        if not os.path.exists(workspace): os.makedirs(workspace)
+        
+        # 2. Ask User for Filename
+        initial_file = f"Project_{int(time.time())}.xlsx"
+        path = filedialog.asksaveasfilename(
+            initialdir=workspace,
+            initialfile=initial_file,
+            title="Create New Project",
+            filetypes=[("Excel Files", "*.xlsx")]
+        )
+        
+        if not path: return # User cancelled
+        
+        if not path.endswith(".xlsx"): path += ".xlsx"
+        
+        # 3. Create File (Using openpyxl directly to be self-contained)
+        try:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Music Project"
             
-        self.all_songs = {} 
+            headers = [
+                "id", "prompt", "style", "title", "lyrics", "status", 
+                "visual_prompt", "video_prompt", "cover_art_prompt", "cover_art_path"
+            ]
+            ws.append(headers)
+            # Add example row
+            ws.append(["EXAMPLE_01", "A happy song about coding", "Pop", "Code Joy", "", "Pending", "", "", "", ""])
+            
+            wb.save(path)
+            logger.info(f"Created new project: {path}")
+            
+            # 4. Load it immediately
+            self.load_project_data(path)
+            messagebox.showinfo("Success", "New project created and loaded! 🚀")
+            
+        except Exception as e:
+            logger.error(f"Failed to create project: {e}")
+            messagebox.showerror("Error", f"Could not create project: {e}")
+
+    def load_project_file(self):
+        """Opens file dialog to select a project file."""
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Select Project File",
+            filetypes=[("Excel Files", "*.xlsx")],
+            initialdir=os.path.expanduser("~/Documents")
+        )
+        if path:
+            self.config["last_project"] = path
+            self.load_project_data(path)
+
+    def load_project_data(self, path=None):
+        """Loads data from the single project file."""
+        if not path:
+            path = self.config.get("last_project")
+            
+        if not path or not os.path.exists(path):
+            self.lbl_project.config(text="No Project Loaded", foreground="gray")
+            self.all_songs = {}
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self.apply_filter() # Clear the treeview
+            self.status_var.set("Ready")
+            return
+
+        self.project_path = path
+        self.lbl_project.config(text=f"📄 {os.path.basename(path)}", foreground="green")
         
-        # 1. Read Input (Prompts & Styles)
-        if os.path.exists(input_path):
-            try:
-                wb = openpyxl.load_workbook(input_path, data_only=True)
-                ws = wb.active
-                headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+        # Ensure Output Logic (Auto-Initialize columns)
+        self.ensure_project_structure(path)
+        
+        # Read Data
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True)
+            ws = wb.active
+            headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+            
+            self.all_songs = {}
+            for item in self.tree.get_children():
+                self.tree.delete(item)
                 
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    rid = str(row[headers.get('id', 0)]) if 'id' in headers and row[headers.get('id')] else ""
-                    prompt = row[headers.get('prompt', 0)] if 'prompt' in headers else ""
-                    style = row[headers.get('style', 0)] if 'style' in headers else ""
-                    
-                    if rid or prompt: # Valid row
-                        if not rid: rid = "PENDING..."
-                        self.all_songs[rid] = {
-                            "id": rid, "title": prompt, "style": style,
-                            "lyrics": False, "music": False, "art": False
-                        }
-            except Exception as e:
-                logger.error(f"Error reading input: {e}")
-
-        # 2. Read Output
-        if os.path.exists(output_path):
-            try:
-                wb = openpyxl.load_workbook(output_path, data_only=True)
-                ws = wb.active
-                headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                # ID Logic
+                rid = str(row[headers.get('id', 0)]) if 'id' in headers and row[headers.get('id')] is not None else ""
                 
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    rid = str(row[headers.get('id', 0)]) if 'id' in headers and row[headers.get('id')] else ""
-                    
-                    if rid in self.all_songs:
-                        if 'title' in headers and row[headers['title']]:
-                            self.all_songs[rid]["title"] = row[headers['title']]
-                        
-                        has_lyrics = False
-                        if 'lyrics' in headers and row[headers['lyrics']]: has_lyrics = True
-                        
-                        has_music = False
-                        if 'status' in headers and str(row[headers['status']]).lower() in ["completed", "generated"]: has_music = True
-                        
-                        has_art = False
-                        if 'cover_art_path' in headers and row[headers['cover_art_path']]: has_art = True
-                        
-                        self.all_songs[rid]["lyrics"] = has_lyrics
-                        self.all_songs[rid]["music"] = has_music
-                        self.all_songs[rid]["art"] = has_art
+                # Check Prompt/Title
+                prompt = ""
+                if 'prompt' in headers and row[headers['prompt']] is not None: prompt = str(row[headers['prompt']])
+                elif 'title' in headers and row[headers['title']] is not None: prompt = str(row[headers['title']])
+                
+                style = str(row[headers.get('style', 0)]) if 'style' in headers and row[headers.get('style')] is not None else ""
+                
+                # Status checks
+                has_lyrics = True if 'lyrics' in headers and row[headers['lyrics']] else False
+                has_music = True if 'status' in headers and str(row[headers['status']]).lower() in ["completed", "generated"] else False
+                has_art = True if 'cover_art_path' in headers and row[headers['cover_art_path']] else False
+                
+                if rid or prompt:
+                    if not rid: rid = f"PENDING_{len(self.all_songs) + 1}" # Generate a temporary ID if missing
+                    self.all_songs[rid] = {
+                        "id": rid, "title": prompt, "style": style,
+                        "lyrics": has_lyrics, "music": has_music, "art": has_art
+                    }
+            
+            self.apply_filter()
+            self.status_var.set(f"Loaded {len(self.all_songs)} songs from project.")
+            
+        except Exception as e:
+            logger.error(f"Error loading project: {e}")
+            messagebox.showerror("Error", f"Failed to load project: {e}")
 
-            except Exception as e:
-                logger.error(f"Error reading output: {e}")
-
-        self.apply_filter()
+    def ensure_project_structure(self, path):
+        """Adds missing columns to a raw input file to make it a Project File."""
+        try:
+            wb = openpyxl.load_workbook(path)
+            ws = wb.active
+            
+            # Map current headers
+            headers = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
+            
+            # Required Columns
+            required = [
+                "id", "prompt", "style", "title", "lyrics", "status", 
+                "visual_prompt", "video_prompt", "cover_art_prompt", "cover_art_path"
+            ]
+            
+            updates = False
+            for col in required:
+                if col not in headers:
+                    new_idx = ws.max_column + 1
+                    ws.cell(row=1, column=new_idx, value=col)
+                    headers[col] = new_idx
+                    updates = True
+            
+            if updates:
+                wb.save(path)
+                logger.info(f"Project structure initialized for {os.path.basename(path)}")
+        except Exception as e:
+            logger.error(f"Structure init error: {e}")
 
     def apply_filter(self, *args):
         query = self.filter_var.get().lower()
@@ -442,6 +609,24 @@ class MusicBotGUI:
                     return "break" # Prevent selection change if clicking checkbox
 
     def start_process(self):
+        # --- Pre-flight Checks 🛡️ ---
+        if not self.project_path:
+            logger.error("❌ No Project Loaded! Please Load or Create a project.")
+            messagebox.showerror("Error", "Please load a project file first.")
+            return
+
+        # Check input file existence
+        # self.project_path is the unified file (e.g. .../MusicBot_Workspace/ProjeX/ProjeX.xlsx)
+        if not os.path.exists(self.project_path):
+             logger.error(f"❌ Project file not found: {self.project_path}")
+             return
+
+        # Check if at least one step is selected
+        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get()]):
+            logger.error("❌ No steps selected! Please check at least one 'Run Step'.")
+            messagebox.showwarning("Warning", "Please select at least one step to run.")
+            return
+
         # 1. Use manual checkboxes if any
         target_ids = list(self.selected_songs)
         
@@ -463,7 +648,10 @@ class MusicBotGUI:
 
     def run_process(self, target_ids):
         try:
-            input_xlsx, output_xlsx, output_media = self.get_data_paths()
+            # Unified Project Path
+            project_file = self.project_path
+            output_media = os.path.join(os.path.dirname(project_file), "output_media")
+            if not os.path.exists(output_media): os.makedirs(output_media)
             
             def progress_callback(rid, text):
                 if rid == "global":
@@ -475,7 +663,8 @@ class MusicBotGUI:
             # Or group them but isolate the high-risk steps
             
             for idx, song_id in enumerate(target_ids):
-                self.status_var.set(f"Processing Song {idx+1}/{len(target_ids)} (ID: {song_id})")
+                # Update status
+                self.root.after(0, lambda: self.status_var.set(f"Processing Song {idx+1}/{len(target_ids)} (ID: {song_id})"))
                 
                 from browser_controller import BrowserController
                 # Start a fresh browser for this specific song to prevent state buildup/timeout issues
@@ -484,75 +673,99 @@ class MusicBotGUI:
                 try:
                     song_browser.start()
                     
-                    # 1. Gemini
+                    # --- Step 1: Lyrics ---
                     if self.var_run_lyrics.get():
                         from gemini_prompter import GeminiPrompter
-                        prompter = GeminiPrompter(
-                            metadata_path=input_xlsx, # Keep input_xlsx as it's the source for prompts
-                            output_path=output_xlsx,
-                            headless=False,
-                            use_gemini_lyrics=self.config["gemini_lyrics"],
-                            generate_visual=self.config["gemini_visual"],
-                            generate_video=self.config["gemini_video"],
-                            generate_style=self.config["gemini_style"],
-                            startup_delay=self.config["startup_delay"], # Changed from .get with default
-                            language=self.config.get("target_language", "Turkish"), # Added new argument
-                            browser=song_browser
+                        gemini = GeminiPrompter(
+                            project_file=project_file, # Unified Path
+                            browser=song_browser,
+                            use_gemini_lyrics=self.config.get("gemini_lyrics", True),
+                            generate_visual=self.config.get("gemini_visual", True),
+                            generate_video=self.config.get("gemini_video", False),
+                            generate_style=self.config.get("gemini_style", False),
+                            startup_delay=self.config.get("startup_delay", 5),
+                            language=self.config.get("target_language", "Turkish")
                         )
-                        prompter.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
+                        gemini.run(target_ids=[song_id], progress_callback=progress_callback)
 
-                    # 2. Suno
+                    # --- Step 2: Music ---
                     if self.var_run_music.get():
                         from suno_generator import SunoGenerator
                         suno = SunoGenerator(
-                            metadata_path=output_xlsx, 
-                            output_dir=output_media, 
-                            delay=5, # Reduced internal delay as we restart browser
-                            startup_delay=self.config.get("startup_delay", 2),
+                            project_file=project_file, # Unified Path
+                            output_dir=output_media,
+                            delay=self.config.get("suno_delay", 15),
+                            startup_delay=self.config.get("startup_delay", 5),
                             browser=song_browser
                         )
-                        suno.run(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
-
-                    # 3. Art Prompt
-                    if self.var_run_art_prompt.get():
+                        suno.run(target_ids=[song_id], progress_callback=progress_callback)
+                    
+                    # --- Step 3: Art (Prompts & Images) ---
+                    # Note: Art usually benefits from batching to avoid closing/opening browser too much,
+                    # but here we do it per-song to ensure isolation.
+                    if self.var_run_art_prompt.get() or self.var_run_art_image.get():
                         from gemini_prompter import GeminiPrompter
-                        gemini_art = GeminiPrompter(output_path=output_xlsx, headless=False, browser=song_browser)
-                        gemini_art.generate_art_prompts(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
+                        gemini_art = GeminiPrompter(
+                            project_file=project_file, # Unified Path
+                            browser=song_browser,
+                            startup_delay=self.config.get("startup_delay", 5),
+                            language=self.config.get("target_language", "Turkish")
+                        )
+                        
+                        if self.var_run_art_prompt.get():
+                            gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
+                        
+                        if self.var_run_art_image.get():
+                            gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
 
-                    # 4. Art Image
-                    if self.var_run_art_image.get():
-                        from gemini_prompter import GeminiPrompter
-                        gemini_art_img = GeminiPrompter(output_path=output_xlsx, headless=False, browser=song_browser)
-                        gemini_art_img.generate_art_images(max_count=1, target_ids=[song_id], progress_callback=progress_callback)
-
-                except Exception as song_err:
-                    logger.error(f"Error on song {song_id}: {song_err}")
-                    progress_callback(song_id, f"Error: {song_err} ❌")
+                except Exception as e:
+                    logger.error(f"Error processing {song_id}: {e}")
+                    progress_callback(song_id, "Error in flow ❌")
                 finally:
-                    # NEW: Lifecycle delay to ensure media saves complete fully
-                    time.sleep(5)
-                    song_browser.stop()
-                    time.sleep(2) # Brief cooldown between songs
-            
-            self.status_var.set("Batch Finished! 🎉")
-            messagebox.showinfo("Success", f"Finished {len(target_ids)} songs.")
-            
+                    # Safe Shutdown
+                    try:
+                        time.sleep(2)
+                        song_browser.stop()
+                    except: pass
+
+            self.root.after(0, lambda: messagebox.showinfo("Done", "Selected tasks completed!"))
+            self.root.after(0, self.load_project_data) # Refresh UI
+
         except Exception as e:
-            logger.error(f"Batch Process error: {e}")
-            messagebox.showerror("Complete Failure", f"The entire process stopped: {e}")
+            logger.error(f"Critical Process Error: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Critical Error", str(e)))
         finally:
-            self.enable_buttons()
+            self.root.after(0, self.enable_buttons)
             self.load_data()
 
 
+
+    def get_prompts_path(self):
+        """Returns the path to prompts.json in the workspace, initializing it if needed."""
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        os.makedirs(workspace, exist_ok=True)
+        prompts_path = os.path.join(workspace, "prompts.json")
+        
+        if not os.path.exists(prompts_path):
+            # Try to migrate from old location
+            old_path = os.path.join(os.getcwd(), "data", "prompts.json")
+            if os.path.exists(old_path):
+                import shutil
+                shutil.copy(old_path, prompts_path)
+            else:
+                # Fallback default
+                try:
+                    import json
+                    with open(prompts_path, "w", encoding="utf-8") as f:
+                         json.dump({
+                            "lyrics_master_prompt": "Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün...",
+                            "art_master_prompt": "Create a high-quality YouTube music thumbnail..."
+                        }, f, indent=4)
+                except: pass
+        return prompts_path
+
     def get_data_paths(self):
-        if getattr(sys, 'frozen', False):
-            docs_dir = os.path.expanduser("~/Documents/MusicBot_Data")
-            bundle_dir = sys._MEIPASS
-        else:
-            docs_dir = os.path.join(os.getcwd(), "data")
-            bundle_dir = os.getcwd()
-            
+        docs_dir = os.path.expanduser("~/Documents/MusicBot_Workspace")
         os.makedirs(docs_dir, exist_ok=True)
         
         input_path = os.path.join(docs_dir, "input_songs.xlsx")
@@ -603,6 +816,44 @@ class MusicBotGUI:
         if not os.path.exists(img_dir):
             os.makedirs(img_dir, exist_ok=True)
         os.system(f"open '{img_dir}'")
+
+    def open_chrome_profile(self):
+        """Launches a headless=False browser for manual login."""
+        
+        def _launch():
+            try:
+                # 1. Notify User via Log
+                logger.info("Initializing Chrome for Login...")
+                logger.info("Please wait, browser is starting...")
+                                    
+                # 2. Start
+                # Store in self to prevent Garbage Collection from closing it immediately
+                self.chrome_session = BrowserController(headless=False)
+                self.chrome_session.start()
+                
+                logger.info("✅ Chrome started successfully!")
+                logger.info(f"📂 Profile Path: {self.chrome_session.user_data_dir}")
+                logger.info("👉 Please log in to Suno/Gemini now.")
+                logger.info("👉 You can close the browser window when finished.")
+                
+                # 3. Open Tabs
+                try:
+                    page = self.chrome_session.pages.get("default")
+                    if page:
+                        page.goto("https://suno.com/create")
+                        # New tab for gemini
+                        p2 = self.chrome_session.context.new_page()
+                        p2.goto("https://gemini.google.com/app")
+                except: pass
+                
+            except Exception as e:
+                import traceback
+                err = traceback.format_exc()
+                logger.error(f"❌ Failed to open browser: {e}")
+                logger.error(err)
+
+        # Threads
+        threading.Thread(target=_launch, daemon=True).start()
 
     def disable_buttons(self):
         self.btn_run.config(state="disabled")

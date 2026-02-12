@@ -56,10 +56,10 @@ class BrowserController:
             # and allows us to save the login state portably.
             if getattr(sys, 'frozen', False):
                 # If packaged, keep profile near the app or in Documents to persist
-                base_path = os.path.expanduser("~/Documents/MusicBot_Data")
+                base_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
             else:
-                # If script, keep in project dir
-                base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                # If script, keep in Documents to match packaged app behavior (Unified Workspace)
+                base_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
             
             self.user_data_dir = os.path.join(base_path, "chrome_profile")
             os.makedirs(self.user_data_dir, exist_ok=True)
