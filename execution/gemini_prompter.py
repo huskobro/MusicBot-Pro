@@ -632,25 +632,28 @@ Main title: “{title}”
                 logger.warning("Gemini input box not found for image gen.")
                 return None
             
+            # Step 0: Count existing image containers to avoid stale detection
+            initial_containers = self.tab.locator("div.image-set-container, sac-image-set, sac-single-image-set").count()
+            logger.info(f"Initial image container count: {initial_containers}")
+
             logger.info("Sending image generation prompt to Gemini...")
             self.browser.fill(input_box, prompt, page=self.tab)
             self.tab.keyboard.press("Enter")
             
             # Step 1: Wait for generation to start (indicator to appear)
-            # Indicators observed: "Görüntüler oluşturuluyor...", "Generating images...", "Nanobanana"
             logger.info("Waiting for generation indicator to appear...")
             indicator_selectors = [
                 "text='Görüntüler oluşturuluyor...'", 
                 "text='Generating images...'",
-                ".loading-indicator", # Common class
-                "div:has-text('Nanobanana')" # Internal name
+                ".loading-indicator", 
+                "div:has-text('Nanobanana')"
             ]
             
             # Brief wait for indicator to appear
             time.sleep(3)
             
-            # Step 2: Poll for generation completion (indicator to disappear AND container to appear)
-            logger.info("Waiting for images to be fully rendered (polling up to 90s)...")
+            # Step 2: Poll for generation completion (New container appearing)
+            logger.info("Waiting for NEW images to be fully rendered (polling up to 90s)...")
             found_img = None
             
             for attempt in range(18): # 18 * 5s = 90s
@@ -666,25 +669,30 @@ Main title: “{title}”
                 if is_loading:
                     logger.info(f"   Still generating (Attempt {attempt+1}/18)...")
                 else:
-                    # Look for the actual image containers
-                    # div.image-set-container is the parent of the generated grid
-                    container = self.tab.locator("div.image-set-container, sac-image-set, sac-single-image-set").last
-                    if container.is_visible():
-                        # Loader gone and container found!
-                        logger.info("Generation finished. Finding primary image...")
-                        time.sleep(3) # Extra wait for full high-res render
-                        
-                        # Find the largest image in the newest container
-                        images = container.locator("img").all()
-                        if images:
-                            for img in reversed(images):
-                                box = img.bounding_box()
-                                if box and box['width'] > 300 and box['height'] > 300:
-                                    src = img.get_attribute("src") or ""
-                                    if "blob:" in src or "googleusercontent" in src:
-                                        found_img = img
-                                        break
-                        if found_img: break
+                    # Look for NEW image containers
+                    current_containers = self.tab.locator("div.image-set-container, sac-image-set, sac-single-image-set")
+                    current_count = current_containers.count()
+                    
+                    if current_count > initial_containers:
+                        # New container found!
+                        container = current_containers.last
+                        if container.is_visible():
+                            logger.info("Generation finished (New container detected). Finding primary image...")
+                            time.sleep(3) # Extra wait for full high-res render
+                            
+                            # Find the largest image in the newest container
+                            images = container.locator("img").all()
+                            if images:
+                                for img in reversed(images):
+                                    box = img.bounding_box()
+                                    if box and box['width'] > 300 and box['height'] > 300:
+                                        src = img.get_attribute("src") or ""
+                                        if "blob:" in src or "googleusercontent" in src:
+                                            found_img = img
+                                            break
+                            if found_img: break
+                    else:
+                        logger.info(f"   Waiting for new container (Current: {current_count}, Initial: {initial_containers})...")
                 
                 time.sleep(5)
             
