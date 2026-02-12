@@ -1,24 +1,32 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, scrolledtext, filedialog
 import logging
-import time
-import threading
 import os
 import sys
+
+# Configure logging IMMEDIATELY to catch all imports and initializations.
+workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+if not os.path.exists(workspace): os.makedirs(workspace)
+debug_log_path = os.path.join(workspace, "musicbot_debug.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(debug_log_path, encoding='utf-8', mode='a')
+    ],
+    force=True
+)
+logger = logging.getLogger(__name__)
+
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog, scrolledtext, filedialog
+import time
+import threading
 import shutil
 import openpyxl
 import json
 from openpyxl.styles import PatternFill
 from browser_controller import BrowserController
-
-# Configure logging
-# We will configure basic stdout logging here, but the GUI will add its own handler later.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
-)
-logger = logging.getLogger(__name__)
 
 class GuiLogger(logging.Handler):
     """Custom logging handler that directs logs to a ScrolledText widget."""
@@ -124,6 +132,50 @@ class SettingsDialog(tk.Toplevel):
         f_browser.pack(fill="x", padx=10, pady=5)
         ttk.Button(f_browser, text="🌐 Open Chrome for Login", command=self.open_chrome).pack(fill="x")
 
+        # --- TAB 1.5: Advanced Suno ---
+        self.tab_adv_suno = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_adv_suno, text="Advanced Suno")
+        
+        f_adv_suno = ttk.LabelFrame(self.tab_adv_suno, text="Music Generation Parameters", padding=10)
+        f_adv_suno.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # 1. Persona
+        self.var_persona_enabled = tk.BooleanVar(value=config.get("suno_persona_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Persona:", variable=self.var_persona_enabled).grid(row=0, column=0, sticky="w", pady=2)
+        self.ent_persona = ttk.Entry(f_adv_suno)
+        self.ent_persona.insert(0, config.get("suno_persona_name", ""))
+        self.ent_persona.grid(row=0, column=1, sticky="ew", pady=2)
+
+        # 2. Vocal Gender
+        self.var_gender_enabled = tk.BooleanVar(value=config.get("vocal_gender_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Vocal Gender:", variable=self.var_gender_enabled).grid(row=1, column=0, sticky="w", pady=2)
+        self.combo_gender = ttk.Combobox(f_adv_suno, values=["Default", "None", "Male", "Female"], state="readonly")
+        self.combo_gender.set(config.get("vocal_gender", "Default"))
+        self.combo_gender.grid(row=1, column=1, sticky="ew", pady=2)
+
+        # 3. Audio Influence (%)
+        self.var_audio_enabled = tk.BooleanVar(value=config.get("audio_influence_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Audio Influence (%):", variable=self.var_audio_enabled).grid(row=2, column=0, sticky="w", pady=2)
+        self.scale_audio = tk.Scale(f_adv_suno, from_=10, to_=90, orient="horizontal")
+        self.scale_audio.set(config.get("audio_influence", 25))
+        self.scale_audio.grid(row=2, column=1, sticky="ew", pady=2)
+
+        # 4. Weirdness
+        self.var_weird_enabled = tk.BooleanVar(value=config.get("weirdness_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Weirdness:", variable=self.var_weird_enabled).grid(row=3, column=0, sticky="w", pady=2)
+        self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=1000, orient="horizontal")
+        self.scale_weird.set(50 if config.get("weirdness") == "Default" else int(config.get("weirdness", 50)))
+        self.scale_weird.grid(row=3, column=1, sticky="ew", pady=2)
+
+        # 5. Style Influence
+        self.var_style_enabled = tk.BooleanVar(value=config.get("style_influence_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Style Influence:", variable=self.var_style_enabled).grid(row=4, column=0, sticky="w", pady=2)
+        self.scale_style = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
+        self.scale_style.set(50 if config.get("style_influence") == "Default" else int(config.get("style_influence", 50)))
+        self.scale_style.grid(row=4, column=1, sticky="ew", pady=2)
+
+        f_adv_suno.columnconfigure(1, weight=1)
+
         # --- TAB 2: Master Prompts Editor ---
         self.tab_prompts = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_prompts, text="Master Prompts")
@@ -205,6 +257,18 @@ class SettingsDialog(tk.Toplevel):
             self.config["default_run_art_prompt"] = self.var_def_art_p.get()
             self.config["default_run_art_image"] = self.var_def_art_i.get()
             
+            # Suno Advanced
+            self.config["suno_persona_name"] = self.ent_persona.get()
+            self.config["suno_persona_enabled"] = self.var_persona_enabled.get()
+            self.config["vocal_gender"] = self.combo_gender.get()
+            self.config["vocal_gender_enabled"] = self.var_gender_enabled.get()
+            self.config["audio_influence"] = self.scale_audio.get()
+            self.config["audio_influence_enabled"] = self.var_audio_enabled.get()
+            self.config["weirdness"] = self.scale_weird.get()
+            self.config["weirdness_enabled"] = self.var_weird_enabled.get()
+            self.config["style_influence"] = self.scale_style.get()
+            self.config["style_influence_enabled"] = self.var_style_enabled.get()
+            
             # 2. Prompts Data Update
             import json
             prompt_data = {
@@ -242,7 +306,21 @@ class MusicBotGUI:
             "default_run_lyrics": True,
             "default_run_music": True,
             "default_run_art_prompt": True,
-            "default_run_art_image": True
+            "default_run_art_image": True,
+            # Suno Advanced Options
+            # Suno Advanced Options
+            "audio_influence": 25,
+            "vocal_gender": "Default",
+            "lyrics_mode": "Default",
+            "weirdness": "Default",
+            "style_influence": "Default",
+            "suno_persona_name": "",
+            # Enabled Flags
+            "suno_persona_enabled": False,
+            "weirdness_enabled": False,
+            "style_influence_enabled": False,
+            "vocal_gender_enabled": False,
+            "audio_influence_enabled": False
         }
         self.load_settings()
         
@@ -765,7 +843,12 @@ class MusicBotGUI:
                             output_dir=output_media,
                             delay=self.config.get("suno_delay", 15),
                             startup_delay=self.config.get("startup_delay", 5),
-                            browser=song_browser
+                            browser=song_browser,
+                            audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
+                            vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
+                            weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
+                            style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
+                            persona_name=self.config.get("suno_persona_name", "") if self.config.get("suno_persona_enabled") else ""
                         )
                         suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     

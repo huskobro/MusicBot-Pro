@@ -68,22 +68,42 @@ class BrowserController:
         self.context = None
         self.pages = {} # Map names to page objects
 
+    def _cleanup_locks(self):
+        """Removes Chrome's Singleton lock files that prevent multi-instance launch."""
+        lock_files = ["SingletonLock", "SingletonCookie", "SingletonSocket"]
+        for lock in lock_files:
+            path = os.path.join(self.user_data_dir, lock)
+            if os.path.exists(path):
+                try:
+                    logger.info(f"Removing stale lock file: {path}")
+                    os.remove(path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove lock file {path}: {e}")
+
     def start(self):
         """Starts the Playwright persistent context."""
         if self.playwright and self.context:
             logger.info("Browser already running.")
             return
 
+        # Always try to clear locks before starting
+        self._cleanup_locks()
+
         logger.info(f"Starting browser with persistent profile at: {self.user_data_dir}")
         self.playwright = sync_playwright().start()
         
         try:
             # Launch persistent context
+            # Adding channel="chrome" back - it's REQUIRED for the bundled app to find the system Chrome.
+            # The SIGTRAP/Lock issues are now handled by _cleanup_locks().
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,
                 channel="chrome",
-                args=["--disable-blink-features=AutomationControlled"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox"
+                ],
                 viewport={"width": 1280, "height": 800} 
             )
             
