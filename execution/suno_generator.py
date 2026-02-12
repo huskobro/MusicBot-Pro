@@ -25,7 +25,7 @@ class SunoGenerator:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
-    def run(self, max_count=None, target_ids=None, progress_callback=None):
+    def run(self, max_count=None, target_ids=None, progress_callback=None, force_update=False):
         try:
             if not self.browser.context:
                 self.browser.start()
@@ -57,7 +57,8 @@ class SunoGenerator:
             rows_data = []
             for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 status = str(row[headers.get('status', 0)]).lower() if 'status' in headers else ""
-                if "done" in status or "generated" in status: continue
+                if not force_update and ("done" in status or "generated" in status): 
+                    continue
                 
                 row_dict = {key: row[idx] for key, idx in headers.items() if idx < len(row)}
                 
@@ -112,7 +113,10 @@ class SunoGenerator:
     def process_row(self, row, progress_callback=None):
         prompt = row.get("prompt", "")
         lyrics = row.get("lyrics", "")
-        style = row.get("style", "")
+        # Priority: suno_style (Gemini suggested) > style (User provided)
+        style = row.get("suno_style", "")
+        if not str(style).strip():
+            style = row.get("style", "")
         title = row.get("title", "Song")
         rid = str(row.get("id", "song"))
         

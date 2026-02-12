@@ -71,7 +71,7 @@ Main title: “{title}”
              self.video_master_prompt = ""
              self.art_master_prompt = default_art
 
-    def run(self, max_count=None, target_ids=None, progress_callback=None):
+    def run(self, max_count=None, target_ids=None, progress_callback=None, force_update=False):
         try:
             if not self.browser.context:
                 self.browser.start()
@@ -95,21 +95,67 @@ Main title: “{title}”
 
             # Load pending rows logic
             import openpyxl
+            import uuid
             wb = openpyxl.load_workbook(self.metadata_path)
             ws = wb.active
             headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
             
+            # Column mapping for status check
+            lyr_col_idx = headers.get('lyrics')
+            vis_col_idx = headers.get('visual_prompt')
+            vid_col_idx = headers.get('video_prompt')
+            status_col_idx = headers.get('status', ws.max_column)
+            id_col_idx = headers.get('id', 0)
+            prompt_col_idx = headers.get('prompt', 1)
+            style_col_idx = headers.get('style', 2)
+
             pending_rows = []
-            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                status_val = str(row[headers.get('status', ws.max_column)]).lower() if 'status' in headers else ""
-                if "done" in status_val or "completed" in status_val: continue
+            updates_needed = False
+            for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                rid = row[id_col_idx].value
+                # 1. Ensure ID exists
+                if not rid:
+                    rid = str(uuid.uuid4())[:8]
+                    row[id_col_idx].value = rid
+                    updates_needed = True
                 
-                rid = str(row[headers.get('id', 0)])
+                rid = str(rid)
                 if target_ids and rid not in target_ids:
                     continue
                 
-                pending_rows.append({'id': rid, 'row_idx': i, 'theme': row[headers.get('prompt', 1)], 'style': row[headers.get('style', 2)]})
+                # 2. Check if song needs processing
+                status_val = str(row[status_col_idx].value).lower() if status_col_idx < len(row) else ""
+                
+                # We process if:
+                # - Status is not 'done'
+                # - OR any requested step is missing data
+                needs_work = False
+                if "done" not in status_val and "completed" not in status_val:
+                    needs_work = True
+                
+                # Even if status is 'done', check for missing components
+                lyrics_val = row[lyr_col_idx].value if lyr_col_idx is not None else ""
+                visual_val = row[vis_col_idx].value if vis_col_idx is not None else ""
+                video_val = row[vid_col_idx].value if vid_col_idx is not None else ""
+                
+                if self.use_gemini_lyrics and not lyrics_val: needs_work = True
+                if self.generate_visual and not visual_val: needs_work = True
+                if self.generate_video and not video_val: needs_work = True
+                
+                if needs_work or force_update:
+                    pending_rows.append({
+                        'id': rid, 
+                        'row_idx': i, 
+                        'theme': row[prompt_col_idx].value, 
+                        'style': row[style_col_idx].value if style_col_idx is not None else "",
+                        'existing_lyrics': lyrics_val,
+                        'existing_visual': visual_val,
+                        'existing_video': video_val
+                    })
             
+            if updates_needed:
+                wb.save(self.metadata_path)
+
             if not pending_rows:
                 logger.info("Nothing to process in Gemini.")
                 return 0
@@ -127,33 +173,50 @@ Main title: “{title}”
                 # --- Step 1: Lyrics ---
                 final_title = ""
                 final_style = style_init
-                if self.use_gemini_lyrics:
+                if (self.use_gemini_lyrics and not rowdata.get('existing_lyrics')) or force_update:
                     if progress_callback: progress_callback(row_id, "Step 1: Lyrics... ✍️")
                     lyrics_res = self.generate_content(theme, style=style_init)
                     if lyrics_res:
-                        self.update_output_data(row_id, lyrics_res)
+                        # Map Gemini's style to suno_style
+                        output_payload = lyrics_res.copy()
+                        if "style" in lyrics_res:
+                            output_payload["suno_style"] = lyrics_res["style"]
+                            # Don't overwrite the original 'style' column if it exists in data
+                            # Actually, update_output_data handles this by only updating if empty,
+                            # but we explicitly want Gemini style in 'suno_style'.
+                        self.update_output_data(row_id, output_payload)
                         final_title = lyrics_res.get("title", "")
                         final_style = lyrics_res.get("style", style_init)
                         if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
                     else:
                         if progress_callback: progress_callback(row_id, "Lyrics Failed ❌")
                         continue
+                else:
+                    # Skip or Load existing for next steps
+                    logger.info(f"   -> Lyrics already exist for {row_id}, skipping to prompt design.")
+                    # We might need to extract title/style from excel if lyrics exist
+                    # For now, we'll try to generate prompts if they are missing
+                    # We'll use the theme as a fallback for prompt generation if Title isn't parsed
+                    final_title = theme # Fallback
 
                 # --- Step 2: Visual Prompt ---
-                if self.generate_visual and self.visual_master_prompt:
+                if self.generate_visual and self.visual_master_prompt and (not rowdata.get('existing_visual') or force_update):
                     if progress_callback: progress_callback(row_id, "Step 2: Visual Design... 🎨")
                     vis_res = self.generate_focused_prompt("visual", final_title, final_style)
                     if vis_res:
+                        # Clean markdown bolding if any
+                        vis_res = vis_res.replace("**", "").replace("__", "").strip()
                         self.update_output_data(row_id, {"visual_prompt": vis_res})
                         if progress_callback: progress_callback(row_id, "Visual Ready! ✅")
                     else:
                         if progress_callback: progress_callback(row_id, "Visual Failed ❌")
 
                 # --- Step 3: Video Prompt ---
-                if self.generate_video and self.video_master_prompt:
+                if self.generate_video and self.video_master_prompt and (not rowdata.get('existing_video') or force_update):
                     if progress_callback: progress_callback(row_id, "Step 3: Video Design... 🎬")
                     vid_res = self.generate_focused_prompt("video", final_title, final_style)
                     if vid_res:
+                        vid_res = vid_res.replace("**", "").replace("__", "").strip()
                         self.update_output_data(row_id, {"video_prompt": vid_res})
                         if progress_callback: progress_callback(row_id, "Video Ready! ✅")
                     else:
@@ -169,276 +232,6 @@ Main title: “{title}”
         except Exception as e:
             logger.error(f"Gemini error: {e}")
             if progress_callback: progress_callback("global", f"Gemini Process Error: {e}")
-        finally:
-             logger.info("Gemini finished.")
-
-    # ... (Actual run implementation logic) ...
-
-
-    def run(self, max_count=None, target_ids=None, progress_callback=None):
-        try:
-            # 1. Read Metadata from Input XLSX
-            if not os.path.exists(self.metadata_path):
-                logger.error(f"Input Metadata file not found: {self.metadata_path}")
-                return 0
-
-            # Ensure Output exists
-            if not os.path.exists(self.output_path):
-                logger.info("Output file missing. Initializing from input...")
-                import shutil
-                shutil.copy(self.metadata_path, self.output_path)
-
-            wb_in = openpyxl.load_workbook(self.metadata_path)
-            ws_in = wb_in.active
-            
-            headers_in = {}
-            for cell in ws_in[1]:
-                if cell.value:
-                    headers_in[str(cell.value).lower()] = cell.column - 1
-            
-            # Load Output
-            wb_out = openpyxl.load_workbook(self.output_path)
-            ws_out = wb_out.active
-            headers_out = {}
-            for cell in ws_out[1]:
-                if cell.value:
-                    headers_out[str(cell.value).lower()] = cell.column - 1
-
-            rows_data = []
-            
-            # --- Auto-Validation & ID Generation ---
-            input_updates_needed = False
-            import uuid
-            
-            # Identify headers
-            id_col_idx = headers_in.get("id")
-            prompt_col_idx = headers_in.get("prompt")
-            
-            if prompt_col_idx is None:
-                logger.error("Input file missing 'prompt' column.")
-                return 0
-
-            for i, row in enumerate(ws_in.iter_rows(min_row=2), start=2):
-                r_id = row[id_col_idx].value if id_col_idx is not None else None
-                r_prompt = row[prompt_col_idx].value
-                
-                if not r_prompt: continue # Skip empty prompts
-                
-                # Auto-generate ID if missing
-                if not r_id:
-                    new_id = str(uuid.uuid4())[:8]
-                    row[id_col_idx].value = new_id
-                    r_id = new_id
-                    input_updates_needed = True
-                
-                # Filter by target_ids if provided
-                if target_ids and str(r_id) not in target_ids:
-                    continue
-
-                rows_data.append({
-                    "id": str(r_id),
-                    "prompt": r_prompt,
-                    "style": row[headers_in["style"]].value if "style" in headers_in else "",
-                    "_row_idx": i
-                })
-            
-            if input_updates_needed:
-                wb_in.save(self.metadata_path)
-            
-            # --- START SYNC: Update Output Styles from Input ---
-            sync_count = 0
-            # ... (Sync Logic Omitted for brevity, logic maintained implicitly if not changed) ...
-            # Wait, I must include content if I replace the block.
-            # I should use SEARCH/REPLACE blocks more targetedly to avoid re-pasting entire files.
-            # But the tool requires contiguous replacement.
-            # I'll restart the replacement chunk from line 57 to the start of the loop to inject the callback.
-
-   # ... Retrying with better strategy: Just change the def line and the loop.
-
-            if not os.path.exists(self.metadata_path):
-                logger.error(f"Input Metadata file not found: {self.metadata_path}")
-                return 0
-
-            # Ensure Output exists
-            if not os.path.exists(self.output_path):
-                logger.info("Output file missing. Initializing from input...")
-                import shutil
-                shutil.copy(self.metadata_path, self.output_path)
-
-            wb_in = openpyxl.load_workbook(self.metadata_path)
-            ws_in = wb_in.active
-            
-            headers_in = {}
-            for cell in ws_in[1]:
-                if cell.value:
-                    headers_in[str(cell.value).lower()] = cell.column - 1
-            
-            # Load Output
-            wb_out = openpyxl.load_workbook(self.output_path)
-            ws_out = wb_out.active
-            headers_out = {}
-            for cell in ws_out[1]:
-                if cell.value:
-                    headers_out[str(cell.value).lower()] = cell.column - 1
-
-            rows_data = []
-            
-            # --- Auto-Validation & ID Generation ---
-            input_updates_needed = False
-            import uuid
-            
-            # Identify headers
-            id_col_idx = headers_in.get("id")
-            prompt_col_idx = headers_in.get("prompt")
-            
-            if prompt_col_idx is None:
-                logger.error("Input file missing 'prompt' column.")
-                return 0
-
-            for i, row in enumerate(ws_in.iter_rows(min_row=2), start=2):
-                r_id = row[id_col_idx].value if id_col_idx is not None else None
-                r_prompt = row[prompt_col_idx].value
-                
-                if not r_prompt: continue # Skip empty prompts
-                
-                # Auto-generate ID if missing
-                if not r_id:
-                    new_id = str(uuid.uuid4())[:8]
-                    row[id_col_idx].value = new_id
-                    r_id = new_id
-                    input_updates_needed = True
-                
-                # Filter by target_ids if provided
-                if target_ids and str(r_id) not in target_ids:
-                    continue
-
-                rows_data.append({
-                    "id": str(r_id),
-                    "prompt": r_prompt,
-                    "style": row[headers_in["style"]].value if "style" in headers_in else "",
-                    "_row_idx": i
-                })
-            
-            if input_updates_needed:
-                wb_in.save(self.metadata_path)
-            
-            # --- START SYNC: Update Output Styles from Input ---
-            sync_count = 0
-            id_col_out = headers_out.get("id")
-            style_col_out = headers_out.get("style")
-
-            if id_col_out is not None and style_col_out is not None:
-                # Create a map of ID -> Row Index for Output sheet for faster lookup
-                out_id_map = {}
-                for r_idx, row in enumerate(ws_out.iter_rows(min_row=2), start=2):
-                    # row is tuple of cells
-                    if id_col_out < len(row):
-                        val = row[id_col_out].value
-                        if val: out_id_map[str(val)] = r_idx
-                
-                # Iterate Input and Update Output
-                for r_in in rows_data:
-                    rid = str(r_in.get("id", ""))
-                    style_val = r_in.get("style", "")
-                    
-                    if rid in out_id_map and style_val:
-                        target_row_idx = out_id_map[rid]
-                        # Check current value
-                        current_cell = ws_out.cell(row=target_row_idx, column=style_col_out+1)
-                        if str(current_cell.value) != str(style_val):
-                             current_cell.value = style_val
-                             sync_count += 1
-            
-            if sync_count > 0:
-                wb_out.save(self.output_path)
-                logger.info(f"Synced styles for {sync_count} existing songs.")
-            # --- END SYNC ---
-
-            # Filter pending rows
-            done_ids = set()
-            # Reload to get latest state in memory? (wb_out is already updated in memory)
-            # Actually wb_out is active, so we just iterate it.
-            for r in ws_out.iter_rows(min_row=2, values_only=True):
-                rid_val = r[headers_out.get('id', 0)]
-                if rid_val is None: continue
-                rid = str(rid_val)
-                
-                lyrics = r[headers_out.get('lyrics', -1)] if 'lyrics' in headers_out else None
-                visual = r[headers_out.get('visual_prompt', -1)] if 'visual_prompt' in headers_out else None
-                video = r[headers_out.get('video_prompt', -1)] if 'video_prompt' in headers_out else None
-                style = r[headers_out.get('style', -1)] if 'style' in headers_out else None
-                
-                is_done = True
-                if self.use_gemini_lyrics and not lyrics: is_done = False
-                if self.generate_visual and not visual: is_done = False
-                if self.generate_video and not video: is_done = False
-                if self.generate_style and not style: is_done = False
-                
-                if is_done:
-                    done_ids.add(rid)
-
-            pending_rows = []
-            for r in rows_data:
-                rid = str(r.get("id", ""))
-                if rid not in done_ids and r.get("prompt"):
-                    pending_rows.append(r)
-            
-            if not pending_rows:
-                logger.info("No rows found needing Gemini update.")
-                return 0
-
-            # Apply max_count
-            if max_count and max_count > 0:
-                pending_rows = pending_rows[:max_count]
-
-            logger.info(f"Processing {len(pending_rows)} songs.")
-
-            # 2. Start Browser
-            self.browser.start()
-            self.tab.bring_to_front()
-            if self.startup_delay > 0:
-                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
-                time.sleep(self.startup_delay)
-
-            self.browser.goto(self.base_url, page=self.tab)
-
-            # Login Check
-            if "accounts.google.com" in self.tab.url:
-                logger.warning("--- LOGIN REQUIRED ---")
-                if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
-                # We don't use input() here anymore to avoid blocking the GUI thread if possible,
-                # but for simplicity in this flow we might still need a wait.
-                # Actually, the user can just log in in the opened tab.
-                time.sleep(5) 
-            
-            # 3. Process Rows
-            processed_count = 0
-            for i, row in enumerate(pending_rows):
-                theme = row.get("prompt")
-                row_id = row.get("id")
-                style = row.get("style") # Extract input style
-                
-                logger.info(f"Generating content for: {theme} (ID: {row_id}, Style: {style})")
-                if progress_callback: progress_callback(row_id, "Generating Content...")
-                
-                result = self.generate_content(theme, style)
-                
-                if result:
-                    if progress_callback: progress_callback(row_id, "Content Generated ✅")
-                    self.update_output_data(row_id, result)
-                    processed_count += 1
-                else:
-                    if progress_callback: progress_callback(row_id, "Error: Generation Failed ❌")
-                    logger.error("   -> Failed.")
-                
-                if i < len(pending_rows) - 1:
-                    time.sleep(10)
-            
-            return processed_count
-
-        except Exception as e:
-            logger.error(f"Gemini error: {e}")
-            raise e # Re-raise to let GUI handle it
         finally:
              logger.info("Gemini finished.")
 
@@ -460,8 +253,10 @@ Main title: “{title}”
             if style:
                 full_prompt += f"\n\n[IMPORTANT] Target Music Style: {style}\nPlease ensure all outputs (lyrics, art, video, style) follow this style precisely."
 
-            self.browser.fill(input_box, full_prompt, page=self.tab)
+            self.tab.click(input_box)
             time.sleep(1)
+            self.browser.fill(input_box, full_prompt, page=self.tab)
+            time.sleep(2)
             self.tab.keyboard.press("Enter")
             
             response_text = self._wait_for_response()
@@ -475,29 +270,36 @@ Main title: “{title}”
             
             for line in lines:
                 clean_line = line.strip()
-                lower_line = clean_line.lower()
+                # Strip markdown bolding and other markers for tag detection
+                tag_check = clean_line.replace("*", "").replace("#", "").strip().lower()
                 
-                if lower_line.startswith("başlık:"):
+                if tag_check.startswith("başlık"):
                     if current_section: result[current_section] = "\n".join(buffer).strip()
-                    result["title"] = clean_line.split(":", 1)[1].strip()
+                    parts = clean_line.split(":", 1)
+                    val = parts[1].strip() if len(parts) > 1 else ""
+                    result["title"] = val.replace("[", "").replace("]", "")
                     current_section = None
                     buffer = []
-                elif lower_line.startswith("sözler:"):
+                elif tag_check.startswith("sözler"):
                     if current_section: result[current_section] = "\n".join(buffer).strip()
                     current_section = "lyrics"
-                    buffer = []
-                elif lower_line.startswith("stil:"):
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("stil"):
                     if current_section: result[current_section] = "\n".join(buffer).strip()
                     current_section = "style"
-                    buffer = []
-                elif lower_line.startswith("görsel prompt:"):
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("görsel prompt"):
                     if current_section: result[current_section] = "\n".join(buffer).strip()
                     current_section = "visual_prompt"
-                    buffer = []
-                elif lower_line.startswith("video prompt:"):
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("video prompt"):
                     if current_section: result[current_section] = "\n".join(buffer).strip()
                     current_section = "video_prompt"
-                    buffer = []
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
                 else:
                     if current_section: buffer.append(line)
             
@@ -515,17 +317,18 @@ Main title: “{title}”
     def generate_focused_prompt(self, ptype, title, style):
         """Generates a focused prompt (visual or video) as a separate interaction."""
         try:
-            # Re-locate input box to be sure
-            input_box = self.tab.locator('div[contenteditable="true"]').first
-            if not input_box: return None
-
+            # FIX: Use string selector directly to avoid "Locator not JSON serializable"
+            input_box_selector = 'div[contenteditable="true"]'
+            
             template = self.visual_master_prompt if ptype == "visual" else self.video_master_prompt
-            if not template: return ""
+            if not template: return None
 
             full_prompt = template.replace("{title}", str(title)).replace("{style}", str(style))
             
-            self.browser.fill(input_box, full_prompt, page=self.tab)
+            self.tab.click(input_box_selector)
             time.sleep(1)
+            self.browser.fill(input_box_selector, full_prompt, page=self.tab)
+            time.sleep(2)
             self.tab.keyboard.press("Enter")
             
             return self._wait_for_response()
@@ -535,25 +338,51 @@ Main title: “{title}”
 
     def _wait_for_response(self, timeout=120):
         """Helper to wait for Gemini response to stabilize."""
-        logger.info("Waiting for Gemini response to stabilize...")
+        logger.info("Waiting for Gemini response to appear and stabilize...")
         start_time = time.time()
+        
+        # 1. First, wait for a NEW message to appear
+        # We assume the last message currently exists (it's either our prompt or a previous response)
+        initial_candidates = self.tab.locator("message-content").all()
+        if not initial_candidates: initial_candidates = self.tab.locator(".model-response-text").all()
+        initial_count = len(initial_candidates)
+        logger.info(f"Initial message count: {initial_count}")
+
         last_text = ""
         stable_count = 0
+        new_message_detected = False
         
         while time.time() - start_time < timeout:
             candidates = self.tab.locator("message-content").all() 
             if not candidates: candidates = self.tab.locator(".model-response-text").all()
             
-            if candidates:
-                current_text = candidates[-1].inner_text()
-                if current_text and current_text == last_text:
+            current_count = len(candidates)
+            
+            if current_count > initial_count:
+                if not new_message_detected:
+                    logger.info("New message detected, waiting for content...")
+                    new_message_detected = True
+                
+                current_text = candidates[-1].inner_text().strip()
+                
+                # If message is still empty, keep waiting
+                if not current_text:
+                    time.sleep(1)
+                    continue
+
+                if current_text == last_text:
                     stable_count += 1
-                    if stable_count >= 3: 
+                    # Reduced to 2 checks (4s) for snappiness, but ensure it's not just "typing..."
+                    if stable_count >= 2: 
+                        logger.info(f"Response stabilized. Length: {len(current_text)}")
                         return current_text
                 else:
                     last_text = current_text
                     stable_count = 0
-            
+            else:
+                # Still waiting for the new message to appear
+                pass
+
             time.sleep(2)
         
         logger.error("Gemini response timed out or returned no content.")
@@ -808,7 +637,7 @@ Main title: “{title}”
             col_map = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
             
             # Ensure columns exist
-            for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "status", "cover_art_prompt", "cover_art_path"]:
+            for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "suno_style", "status", "cover_art_prompt", "cover_art_path"]:
                 if key not in col_map:
                     new_idx = ws.max_column + 1
                     ws.cell(row=1, column=new_idx, value=key)
@@ -837,6 +666,7 @@ Main title: “{title}”
             
             if "title" in data: update_cell("title", data["title"])
             if self.use_gemini_lyrics and "lyrics" in data: update_cell("lyrics", data["lyrics"])
+            if "suno_style" in data: update_cell("suno_style", data["suno_style"])
             if self.generate_style and "style" in data: update_cell("style", data["style"])
             if self.generate_visual and "visual_prompt" in data: update_cell("visual_prompt", data["visual_prompt"])
             if self.generate_video and "video_prompt" in data: update_cell("video_prompt", data["video_prompt"])

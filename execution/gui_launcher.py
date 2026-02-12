@@ -576,7 +576,7 @@ class MusicBotGUI:
             # Required Columns
             required = [
                 "id", "prompt", "style", "title", "lyrics", "status", 
-                "visual_prompt", "video_prompt", "cover_art_prompt", "cover_art_path"
+                "visual_prompt", "video_prompt", "suno_style", "cover_art_prompt", "cover_art_path"
             ]
             
             updates = False
@@ -677,8 +677,46 @@ class MusicBotGUI:
         self.disable_buttons()
         threading.Thread(target=self.run_process, args=(target_ids,), daemon=True).start()
 
+    def _check_existing_data(self, target_ids):
+        """Checks if any of the target songs already have data in the requested steps."""
+        try:
+            wb = openpyxl.load_workbook(self.project_path, data_only=True)
+            ws = wb.active
+            headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+            
+            lyrics_col = headers.get('lyrics')
+            visual_col = headers.get('visual_prompt')
+            video_col = headers.get('video_prompt')
+            id_col = headers.get('id', 0)
+            
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rid = str(row[id_col]) if row[id_col] is not None else ""
+                if rid in target_ids:
+                    # Check if user wants lyrics AND they exist
+                    if self.var_run_lyrics.get() and lyrics_col is not None and row[lyrics_col]:
+                        return True
+                    # Check if user wants visuals AND they exist
+                    if self.config.get("gemini_visual", True) and visual_col is not None and row[visual_col]:
+                        # Note: we check config because var_run_lyrics usually triggers the sequential run
+                        return True
+                    # Check if user wants videos AND they exist
+                    if self.config.get("gemini_video", False) and video_col is not None and row[video_col]:
+                        return True
+            return False
+        except:
+            return False
+
     def run_process(self, target_ids):
         try:
+            # Check for existing data if we are running Gemini steps
+            force_update = False
+            if self.var_run_lyrics.get():
+                has_data = self._check_existing_data(target_ids)
+                if has_data:
+                    # Ask user if they want to re-generate
+                    if messagebox.askyesno("Yeniden Üret?", "Bazı satırlarda zaten veri (Söz, Prompt vb.) mevcut.\n\nBunları yeniden üretmek ister misiniz?\n\n'Evet' derseniz veriler güncellenir, 'Hayır' derseniz sadece eksikler tamamlanır."):
+                        force_update = True
+
             # Unified Project Path
             project_file = self.project_path
             output_media = os.path.join(os.path.dirname(project_file), "output_media")
@@ -717,7 +755,7 @@ class MusicBotGUI:
                             startup_delay=self.config.get("startup_delay", 5),
                             language=self.config.get("target_language", "Turkish")
                         )
-                        gemini.run(target_ids=[song_id], progress_callback=progress_callback)
+                        gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
 
                     # --- Step 2: Music ---
                     if self.var_run_music.get():
@@ -729,7 +767,7 @@ class MusicBotGUI:
                             startup_delay=self.config.get("startup_delay", 5),
                             browser=song_browser
                         )
-                        suno.run(target_ids=[song_id], progress_callback=progress_callback)
+                        suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 3: Art (Prompts & Images) ---
                     # Note: Art usually benefits from batching to avoid closing/opening browser too much,
