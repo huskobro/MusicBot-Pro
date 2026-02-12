@@ -56,13 +56,19 @@ Main title: “{title}”
                 with open(self.prompts_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.master_prompt_template = data.get("lyrics_master_prompt", default_lyrics)
+                    self.visual_master_prompt = data.get("visual_master_prompt", "")
+                    self.video_master_prompt = data.get("video_master_prompt", "")
                     self.art_master_prompt = data.get("art_master_prompt", default_art)
             except Exception as e:
                 logger.error(f"Error loading prompts.json: {e}")
                 self.master_prompt_template = default_lyrics
+                self.visual_master_prompt = ""
+                self.video_master_prompt = ""
                 self.art_master_prompt = default_art
         else:
              self.master_prompt_template = default_lyrics
+             self.visual_master_prompt = ""
+             self.video_master_prompt = ""
              self.art_master_prompt = default_art
 
     def run(self, max_count=None, target_ids=None, progress_callback=None):
@@ -114,31 +120,46 @@ Main title: “{title}”
             for i, rowdata in enumerate(pending_rows):
                 row_id = rowdata['id']
                 theme = rowdata['theme']
-                style = rowdata['style']
+                style_init = rowdata['style']
                 
                 logger.info(f"Processing Song {i+1}/{len(pending_rows)} ID: {row_id}")
-                if progress_callback: progress_callback(row_id, "Gemini Analysis... 🧠")
                 
-                result = self.generate_content(theme, style=style)
-                if result:
-                    self.update_output_data(row_id, result)
-                    if progress_callback: progress_callback(row_id, "Analysis Complete! ✅")
-                    
-                    if self.generate_visual:
-                        if progress_callback: progress_callback(row_id, "Designing Cover Art... 🎨")
-                        art_prompt = result.get('cover_art_prompt')
-                        if art_prompt:
-                             img_path = self._generate_and_download_image(art_prompt, row_id)
-                             if img_path:
-                                  self.update_output_data(row_id, {"cover_art_path": img_path, "status": "Done"})
-                                  if progress_callback: progress_callback(row_id, "Art Ready! 📷")
-                             else:
-                                  if progress_callback: progress_callback(row_id, "Image Failed ❌")
+                # --- Step 1: Lyrics ---
+                final_title = ""
+                final_style = style_init
+                if self.use_gemini_lyrics:
+                    if progress_callback: progress_callback(row_id, "Step 1: Lyrics... ✍️")
+                    lyrics_res = self.generate_content(theme, style=style_init)
+                    if lyrics_res:
+                        self.update_output_data(row_id, lyrics_res)
+                        final_title = lyrics_res.get("title", "")
+                        final_style = lyrics_res.get("style", style_init)
+                        if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
+                    else:
+                        if progress_callback: progress_callback(row_id, "Lyrics Failed ❌")
+                        continue
 
-                    processed_count += 1
-                else:
-                    if progress_callback: progress_callback(row_id, "Error: Generation Failed ❌")
-                    logger.error("   -> Failed.")
+                # --- Step 2: Visual Prompt ---
+                if self.generate_visual and self.visual_master_prompt:
+                    if progress_callback: progress_callback(row_id, "Step 2: Visual Design... 🎨")
+                    vis_res = self.generate_focused_prompt("visual", final_title, final_style)
+                    if vis_res:
+                        self.update_output_data(row_id, {"visual_prompt": vis_res})
+                        if progress_callback: progress_callback(row_id, "Visual Ready! ✅")
+                    else:
+                        if progress_callback: progress_callback(row_id, "Visual Failed ❌")
+
+                # --- Step 3: Video Prompt ---
+                if self.generate_video and self.video_master_prompt:
+                    if progress_callback: progress_callback(row_id, "Step 3: Video Design... 🎬")
+                    vid_res = self.generate_focused_prompt("video", final_title, final_style)
+                    if vid_res:
+                        self.update_output_data(row_id, {"video_prompt": vid_res})
+                        if progress_callback: progress_callback(row_id, "Video Ready! ✅")
+                    else:
+                        if progress_callback: progress_callback(row_id, "Video Failed ❌")
+
+                processed_count += 1
                 
                 if i < len(pending_rows) - 1:
                     time.sleep(5)
@@ -443,34 +464,8 @@ Main title: “{title}”
             time.sleep(1)
             self.tab.keyboard.press("Enter")
             
-            # --- Akıllı Polling (Smart Polling) ---
-            # Wait for Gemini to finish typing by checking if the text content stops changing
-            logger.info("Waiting for Gemini response to stabilize...")
-            max_wait = 120
-            start_time = time.time()
-            last_text = ""
-            stable_count = 0
-            response_text = None
-            
-            while time.time() - start_time < max_wait:
-                candidates = self.tab.locator("message-content").all() 
-                if not candidates: candidates = self.tab.locator(".model-response-text").all()
-                
-                if candidates:
-                    current_text = candidates[-1].inner_text()
-                    if current_text and current_text == last_text:
-                        stable_count += 1
-                        if stable_count >= 3: # Stable for 3 checks (approx 3-6 seconds)
-                            response_text = current_text
-                            break
-                    else:
-                        last_text = current_text
-                        stable_count = 0
-                
-                time.sleep(2)
-            
+            response_text = self._wait_for_response()
             if not response_text:
-                logger.error("Gemini response timed out or returned no content.")
                 return None
             
             result = {}
@@ -513,10 +508,56 @@ Main title: “{title}”
                 result["cover_art_prompt"] = result["visual_prompt"]
                 
             return result
-        except Exception as e: 
+        except Exception as e:
             logger.error(f"Gemini Step Error: {e}")
             logger.error(traceback.format_exc())
             return None
+    def generate_focused_prompt(self, ptype, title, style):
+        """Generates a focused prompt (visual or video) as a separate interaction."""
+        try:
+            # Re-locate input box to be sure
+            input_box = self.tab.locator('div[contenteditable="true"]').first
+            if not input_box: return None
+
+            template = self.visual_master_prompt if ptype == "visual" else self.video_master_prompt
+            if not template: return ""
+
+            full_prompt = template.replace("{title}", str(title)).replace("{style}", str(style))
+            
+            self.browser.fill(input_box, full_prompt, page=self.tab)
+            time.sleep(1)
+            self.tab.keyboard.press("Enter")
+            
+            return self._wait_for_response()
+        except Exception as e:
+            logger.error(f"Gemini {ptype} Step Error: {e}")
+            return None
+
+    def _wait_for_response(self, timeout=120):
+        """Helper to wait for Gemini response to stabilize."""
+        logger.info("Waiting for Gemini response to stabilize...")
+        start_time = time.time()
+        last_text = ""
+        stable_count = 0
+        
+        while time.time() - start_time < timeout:
+            candidates = self.tab.locator("message-content").all() 
+            if not candidates: candidates = self.tab.locator(".model-response-text").all()
+            
+            if candidates:
+                current_text = candidates[-1].inner_text()
+                if current_text and current_text == last_text:
+                    stable_count += 1
+                    if stable_count >= 3: 
+                        return current_text
+                else:
+                    last_text = current_text
+                    stable_count = 0
+            
+            time.sleep(2)
+        
+        logger.error("Gemini response timed out or returned no content.")
+        return None
 
     
     def generate_art_prompts(self, max_count=None, target_ids=None, progress_callback=None):

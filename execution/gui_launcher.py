@@ -128,15 +128,42 @@ class SettingsDialog(tk.Toplevel):
         self.tab_prompts = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_prompts, text="Master Prompts")
         
+        # Scrollable area for Prompts Tab
+        p_canvas = tk.Canvas(self.tab_prompts, borderwidth=0, highlightthickness=0)
+        p_scrollbar = ttk.Scrollbar(self.tab_prompts, orient="vertical", command=p_canvas.yview)
+        p_scroll_frame = ttk.Frame(p_canvas)
+        
+        p_scroll_frame.bind(
+            "<Configure>",
+            lambda e: p_canvas.configure(scrollregion=p_canvas.bbox("all"))
+        )
+        p_canvas.create_window((0, 0), window=p_scroll_frame, anchor="nw")
+        p_canvas.configure(yscrollcommand=p_scrollbar.set)
+        
+        p_canvas.pack(side="left", fill="both", expand=True)
+        p_scrollbar.pack(side="right", fill="y")
+        
         self.prompts_path = os.path.join(os.path.dirname(config.get("metadata_path", "")), "prompts.json")
         
-        ttk.Label(self.tab_prompts, text="Lyrics Master Prompt (Gemini):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
-        self.txt_lyrics = scrolledtext.ScrolledText(self.tab_prompts, height=10, wrap=tk.WORD, font=("Consolas", 10))
-        self.txt_lyrics.pack(fill="both", expand=True, padx=10, pady=5)
+        # Lyrics
+        ttk.Label(p_scroll_frame, text="1. Lyrics Master Prompt (Gemini):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_lyrics = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_lyrics.pack(fill="x", padx=10, pady=5)
         
-        ttk.Label(self.tab_prompts, text="Art Master Prompt (Thumbnail):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
-        self.txt_art = scrolledtext.ScrolledText(self.tab_prompts, height=10, wrap=tk.WORD, font=("Consolas", 10))
-        self.txt_art.pack(fill="both", expand=True, padx=10, pady=5)
+        # Visual
+        ttk.Label(p_scroll_frame, text="2. Visual Master Prompt (Midjourney Style):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_visual = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_visual.pack(fill="x", padx=10, pady=5)
+        
+        # Video
+        ttk.Label(p_scroll_frame, text="3. Video Master Prompt (Sora/Runway):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_video = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_video.pack(fill="x", padx=10, pady=5)
+        
+        # Art (Thumbnail)
+        ttk.Label(p_scroll_frame, text="4. Art Master Prompt (YouTube Thumbnail):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        self.txt_art = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
+        self.txt_art.pack(fill="x", padx=10, pady=5)
         
         self.load_prompts_data()
 
@@ -152,6 +179,8 @@ class SettingsDialog(tk.Toplevel):
                 with open(self.prompts_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.txt_lyrics.insert("1.0", data.get("lyrics_master_prompt", ""))
+                    self.txt_visual.insert("1.0", data.get("visual_master_prompt", ""))
+                    self.txt_video.insert("1.0", data.get("video_master_prompt", ""))
                     self.txt_art.insert("1.0", data.get("art_master_prompt", ""))
             except: pass
 
@@ -180,6 +209,8 @@ class SettingsDialog(tk.Toplevel):
             import json
             prompt_data = {
                 "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
+                "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip(),
+                "video_master_prompt": self.txt_video.get("1.0", tk.END).strip(),
                 "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
             }
             with open(self.prompts_path, "w", encoding="utf-8") as f:
