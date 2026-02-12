@@ -516,23 +516,30 @@ Main title: “{title}”
                 
                 # Needs cover_art_prompt but NO cover_art_path
                 p_idx = headers.get('cover_art_prompt')
+                v_idx = headers.get('visual_prompt')
                 i_idx = headers.get('cover_art_path')
+                
+                # Dynamic value lookup
                 prompt_val = row[p_idx] if p_idx is not None else None
+                # Fallback to visual_prompt if cover_art_prompt is empty
+                if (not prompt_val or str(prompt_val).strip() == "") and v_idx is not None:
+                     prompt_val = row[v_idx]
+                
                 path_val = row[i_idx] if i_idx is not None else None
                 
                 if mode == "prompt":
                     if not prompt_val or str(prompt_val).strip() == "":
                         rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers})
                     else:
-                        logger.info(f"Skipping Art Prompt for {rid}: Already exists.")
+                        logger.info(f"Skipping Art Prompt for {rid}: Prompt already exists (Found in cover_art_prompt or visual_prompt).")
                 elif mode == "image":
-                    if prompt_val and not path_val:
+                    if prompt_val and str(prompt_val).strip() != "" and not path_val:
                         rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers, "art_prompt": prompt_val})
-                    elif not prompt_val:
-                        logger.warning(f"Skipping Art Image for {rid}: No prompt found.")
-                        if progress_callback: progress_callback(rid, "Error: No Art Prompt! ❌")
+                    elif not prompt_val or str(prompt_val).strip() == "":
+                        logger.warning(f"Skipping Art Image for {rid}: No prompt found in 'cover_art_prompt' or 'visual_prompt'.")
+                        if progress_callback: progress_callback(rid, "Error: No Art Prompt Found! ❌")
                     else:
-                        logger.info(f"Skipping Art Image for {rid}: Already exists.")
+                        logger.info(f"Skipping Art Image for {rid}: Image already exists or not needed.")
 
             if not rows_to_process:
                 logger.info(f"Nothing to process for Step 3/4 (Mode: {mode}) for IDs: {target_ids}")
