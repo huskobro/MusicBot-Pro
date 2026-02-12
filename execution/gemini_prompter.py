@@ -501,7 +501,23 @@ Main title: “{title}”
 
     def _run_art_step(self, mode="prompt", max_count=None, target_ids=None, progress_callback=None):
         try:
-            if not os.path.exists(self.output_path): return 0
+            logger.info(f"Starting Art Step (Mode: {mode})...")
+            
+            if not os.path.exists(self.output_path):
+                # Attempt to initialize from input if available
+                # Assuming input is in same dir as 'input_songs.xlsx'
+                base_dir = os.path.dirname(self.output_path)
+                input_path = os.path.join(base_dir, "input_songs.xlsx")
+                
+                if os.path.exists(input_path):
+                    logger.warning(f"Output file not found at {self.output_path}. Initializing from {input_path}...")
+                    import shutil
+                    shutil.copy(input_path, self.output_path)
+                    if progress_callback: progress_callback("global", "Initialized Output File from Input.")
+                else:
+                    logger.error(f"Output file not found at {self.output_path} and Input not found.")
+                    if progress_callback: progress_callback("global", "Error: Missing Input/Output Files! Run Step 1.")
+                    return 0
             
             wb = openpyxl.load_workbook(self.output_path)
             ws = wb.active
