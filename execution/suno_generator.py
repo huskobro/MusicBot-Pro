@@ -82,7 +82,7 @@ class SunoGenerator:
                     if progress_callback: progress_callback(rid, f"Waiting {self.delay}s...")
                     time.sleep(self.delay)
                 
-                self.update_row_status(row_dict['_row_idx'], "Processing") # Fixed: passed index, not dict
+                self.update_row_status(row_dict['_row_idx'], "Processing")
                 if progress_callback: progress_callback(rid, "Generating Music... 🎵")
                 
                 try:
@@ -214,7 +214,7 @@ class SunoGenerator:
                         if target_row.is_visible():
                             # Duration check as suggested by user
                             if not target_row.locator("text='Generating'").is_visible():
-                                duration_loc = target_row.locator("text=/\\d:\\d{2}/")
+                                duration_loc = target_row.locator("text=/\\d{1,2}:\\d{2}/")
                                 if duration_loc.count() > 0 and duration_loc.first.is_visible():
                                     logger.info(f"Detected duration: {duration_loc.first.inner_text()}")
                                     found_ready = True
@@ -227,7 +227,7 @@ class SunoGenerator:
             
             if not found_ready:
                 logger.warning("Generation timed out or could not detect completion safely.")
-                return True 
+                return False
 
             if progress_callback: progress_callback(rid, "Downloading Audio... ⬇️")
             
@@ -248,7 +248,7 @@ class SunoGenerator:
 
                 if not target_more.is_visible():
                     logger.error(f"Could not find visible 'More' button for row {index}.")
-                    return True
+                    return False
 
                 logger.info(f"Clicking 'More' menu for row {index}...")
                 target_more.scroll_into_view_if_needed()
@@ -263,29 +263,33 @@ class SunoGenerator:
                 
                 if not target_dl.is_visible():
                     logger.error("Could not find 'Download' menu item.")
-                    return True
+                    return False
 
                 logger.info("Hovering 'Download'...")
                 target_dl.hover()
                 time.sleep(1.5)
                 
-                # 3. Find "Audio" in the sub-menu - Prioritize WAV per user request
-                # We try WAV first, then MP3
+                # 3. Target WAV first, then MP3 (with retry for WAV availability)
                 target_audio = None
-                for fmt in ["WAV", "MP3", "Audio"]:
-                    loc = self.tab.locator(f"button[aria-label*='{fmt}' i]").first
+                for _ in range(5): # 5 retries for WAV item to appear (Suno can be slow)
+                    loc = self.tab.locator("button[aria-label*='WAV' i]").first
                     if loc.is_visible():
                         target_audio = loc
-                        logger.info(f"Targeting {fmt} format.")
+                        logger.info("Targeting WAV format.")
                         break
+                    time.sleep(1)
                 
                 if not target_audio or not target_audio.is_visible():
-                    # Last ditch effort
+                    logger.warning("WAV Audio not found in menu after retries, trying MP3...")
+                    target_audio = self.tab.locator("button[aria-label*='MP3' i]").first
+                
+                if not target_audio or not target_audio.is_visible():
+                    # Last ditch effort: any button with 'Audio'
                     target_audio = self.tab.locator("button:has-text('Audio')").first
 
                 if not target_audio.is_visible():
-                    logger.error("Could not find 'Audio' download button.")
-                    return True
+                    logger.error("Could not find any download button (WAV or MP3).")
+                    return False
 
                 # Determine extension based on what we clicked (simple guess)
                 ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() else "mp3"

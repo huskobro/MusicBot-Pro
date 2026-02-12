@@ -511,7 +511,8 @@ Main title: “{title}”
             for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 rid = str(row[headers.get('id', 0)]) if 'id' in headers else ""
                 
-                if target_ids and rid not in target_ids: continue
+                if target_ids and rid not in target_ids: 
+                    continue
                 
                 # Needs cover_art_prompt but NO cover_art_path
                 p_idx = headers.get('cover_art_prompt')
@@ -522,12 +523,19 @@ Main title: “{title}”
                 if mode == "prompt":
                     if not prompt_val or str(prompt_val).strip() == "":
                         rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers})
+                    else:
+                        logger.info(f"Skipping Art Prompt for {rid}: Already exists.")
                 elif mode == "image":
                     if prompt_val and not path_val:
                         rows_to_process.append({"id": rid, "row": row, "_row_idx": i, "headers": headers, "art_prompt": prompt_val})
+                    elif not prompt_val:
+                        logger.warning(f"Skipping Art Image for {rid}: No prompt found.")
+                        if progress_callback: progress_callback(rid, "Error: No Art Prompt! ❌")
+                    else:
+                        logger.info(f"Skipping Art Image for {rid}: Already exists.")
 
             if not rows_to_process:
-                logger.info(f"Nothing to process for Step 3 (Mode: {mode})")
+                logger.info(f"Nothing to process for Step 3/4 (Mode: {mode}) for IDs: {target_ids}")
                 return 0
             
             if max_count: rows_to_process = rows_to_process[:max_count]
@@ -613,34 +621,50 @@ Main title: “{title}”
     def _generate_and_download_image(self, prompt, rid):
         try:
             input_box = "div[contenteditable='true']"
-            if not self.browser.is_visible(input_box, page=self.tab): return None
+            if not self.browser.is_visible(input_box, page=self.tab): 
+                logger.warning("Gemini input box not found for image gen.")
+                return None
             
+            logger.info("Sending image generation prompt to Gemini...")
             self.browser.fill(input_box, prompt, page=self.tab)
             self.tab.keyboard.press("Enter")
             
-            # Wait for Image
-            time.sleep(20) 
+            # Smart Polling for Image (Up to 90s)
+            logger.info("Waiting for image to be generated (polling)...")
+            found_img = None
+            for attempt in range(18): # 18 * 5s = 90s
+                time.sleep(5)
+                # Find images that look like AI output (usually multiple, larger than thumbnails)
+                images = self.tab.locator("img").all()
+                if images:
+                    # Look from newest to oldest
+                    for img in reversed(images):
+                        try:
+                            # AI generated images in Gemini usually have specific parent classes or sizes
+                            box = img.bounding_box()
+                            if box and box['width'] > 300 and box['height'] > 300:
+                                # Also check if it's not a UI icon
+                                src = img.get_attribute("src") or ""
+                                if "blob:" in src or "googleusercontent" in src:
+                                    found_img = img
+                                    break
+                        except: continue
+                if found_img: break
+                logger.info(f"   Image not ready yet (Attempt {attempt+1}/18)...")
             
-            # Find Image
-            images = self.tab.locator("img").all()
-            target_img = None
-            if images:
-                for img in reversed(images):
-                    try:
-                        box = img.bounding_box()
-                        if box and box['width'] > 200 and box['height'] > 200:
-                            target_img = img
-                            break
-                    except: continue
-            
-            if target_img:
+            if found_img:
                 img_dir = os.path.join(os.path.dirname(self.output_path), "images")
                 os.makedirs(img_dir, exist_ok=True)
                 save_path = os.path.join(img_dir, f"{rid}.png")
-                target_img.screenshot(path=save_path)
+                logger.info(f"Found image. Saving screenshot to: {save_path}")
+                found_img.screenshot(path=save_path)
                 return save_path
+            
+            logger.warning("Image generation timed out.")
             return None
-        except: return None
+        except Exception as e:
+            logger.error(f"Image gen error: {e}")
+            return None
 
     
     
