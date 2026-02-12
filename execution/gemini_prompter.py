@@ -636,38 +636,67 @@ Main title: “{title}”
             self.browser.fill(input_box, prompt, page=self.tab)
             self.tab.keyboard.press("Enter")
             
-            # Smart Polling for Image (Up to 90s)
-            logger.info("Waiting for image to be generated (polling)...")
+            # Step 1: Wait for generation to start (indicator to appear)
+            # Indicators observed: "Görüntüler oluşturuluyor...", "Generating images...", "Nanobanana"
+            logger.info("Waiting for generation indicator to appear...")
+            indicator_selectors = [
+                "text='Görüntüler oluşturuluyor...'", 
+                "text='Generating images...'",
+                ".loading-indicator", # Common class
+                "div:has-text('Nanobanana')" # Internal name
+            ]
+            
+            # Brief wait for indicator to appear
+            time.sleep(3)
+            
+            # Step 2: Poll for generation completion (indicator to disappear AND container to appear)
+            logger.info("Waiting for images to be fully rendered (polling up to 90s)...")
             found_img = None
+            
             for attempt in range(18): # 18 * 5s = 90s
+                # Check if still generating
+                is_loading = False
+                for sel in indicator_selectors:
+                    try:
+                        if self.tab.locator(sel).first.is_visible():
+                            is_loading = True
+                            break
+                    except: pass
+                
+                if is_loading:
+                    logger.info(f"   Still generating (Attempt {attempt+1}/18)...")
+                else:
+                    # Look for the actual image containers
+                    # div.image-set-container is the parent of the generated grid
+                    container = self.tab.locator("div.image-set-container, sac-image-set, sac-single-image-set").last
+                    if container.is_visible():
+                        # Loader gone and container found!
+                        logger.info("Generation finished. Finding primary image...")
+                        time.sleep(3) # Extra wait for full high-res render
+                        
+                        # Find the largest image in the newest container
+                        images = container.locator("img").all()
+                        if images:
+                            for img in reversed(images):
+                                box = img.bounding_box()
+                                if box and box['width'] > 300 and box['height'] > 300:
+                                    src = img.get_attribute("src") or ""
+                                    if "blob:" in src or "googleusercontent" in src:
+                                        found_img = img
+                                        break
+                        if found_img: break
+                
                 time.sleep(5)
-                # Find images that look like AI output (usually multiple, larger than thumbnails)
-                images = self.tab.locator("img").all()
-                if images:
-                    # Look from newest to oldest
-                    for img in reversed(images):
-                        try:
-                            # AI generated images in Gemini usually have specific parent classes or sizes
-                            box = img.bounding_box()
-                            if box and box['width'] > 300 and box['height'] > 300:
-                                # Also check if it's not a UI icon
-                                src = img.get_attribute("src") or ""
-                                if "blob:" in src or "googleusercontent" in src:
-                                    found_img = img
-                                    break
-                        except: continue
-                if found_img: break
-                logger.info(f"   Image not ready yet (Attempt {attempt+1}/18)...")
             
             if found_img:
                 img_dir = os.path.join(os.path.dirname(self.output_path), "images")
                 os.makedirs(img_dir, exist_ok=True)
                 save_path = os.path.join(img_dir, f"{rid}.png")
-                logger.info(f"Found image. Saving screenshot to: {save_path}")
+                logger.info(f"Found image. Saving with screenshot to: {save_path}")
                 found_img.screenshot(path=save_path)
                 return save_path
             
-            logger.warning("Image generation timed out.")
+            logger.warning("Image generation timed out or no image element discovered.")
             return None
         except Exception as e:
             logger.error(f"Image gen error: {e}")

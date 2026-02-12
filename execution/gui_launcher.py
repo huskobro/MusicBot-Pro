@@ -529,6 +529,8 @@ class MusicBotGUI:
                     logger.error(f"Error on song {song_id}: {song_err}")
                     progress_callback(song_id, f"Error: {song_err} ❌")
                 finally:
+                    # NEW: Lifecycle delay to ensure media saves complete fully
+                    time.sleep(5)
                     song_browser.stop()
                     time.sleep(2) # Brief cooldown between songs
             
