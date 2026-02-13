@@ -477,50 +477,69 @@ class SunoGenerator:
                 }}""", self.vocal_gender)
                 time.sleep(1)
 
-            # Slider helper: finds the label, walks to parent row, double-clicks the percentage
+            # Slider helper: dispatch JS mouse events to open inline input, type value
+            # NOTE: Playwright mouse.dblclick doesn't work because the Advanced Options
+            # container overlay intercepts pointer events. We dispatch mouse events
+            # directly on the percentage element via JS to bypass this.
             def set_numeric_value(label_text, target_val):
                 if target_val == "Default" or target_val is None: return
                 try:
                     logger.info(f"Setting {label_text} to {target_val}%...")
                     
-                    # Find the percentage element's coordinates using JS
-                    coords = self.tab.evaluate("""(args) => {
-                        const label = args.label;
+                    # Scroll the label into view
+                    self.tab.evaluate(r"""(args) => {
                         const allEls = Array.from(document.querySelectorAll('div, span'));
                         const labelEl = allEls.find(el => 
                             el.childNodes.length === 1 && 
-                            el.textContent.trim() === label &&
+                            el.textContent.trim() === args.label &&
                             el.offsetParent !== null
                         );
-                        if (!labelEl) return null;
-                        
-                        // Walk up from label to find the row with exactly one percentage
+                        if (labelEl) labelEl.scrollIntoView({ block: 'center' });
+                    }""", {"label": label_text})
+                    time.sleep(1)
+                    
+                    # Dispatch full mouse event sequence directly on the percentage element
+                    # This bypasses the AO overlay interception
+                    self.tab.evaluate(r"""(args) => {
+                        const allEls = Array.from(document.querySelectorAll('div, span'));
+                        const labelEl = allEls.find(el => 
+                            el.childNodes.length === 1 && 
+                            el.textContent.trim() === args.label &&
+                            el.offsetParent !== null
+                        );
+                        if (!labelEl) return;
                         let row = labelEl.parentElement;
                         for (let depth = 0; depth < 10 && row; depth++) {
                             const pcts = Array.from(row.querySelectorAll('div, span'))
-                                .filter(el => /^\\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                                .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
                             if (pcts.length === 1) {
-                                pcts[0].scrollIntoView({ block: 'center' });
-                                const rect = pcts[0].getBoundingClientRect();
-                                return { x: rect.x + rect.width/2, y: rect.y + rect.height/2 };
+                                const el = pcts[0];
+                                const rect = el.getBoundingClientRect();
+                                const cx = rect.x + rect.width/2;
+                                const cy = rect.y + rect.height/2;
+                                const opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 1};
+                                el.dispatchEvent(new MouseEvent('mousedown', {...opts}));
+                                el.dispatchEvent(new MouseEvent('mouseup', {...opts}));
+                                el.dispatchEvent(new MouseEvent('click', {...opts}));
+                                const opts2 = {...opts, detail: 2};
+                                el.dispatchEvent(new MouseEvent('mousedown', opts2));
+                                el.dispatchEvent(new MouseEvent('mouseup', opts2));
+                                el.dispatchEvent(new MouseEvent('click', opts2));
+                                el.dispatchEvent(new MouseEvent('dblclick', opts2));
+                                return;
                             }
                             row = row.parentElement;
                         }
-                        return null;
                     }""", {"label": label_text})
+                    time.sleep(0.5)
                     
-                    if coords:
-                        self.tab.mouse.dblclick(coords['x'], coords['y'])
-                        time.sleep(1)
-                        self.tab.keyboard.press("Control+A")
-                        self.tab.keyboard.press("Meta+A")
-                        self.tab.keyboard.press("Backspace")
-                        self.tab.keyboard.type(str(target_val))
-                        self.tab.keyboard.press("Enter")
-                        time.sleep(2)
-                        logger.info(f"Set {label_text} to {target_val}%")
-                    else:
-                        logger.warning(f"Could not find slider for {label_text}")
+                    # Select all and type the new value into the inline input
+                    self.tab.keyboard.press("Meta+A")
+                    time.sleep(0.1)
+                    self.tab.keyboard.type(str(target_val))
+                    self.tab.keyboard.press("Enter")
+                    time.sleep(1.5)
+                    logger.info(f"Set {label_text} to {target_val}%")
                 except Exception as e:
                     logger.warning(f"Error setting {label_text}: {e}")
 

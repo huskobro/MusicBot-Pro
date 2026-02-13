@@ -230,7 +230,7 @@ class SettingsDialog(tk.Toplevel):
         # 4. Weirdness
         self.var_weird_enabled = tk.BooleanVar(value=config.get("weirdness_enabled", False))
         ttk.Checkbutton(f_adv_suno, text="Enable Weirdness:", variable=self.var_weird_enabled).grid(row=4, column=0, sticky="w", pady=2)
-        self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=1000, orient="horizontal")
+        self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_weird.set(50 if config.get("weirdness") == "Default" else int(config.get("weirdness", 50)))
         self.scale_weird.grid(row=4, column=1, sticky="ew", pady=2)
 
