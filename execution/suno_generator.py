@@ -285,14 +285,83 @@ class SunoGenerator:
                     except: pass
 
             fill_field(textareas[0], content)
+            
+            # Style: try placeholder match first, then section-based lookup, then fallback
             style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
             if style_textarea.is_visible():
                 fill_field(style_textarea, style)
-            elif len(textareas) > 1:
-                fill_field(textareas[1], style)
+            else:
+                # In persona mode the style placeholder is dynamic (e.g. "euro pop, ...").
+                # Find it via the "Styles" collapsible section header.
+                style_found = self.tab.evaluate(r"""() => {
+                    const headers = document.querySelectorAll('div[role="button"]');
+                    for (const h of headers) {
+                        if (h.textContent.trim() === 'Styles') {
+                            let container = h.parentElement;
+                            for (let d = 0; d < 5 && container; d++) {
+                                const ta = container.querySelector('textarea');
+                                if (ta && ta.offsetParent !== null) {
+                                    ta.scrollIntoView({ block: 'center' });
+                                    return true;
+                                }
+                                container = container.parentElement;
+                            }
+                        }
+                    }
+                    return false;
+                }""")
+                if style_found:
+                    time.sleep(0.5)
+                    # Find the textarea that belongs to "Styles" section
+                    style_in_section = self.tab.evaluate(r"""() => {
+                        const headers = document.querySelectorAll('div[role="button"]');
+                        for (const h of headers) {
+                            if (h.textContent.trim() === 'Styles') {
+                                let container = h.parentElement;
+                                for (let d = 0; d < 5 && container; d++) {
+                                    const ta = container.querySelector('textarea');
+                                    if (ta && ta.offsetParent !== null) return true;
+                                    container = container.parentElement;
+                                }
+                            }
+                        }
+                        return false;
+                    }""")
+                    if style_in_section and len(textareas) > 1:
+                        fill_field(textareas[1], style)
+                    else:
+                        logger.warning("Style textarea not found via section lookup")
+                elif len(textareas) > 1:
+                    fill_field(textareas[1], style)
             
+            # Title: scroll Song Title input into view first, then fill via JS
+            # In persona mode, the first title input may be behind an overlay,
+            # so we use JS to scroll it into view and set value directly.
             if input_title:
-                fill_field(input_title, title)
+                try:
+                    fill_field(input_title, title)
+                except Exception:
+                    pass
+                # Verify it was filled, if not use JS fallback
+                actual = input_title.input_value() if input_title.is_visible() else ""
+                if str(title) not in actual:
+                    logger.info("Title fill via locator may have failed, using JS fallback...")
+                    self.tab.evaluate("""(title) => {
+                        const inputs = document.querySelectorAll('input[placeholder*="Song Title" i]');
+                        for (const inp of inputs) {
+                            if (inp.offsetParent !== null) {
+                                inp.scrollIntoView({ block: 'center' });
+                                // Use React's value setter to trigger change handlers
+                                const nativeSetter = Object.getOwnPropertyDescriptor(
+                                    window.HTMLInputElement.prototype, 'value').set;
+                                nativeSetter.call(inp, title);
+                                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                    }""", str(title))
+                    time.sleep(1)
 
             # --- Persona & Advanced Options Setup ---
             self._setup_lyrics_mode()
