@@ -533,13 +533,63 @@ class SunoGenerator:
                     }""", {"label": label_text})
                     time.sleep(0.5)
                     
-                    # Select all and type the new value into the inline input
-                    self.tab.keyboard.press("Meta+A")
-                    time.sleep(0.1)
-                    self.tab.keyboard.type(str(target_val))
-                    self.tab.keyboard.press("Enter")
-                    time.sleep(1.5)
-                    logger.info(f"Set {label_text} to {target_val}%")
+                    # SAFETY: Verify the active element is an INPUT before typing
+                    # If not, the AO overlay captured the events and we'd corrupt its text
+                    input_ready = False
+                    for retry in range(3):
+                        active_tag = self.tab.evaluate("""() => {
+                            const a = document.activeElement;
+                            return a ? a.tagName : null;
+                        }""")
+                        if active_tag == "INPUT":
+                            input_ready = True
+                            break
+                        # Retry the dblclick dispatch
+                        logger.info(f"Retry {retry+1}: active element is {active_tag}, re-dispatching dblclick...")
+                        time.sleep(0.5)
+                        self.tab.evaluate(r"""(args) => {
+                            const allEls = Array.from(document.querySelectorAll('div, span'));
+                            const labelEl = allEls.find(el => 
+                                el.childNodes.length === 1 && 
+                                el.textContent.trim() === args.label &&
+                                el.offsetParent !== null
+                            );
+                            if (!labelEl) return;
+                            let row = labelEl.parentElement;
+                            for (let depth = 0; depth < 10 && row; depth++) {
+                                const pcts = Array.from(row.querySelectorAll('div, span'))
+                                    .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                                if (pcts.length === 1) {
+                                    const el = pcts[0];
+                                    const rect = el.getBoundingClientRect();
+                                    const cx = rect.x + rect.width/2;
+                                    const cy = rect.y + rect.height/2;
+                                    const opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 1};
+                                    el.dispatchEvent(new MouseEvent('mousedown', {...opts}));
+                                    el.dispatchEvent(new MouseEvent('mouseup', {...opts}));
+                                    el.dispatchEvent(new MouseEvent('click', {...opts}));
+                                    const opts2 = {...opts, detail: 2};
+                                    el.dispatchEvent(new MouseEvent('mousedown', opts2));
+                                    el.dispatchEvent(new MouseEvent('mouseup', opts2));
+                                    el.dispatchEvent(new MouseEvent('click', opts2));
+                                    el.dispatchEvent(new MouseEvent('dblclick', opts2));
+                                    return;
+                                }
+                                row = row.parentElement;
+                            }
+                        }""", {"label": label_text})
+                        time.sleep(0.5)
+                    
+                    if input_ready:
+                        # Select all and type the new value into the inline input
+                        self.tab.keyboard.press("Meta+A")
+                        time.sleep(0.1)
+                        self.tab.keyboard.type(str(target_val))
+                        self.tab.keyboard.press("Enter")
+                        time.sleep(1.5)
+                        logger.info(f"Set {label_text} to {target_val}%")
+                    else:
+                        logger.warning(f"Could not activate input for {label_text} — skipping to avoid corrupting UI")
                 except Exception as e:
                     logger.warning(f"Error setting {label_text}: {e}")
 
