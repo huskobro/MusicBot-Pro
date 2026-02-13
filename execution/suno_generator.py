@@ -547,118 +547,143 @@ class SunoGenerator:
                 time.sleep(1)
 
             # Slider helper: dispatch JS mouse events to open inline input, type value
-            # NOTE: Playwright mouse.dblclick doesn't work because the Advanced Options
-            # container overlay intercepts pointer events. We dispatch mouse events
-            # directly on the percentage element via JS to bypass this.
+            # Slider helper: dispatch JS mouse events to open inline input, type value
             def set_numeric_value(label_text, target_val):
                 if target_val == "Default" or target_val is None: return
                 try:
                     logger.info(f"Setting {label_text} to {target_val}%...")
                     
-                    # Scroll the label into view
-                    self.tab.evaluate(r"""(args) => {
-                        const allEls = Array.from(document.querySelectorAll('div, span'));
-                        const labelEl = allEls.find(el => 
-                            el.childNodes.length === 1 && 
-                            el.textContent.trim() === args.label &&
-                            el.offsetParent !== null
-                        );
-                        if (labelEl) labelEl.scrollIntoView({ block: 'center' });
-                    }""", {"label": label_text})
-                    time.sleep(1)
-                    
-                    # Dispatch full mouse event sequence directly on the percentage element
-                    # This bypasses the AO overlay interception
-                    self.tab.evaluate(r"""(args) => {
-                        const allEls = Array.from(document.querySelectorAll('div, span'));
-                        const labelEl = allEls.find(el => 
-                            el.childNodes.length === 1 && 
-                            el.textContent.trim() === args.label &&
-                            el.offsetParent !== null
-                        );
-                        if (!labelEl) return;
-                        let row = labelEl.parentElement;
-                        for (let depth = 0; depth < 10 && row; depth++) {
-                            const pcts = Array.from(row.querySelectorAll('div, span'))
-                                .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
-                            if (pcts.length === 1) {
-                                const el = pcts[0];
-                                const rect = el.getBoundingClientRect();
-                                const cx = rect.x + rect.width/2;
-                                const cy = rect.y + rect.height/2;
-                                const opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 1};
-                                el.dispatchEvent(new MouseEvent('mousedown', {...opts}));
-                                el.dispatchEvent(new MouseEvent('mouseup', {...opts}));
-                                el.dispatchEvent(new MouseEvent('click', {...opts}));
-                                const opts2 = {...opts, detail: 2};
-                                el.dispatchEvent(new MouseEvent('mousedown', opts2));
-                                el.dispatchEvent(new MouseEvent('mouseup', opts2));
-                                el.dispatchEvent(new MouseEvent('click', opts2));
-                                el.dispatchEvent(new MouseEvent('dblclick', opts2));
-                                return;
+                    # 1. Wait for the label and percentage to be READY in DOM
+                    ready = self.tab.evaluate(r"""(args) => {
+                        return new Promise((resolve) => {
+                            const check = () => {
+                                const allEls = Array.from(document.querySelectorAll('div, span'));
+                                const labelEl = allEls.find(el => 
+                                    el.childNodes.length === 1 && 
+                                    el.textContent.trim() === args.label &&
+                                    el.offsetParent !== null
+                                );
+                                if (!labelEl) return false;
+                                let row = labelEl.parentElement;
+                                for (let depth = 0; depth < 10 && row; depth++) {
+                                    const pcts = Array.from(row.querySelectorAll('div, span'))
+                                        .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                                    if (pcts.length === 1) return true;
+                                    row = row.parentElement;
+                                }
+                                return false;
+                            };
+                            if (check()) resolve(true);
+                            else {
+                                let count = 0;
+                                const interval = setInterval(() => {
+                                    if (check() || ++count > 20) {
+                                        clearInterval(interval);
+                                        resolve(check());
+                                    }
+                                }, 500);
                             }
-                            row = row.parentElement;
-                        }
+                        });
                     }""", {"label": label_text})
-                    time.sleep(0.5)
                     
-                    # SAFETY: Verify the active element is an INPUT before typing
-                    # If not, the AO overlay captured the events and we'd corrupt its text
-                    input_ready = False
-                    for retry in range(3):
-                        active_tag = self.tab.evaluate("""() => {
-                            const a = document.activeElement;
-                            return a ? a.tagName : null;
-                        }""")
-                        if active_tag == "INPUT":
-                            input_ready = True
-                            break
-                        # Retry the dblclick dispatch
-                        logger.info(f"Retry {retry+1}: active element is {active_tag}, re-dispatching dblclick...")
-                        time.sleep(0.5)
+                    if not ready:
+                        logger.warning(f"Slider/Label for {label_text} not found or not ready.")
+                        return
+
+                    # Verification loop: try up to 3 times to get the final value right
+                    for main_retry in range(3):
+                        # Clear focus
+                        self.tab.keyboard.press("Escape")
+                        time.sleep(0.3)
+                        
+                        # Scroll label into view
                         self.tab.evaluate(r"""(args) => {
                             const allEls = Array.from(document.querySelectorAll('div, span'));
                             const labelEl = allEls.find(el => 
-                                el.childNodes.length === 1 && 
-                                el.textContent.trim() === args.label &&
-                                el.offsetParent !== null
+                                el.childNodes.length === 1 && el.textContent.trim() === args.label && el.offsetParent !== null
                             );
-                            if (!labelEl) return;
-                            let row = labelEl.parentElement;
-                            for (let depth = 0; depth < 10 && row; depth++) {
-                                const pcts = Array.from(row.querySelectorAll('div, span'))
-                                    .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
-                                if (pcts.length === 1) {
-                                    const el = pcts[0];
-                                    const rect = el.getBoundingClientRect();
-                                    const cx = rect.x + rect.width/2;
-                                    const cy = rect.y + rect.height/2;
-                                    const opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 1};
-                                    el.dispatchEvent(new MouseEvent('mousedown', {...opts}));
-                                    el.dispatchEvent(new MouseEvent('mouseup', {...opts}));
-                                    el.dispatchEvent(new MouseEvent('click', {...opts}));
-                                    const opts2 = {...opts, detail: 2};
-                                    el.dispatchEvent(new MouseEvent('mousedown', opts2));
-                                    el.dispatchEvent(new MouseEvent('mouseup', opts2));
-                                    el.dispatchEvent(new MouseEvent('click', opts2));
-                                    el.dispatchEvent(new MouseEvent('dblclick', opts2));
-                                    return;
-                                }
-                                row = row.parentElement;
-                            }
+                            if (labelEl) labelEl.scrollIntoView({ block: 'center' });
                         }""", {"label": label_text})
-                        time.sleep(0.5)
+                        time.sleep(1)
+                        
+                        # Dispatch dblclick
+                        input_ready = False
+                        for retry in range(4):
+                            self.tab.evaluate(r"""(args) => {
+                                const allEls = Array.from(document.querySelectorAll('div, span'));
+                                const labelEl = allEls.find(el => 
+                                    el.childNodes.length === 1 && el.textContent.trim() === args.label && el.offsetParent !== null
+                                );
+                                if (!labelEl) return;
+                                let row = labelEl.parentElement;
+                                for (let depth = 0; depth < 10 && row; depth++) {
+                                    const pcts = Array.from(row.querySelectorAll('div, span'))
+                                        .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                                    if (pcts.length === 1) {
+                                        const el = pcts[0];
+                                        const rect = el.getBoundingClientRect();
+                                        const cx = rect.x + rect.width/2;
+                                        const cy = rect.y + rect.height/2;
+                                        const opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 1};
+                                        el.dispatchEvent(new MouseEvent('mousedown', {...opts}));
+                                        el.dispatchEvent(new MouseEvent('mouseup', {...opts}));
+                                        el.dispatchEvent(new MouseEvent('click', {...opts}));
+                                        const opts2 = {...opts, detail: 2};
+                                        el.dispatchEvent(new MouseEvent('mousedown', opts2));
+                                        el.dispatchEvent(new MouseEvent('mouseup', opts2));
+                                        el.dispatchEvent(new MouseEvent('click', opts2));
+                                        el.dispatchEvent(new MouseEvent('dblclick', opts2));
+                                        return;
+                                    }
+                                    row = row.parentElement;
+                                }
+                            }""", {"label": label_text})
+                            time.sleep(0.5)
+                            
+                            active_info = self.tab.evaluate("""() => {
+                                const a = document.activeElement;
+                                return a ? { tag: a.tagName } : null;
+                            }""")
+                            
+                            if active_info and active_info['tag'] == "INPUT":
+                                input_ready = True
+                                break
+                            
+                            if active_info and active_info['tag'] == "DIV":
+                                self.tab.keyboard.press("Escape")
+                                time.sleep(0.3)
+                        
+                        if input_ready:
+                            self.tab.keyboard.press("Meta+A")
+                            time.sleep(0.1)
+                            self.tab.keyboard.type(str(target_val))
+                            self.tab.keyboard.press("Enter")
+                            time.sleep(2) # Wait for UI to update text
+                            
+                            # Verify if it updated
+                            current_val = self.tab.evaluate(r"""(args) => {
+                                const allEls = Array.from(document.querySelectorAll('div, span'));
+                                const lEl = allEls.find(el => el.childNodes.length === 1 && el.textContent.trim() === args.label && el.offsetParent !== null);
+                                if (!lEl) return null;
+                                let row = lEl.parentElement;
+                                for (let d = 0; d < 10 && row; d++) {
+                                    const p = Array.from(row.querySelectorAll('div, span'))
+                                        .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                                    if (p.length === 1) return p[0].textContent.trim();
+                                    row = row.parentElement;
+                                }
+                                return null;
+                            }""", {"label": label_text})
+                            
+                            if current_val == f"{target_val}%":
+                                logger.info(f"Successfully set {label_text} to {target_val}%")
+                                return
+                            else:
+                                logger.warning(f"Value mismatch for {label_text}: got {current_val}, expected {target_val}%. Retrying (attempt {main_retry+1})...")
+                        else:
+                            logger.warning(f"Could not activate input for {label_text} on attempt {main_retry+1}")
                     
-                    if input_ready:
-                        # Select all and type the new value into the inline input
-                        self.tab.keyboard.press("Meta+A")
-                        time.sleep(0.1)
-                        self.tab.keyboard.type(str(target_val))
-                        self.tab.keyboard.press("Enter")
-                        time.sleep(1.5)
-                        logger.info(f"Set {label_text} to {target_val}%")
-                    else:
-                        logger.warning(f"Could not activate input for {label_text} — skipping to avoid corrupting UI")
+                    logger.error(f"Failed to set {label_text} correctly after all retries.")
                 except Exception as e:
                     logger.warning(f"Error setting {label_text}: {e}")
 
@@ -666,6 +691,42 @@ class SunoGenerator:
                 set_numeric_value("Audio Influence", self.audio_influence)
             set_numeric_value("Weirdness", self.weirdness)
             set_numeric_value("Style Influence", self.style_influence)
+
+            # FINAL VERIFICATION: Read back all values
+            final_check = self.tab.evaluate(r"""() => {
+                const results = {};
+                const labels = ["Audio Influence", "Weirdness", "Style Influence"];
+                const allEls = Array.from(document.querySelectorAll('div, span'));
+                
+                labels.forEach(label => {
+                    const labelEl = allEls.find(el => el.childNodes.length === 1 && el.textContent.trim() === label && el.offsetParent !== null);
+                    if (labelEl) {
+                        let row = labelEl.parentElement;
+                        for (let depth = 0; depth < 10 && row; depth++) {
+                            const pcts = Array.from(row.querySelectorAll('div, span'))
+                                .filter(el => /^\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                            if (pcts.length === 1) {
+                                results[label] = pcts[0].textContent.trim();
+                                break;
+                            }
+                            row = row.parentElement;
+                        }
+                    }
+                });
+                
+                // Gender check
+                const btns = Array.from(document.querySelectorAll('button'));
+                const genderBtns = btns.filter(b => ['Male', 'Female'].includes(b.textContent.trim()) && b.offsetParent !== null);
+                genderBtns.forEach(b => {
+                    const bg = window.getComputedStyle(b).backgroundColor;
+                    if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+                        results['Vocal Gender'] = b.textContent.trim();
+                    }
+                });
+                
+                return results;
+            }""")
+            logger.info(f"Advanced Options verification: {json.dumps(final_check)}")
         except Exception as e:
             logger.warning(f"Advanced options error: {e}")
 
