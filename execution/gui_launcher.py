@@ -52,7 +52,7 @@ class SettingsDialog(tk.Toplevel):
     def __init__(self, parent, config, app_instance):
         super().__init__(parent)
         self.title("⚙️ Settings")
-        self.geometry("450x650") # Larger for tabs
+        self.geometry("800x750") # Widened to ensure all tabs and columns are visible
         self.config = config
         self.parent = parent
         self.app = app_instance
@@ -60,6 +60,46 @@ class SettingsDialog(tk.Toplevel):
         # Notebook for Tabs
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # --- TAB 0: Artist Profiles (NEW) ---
+        self.tab_presets = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_presets, text="Artist Profiles")
+        
+        f_presets = ttk.LabelFrame(self.tab_presets, text="Artist Identity & Preset Management", padding=10)
+        f_presets.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # 1. Preset Selection
+        ttk.Label(f_presets, text="Active Profile:").grid(row=0, column=0, sticky="w", pady=5)
+        self.presets = config.get("artist_presets", {}) # Dict: {Alias: Data}
+        self.combo_preset_select = ttk.Combobox(f_presets, values=list(self.presets.keys()), state="readonly")
+        self.combo_preset_select.grid(row=0, column=1, sticky="ew", pady=5)
+        
+        # 2. Profile Alias (for saving)
+        ttk.Label(f_presets, text="Preset Alias:").grid(row=1, column=0, sticky="w", pady=5)
+        self.ent_preset_alias = ttk.Entry(f_presets)
+        self.ent_preset_alias.grid(row=1, column=1, sticky="ew", pady=5)
+
+        # 3. Artist Name
+        ttk.Label(f_presets, text="Artist Name:").grid(row=2, column=0, sticky="w", pady=5)
+        self.ent_artist_name = ttk.Entry(f_presets)
+        self.ent_artist_name.insert(0, config.get("artist_name", ""))
+        self.ent_artist_name.grid(row=2, column=1, sticky="ew", pady=5)
+
+        # 4. Artist Style
+        ttk.Label(f_presets, text="Artist Music Style:").grid(row=3, column=0, sticky="w", pady=5)
+        self.ent_artist_style = ttk.Entry(f_presets)
+        self.ent_artist_style.insert(0, config.get("artist_style", ""))
+        self.ent_artist_style.grid(row=3, column=1, sticky="ew", pady=5)
+
+        # Buttons
+        f_preset_btns = ttk.Frame(f_presets)
+        f_preset_btns.grid(row=4, column=0, columnspan=2, pady=10)
+        
+        ttk.Button(f_preset_btns, text="💾 Save Current as Preset", command=self.save_preset).pack(side="left", padx=5)
+        ttk.Button(f_preset_btns, text="📂 Load Selected", command=self.load_preset).pack(side="left", padx=5)
+        ttk.Button(f_preset_btns, text="🗑️ Delete Selected", command=self.delete_preset).pack(side="left", padx=5)
+
+        f_presets.columnconfigure(1, weight=1)
         
         # --- TAB 1: General Settings ---
         self.tab_general = ttk.Frame(self.notebook)
@@ -139,40 +179,74 @@ class SettingsDialog(tk.Toplevel):
         f_adv_suno = ttk.LabelFrame(self.tab_adv_suno, text="Music Generation Parameters", padding=10)
         f_adv_suno.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # 1. Persona
-        self.var_persona_enabled = tk.BooleanVar(value=config.get("suno_persona_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Persona:", variable=self.var_persona_enabled).grid(row=0, column=0, sticky="w", pady=2)
-        self.ent_persona = ttk.Entry(f_adv_suno)
-        self.ent_persona.insert(0, config.get("suno_persona_name", ""))
-        self.ent_persona.grid(row=0, column=1, sticky="ew", pady=2)
+
+        # Persona Profile Section
+        self.var_persona_link_enabled = tk.BooleanVar(value=config.get("suno_persona_link_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Persona Profile:", variable=self.var_persona_link_enabled).grid(row=1, column=0, sticky="w", pady=2)
+        
+        # Frame for Persona Manager
+        f_persona_mgr = ttk.Frame(f_adv_suno)
+        f_persona_mgr.grid(row=1, column=1, sticky="ew", pady=2)
+        
+        # Load Personas
+        self.personas = config.get("suno_personas", {}) # Dict: {Alias: Link}
+        self.active_persona_alias = config.get("suno_active_persona", "")
+        
+        # Combobox for Selection
+        self.combo_persona_select = ttk.Combobox(f_persona_mgr, values=list(self.personas.keys()), state="readonly")
+        self.combo_persona_select.pack(side="top", fill="x", pady=(0, 2))
+        if self.active_persona_alias in self.personas:
+            self.combo_persona_select.set(self.active_persona_alias)
+        
+        # Profile Management Area
+        f_pm_controls = ttk.Frame(f_persona_mgr)
+        f_pm_controls.pack(side="top", fill="x")
+        
+        ttk.Label(f_pm_controls, text="Alias:").pack(side="left")
+        self.ent_pm_alias = ttk.Entry(f_pm_controls, width=10)
+        self.ent_pm_alias.pack(side="left", padx=2)
+        
+        ttk.Label(f_pm_controls, text="Link:").pack(side="left")
+        self.ent_pm_link = ttk.Entry(f_pm_controls, width=15)
+        self.ent_pm_link.pack(side="left", padx=2)
+        
+        ttk.Button(f_pm_controls, text="+", width=3, command=self.add_persona).pack(side="left", padx=2)
+        ttk.Button(f_pm_controls, text="-", width=3, command=self.delete_persona).pack(side="left", padx=2)
 
         # 2. Vocal Gender
         self.var_gender_enabled = tk.BooleanVar(value=config.get("vocal_gender_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Vocal Gender:", variable=self.var_gender_enabled).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text="Enable Vocal Gender:", variable=self.var_gender_enabled).grid(row=2, column=0, sticky="w", pady=2)
         self.combo_gender = ttk.Combobox(f_adv_suno, values=["Default", "None", "Male", "Female"], state="readonly")
         self.combo_gender.set(config.get("vocal_gender", "Default"))
-        self.combo_gender.grid(row=1, column=1, sticky="ew", pady=2)
+        self.combo_gender.grid(row=2, column=1, sticky="ew", pady=2)
 
         # 3. Audio Influence (%)
         self.var_audio_enabled = tk.BooleanVar(value=config.get("audio_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Audio Influence (%):", variable=self.var_audio_enabled).grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text="Enable Audio Influence (%):", variable=self.var_audio_enabled).grid(row=3, column=0, sticky="w", pady=2)
         self.scale_audio = tk.Scale(f_adv_suno, from_=10, to_=90, orient="horizontal")
         self.scale_audio.set(config.get("audio_influence", 25))
-        self.scale_audio.grid(row=2, column=1, sticky="ew", pady=2)
+        self.scale_audio.grid(row=3, column=1, sticky="ew", pady=2)
 
         # 4. Weirdness
         self.var_weird_enabled = tk.BooleanVar(value=config.get("weirdness_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Weirdness:", variable=self.var_weird_enabled).grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text="Enable Weirdness:", variable=self.var_weird_enabled).grid(row=4, column=0, sticky="w", pady=2)
         self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=1000, orient="horizontal")
         self.scale_weird.set(50 if config.get("weirdness") == "Default" else int(config.get("weirdness", 50)))
-        self.scale_weird.grid(row=3, column=1, sticky="ew", pady=2)
+        self.scale_weird.grid(row=4, column=1, sticky="ew", pady=2)
 
         # 5. Style Influence
         self.var_style_enabled = tk.BooleanVar(value=config.get("style_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Style Influence:", variable=self.var_style_enabled).grid(row=4, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text="Enable Style Influence:", variable=self.var_style_enabled).grid(row=5, column=0, sticky="w", pady=2)
         self.scale_style = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_style.set(50 if config.get("style_influence") == "Default" else int(config.get("style_influence", 50)))
-        self.scale_style.grid(row=4, column=1, sticky="ew", pady=2)
+        self.scale_style.grid(row=5, column=1, sticky="ew", pady=2)
+
+        # 6. Lyrics Mode
+        self.var_lyrics_mode_enabled = tk.BooleanVar(value=config.get("lyrics_mode_enabled", False))
+        ttk.Checkbutton(f_adv_suno, text="Enable Lyrics Mode:", variable=self.var_lyrics_mode_enabled).grid(row=6, column=0, sticky="w", pady=2)
+        self.combo_lyrics_mode = ttk.Combobox(f_adv_suno, values=["Default", "Manual", "Auto"], state="readonly")
+        self.combo_lyrics_mode.set(config.get("lyrics_mode", "Default"))
+        self.combo_lyrics_mode.grid(row=6, column=1, sticky="ew", pady=2)
 
         f_adv_suno.columnconfigure(1, weight=1)
 
@@ -224,6 +298,121 @@ class SettingsDialog(tk.Toplevel):
         f_btn.pack(fill="x", side="bottom")
         ttk.Button(f_btn, text="💾 Save All Settings & Prompts", command=self.save_settings).pack(fill="x")
 
+    # --- Preset Methods ---
+    def save_preset(self):
+        alias = self.ent_preset_alias.get().strip()
+        if not alias:
+            messagebox.showwarning("Warning", "Please enter a Preset Alias name.")
+            return
+        
+        # Capture current prompts
+        prompts = {
+            "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
+            "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip(),
+            "video_master_prompt": self.txt_video.get("1.0", tk.END).strip(),
+            "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
+        }
+        
+        # Capture all configurable settings
+        settings_snapshot = {
+            "gemini_lyrics": self.var_lyrics.get(),
+            "gemini_style": self.var_style.get(),
+            "gemini_visual": self.var_visual.get(),
+            "gemini_video": self.var_video.get(),
+            "suno_delay": self.entry_delay.get(),
+            "startup_delay": self.entry_startup.get(),
+            "target_language": self.combo_lang.get(),
+            "artist_name": self.ent_artist_name.get(),
+            "artist_style": self.ent_artist_style.get(),
+            "vocal_gender": self.combo_gender.get(),
+            "vocal_gender_enabled": self.var_gender_enabled.get(),
+            "audio_influence": self.scale_audio.get(),
+            "audio_influence_enabled": self.var_audio_enabled.get(),
+            "weirdness": self.scale_weird.get(),
+            "weirdness_enabled": self.var_weird_enabled.get(),
+            "style_influence": self.scale_style.get(),
+            "style_influence_enabled": self.var_style_enabled.get(),
+            "lyrics_mode": self.combo_lyrics_mode.get(),
+            "lyrics_mode_enabled": self.var_lyrics_mode_enabled.get(),
+            "suno_persona_link_enabled": self.var_persona_link_enabled.get(),
+            "suno_active_persona": self.combo_persona_select.get()
+        }
+        
+        self.presets[alias] = {
+            "settings": settings_snapshot,
+            "prompts": prompts
+        }
+        self.update_preset_combo()
+        self.combo_preset_select.set(alias)
+        messagebox.showinfo("Success", f"Preset '{alias}' saved successfully!")
+
+    def load_preset(self):
+        alias = self.combo_preset_select.get()
+        if not alias or alias not in self.presets:
+            return
+        
+        data = self.presets[alias]
+        settings = data.get("settings", {})
+        prompts = data.get("prompts", {})
+        
+        # Apply settings to UI
+        self.var_lyrics.set(settings.get("gemini_lyrics", True))
+        self.var_style.set(settings.get("gemini_style", True))
+        self.var_visual.set(settings.get("gemini_visual", True))
+        self.var_video.set(settings.get("gemini_video", False))
+        
+        self.entry_delay.delete(0, tk.END)
+        self.entry_delay.insert(0, settings.get("suno_delay", "15"))
+        self.entry_startup.delete(0, tk.END)
+        self.entry_startup.insert(0, settings.get("startup_delay", "5"))
+        self.combo_lang.set(settings.get("target_language", "Turkish"))
+        
+        self.ent_artist_name.delete(0, tk.END)
+        self.ent_artist_name.insert(0, settings.get("artist_name", ""))
+        self.ent_artist_style.delete(0, tk.END)
+        self.ent_artist_style.insert(0, settings.get("artist_style", ""))
+        
+        self.combo_gender.set(settings.get("vocal_gender", "Default"))
+        self.var_gender_enabled.set(settings.get("vocal_gender_enabled", False))
+        self.scale_audio.set(settings.get("audio_influence", 25))
+        self.var_audio_enabled.set(settings.get("audio_influence_enabled", False))
+        self.scale_weird.set(settings.get("weirdness", 50))
+        self.var_weird_enabled.set(settings.get("weirdness_enabled", False))
+        self.scale_style.set(settings.get("style_influence", 50))
+        self.var_style_enabled.set(settings.get("style_influence_enabled", False))
+        self.combo_lyrics_mode.set(settings.get("lyrics_mode", "Default"))
+        self.var_lyrics_mode_enabled.set(settings.get("lyrics_mode_enabled", False))
+        
+        self.var_persona_link_enabled.set(settings.get("suno_persona_link_enabled", False))
+        self.combo_persona_select.set(settings.get("suno_active_persona", ""))
+        
+        # Apply prompts to UI
+        self.txt_lyrics.delete("1.0", tk.END)
+        self.txt_lyrics.insert("1.0", prompts.get("lyrics_master_prompt", ""))
+        self.txt_visual.delete("1.0", tk.END)
+        self.txt_visual.insert("1.0", prompts.get("visual_master_prompt", ""))
+        self.txt_video.delete("1.0", tk.END)
+        self.txt_video.insert("1.0", prompts.get("video_master_prompt", ""))
+        self.txt_art.delete("1.0", tk.END)
+        self.txt_art.insert("1.0", prompts.get("art_master_prompt", ""))
+        
+        self.ent_preset_alias.delete(0, tk.END)
+        self.ent_preset_alias.insert(0, alias)
+        
+        messagebox.showinfo("Success", f"Preset '{alias}' loaded!")
+
+    def delete_preset(self):
+        alias = self.combo_preset_select.get()
+        if alias and alias in self.presets:
+            if messagebox.askyesno("Confirm", f"Delete preset '{alias}'?"):
+                del self.presets[alias]
+                self.update_preset_combo()
+                self.combo_preset_select.set('')
+                self.ent_preset_alias.delete(0, tk.END)
+
+    def update_preset_combo(self):
+        self.combo_preset_select['values'] = list(self.presets.keys())
+
     def load_prompts_data(self):
         import json
         if os.path.exists(self.prompts_path):
@@ -235,6 +424,26 @@ class SettingsDialog(tk.Toplevel):
                     self.txt_video.insert("1.0", data.get("video_master_prompt", ""))
                     self.txt_art.insert("1.0", data.get("art_master_prompt", ""))
             except: pass
+
+    def add_persona(self):
+        alias = self.ent_pm_alias.get().strip()
+        link = self.ent_pm_link.get().strip()
+        if alias and link:
+            self.personas[alias] = link
+            self.update_persona_combo()
+            self.combo_persona_select.set(alias)
+            self.ent_pm_alias.delete(0, tk.END)
+            self.ent_pm_link.delete(0, tk.END)
+
+    def delete_persona(self):
+        selection = self.combo_persona_select.get()
+        if selection and selection in self.personas:
+            del self.personas[selection]
+            self.update_persona_combo()
+            self.combo_persona_select.set('')
+
+    def update_persona_combo(self):
+        self.combo_persona_select['values'] = list(self.personas.keys())
 
     def open_chrome(self):
         self.destroy() 
@@ -250,6 +459,10 @@ class SettingsDialog(tk.Toplevel):
             self.config["suno_delay"] = int(self.entry_delay.get())
             self.config["startup_delay"] = int(self.entry_startup.get())
             self.config["target_language"] = self.combo_lang.get()
+            self.config["artist_name"] = self.ent_artist_name.get()
+            self.config["artist_style"] = self.ent_artist_style.get()
+            self.config["artist_presets"] = self.presets
+            self.config["active_preset"] = self.combo_preset_select.get()
             
             # Defaults Config
             self.config["default_run_lyrics"] = self.var_def_lyrics.get()
@@ -258,8 +471,10 @@ class SettingsDialog(tk.Toplevel):
             self.config["default_run_art_image"] = self.var_def_art_i.get()
             
             # Suno Advanced
-            self.config["suno_persona_name"] = self.ent_persona.get()
-            self.config["suno_persona_enabled"] = self.var_persona_enabled.get()
+            self.config["suno_persona_link_enabled"] = self.var_persona_link_enabled.get()
+            self.config["suno_personas"] = self.personas
+            self.config["suno_active_persona"] = self.combo_persona_select.get()
+            
             self.config["vocal_gender"] = self.combo_gender.get()
             self.config["vocal_gender_enabled"] = self.var_gender_enabled.get()
             self.config["audio_influence"] = self.scale_audio.get()
@@ -268,6 +483,8 @@ class SettingsDialog(tk.Toplevel):
             self.config["weirdness_enabled"] = self.var_weird_enabled.get()
             self.config["style_influence"] = self.scale_style.get()
             self.config["style_influence_enabled"] = self.var_style_enabled.get()
+            self.config["lyrics_mode"] = self.combo_lyrics_mode.get()
+            self.config["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
             
             # 2. Prompts Data Update
             import json
@@ -314,9 +531,11 @@ class MusicBotGUI:
             "lyrics_mode": "Default",
             "weirdness": "Default",
             "style_influence": "Default",
-            "suno_persona_name": "",
+            "artist_name": "",
+            "artist_style": "",
+            "artist_presets": {},
+            "active_preset": "",
             # Enabled Flags
-            "suno_persona_enabled": False,
             "weirdness_enabled": False,
             "style_influence_enabled": False,
             "vocal_gender_enabled": False,
@@ -848,7 +1067,8 @@ class MusicBotGUI:
                             vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
                             weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
                             style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
-                            persona_name=self.config.get("suno_persona_name", "") if self.config.get("suno_persona_enabled") else ""
+                            lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
+                            persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
                         )
                         suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
