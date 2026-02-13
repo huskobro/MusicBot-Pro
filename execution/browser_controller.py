@@ -4,6 +4,8 @@ import time
 import functools
 import logging
 from playwright.sync_api import sync_playwright, Page, BrowserContext, ElementHandle
+from humanizer import Humanizer
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,7 +39,8 @@ class BrowserController:
     Uses a persistent context to maintain login sessions (cookies, local storage).
     """
 
-    def __init__(self, headless=False, profile_path=None):
+    def __init__(self, headless=False, profile_path=None, humanizer_config=None):
+
         """
         Initializes the BrowserController.
         
@@ -67,6 +70,17 @@ class BrowserController:
         self.playwright = None
         self.context = None
         self.pages = {} # Map names to page objects
+
+        # Initialize Humanizer
+        h_conf = humanizer_config or {}
+        self.humanizer = Humanizer(
+            level=h_conf.get("level", "MEDIUM"),
+            speed_multiplier=h_conf.get("speed", 1.0),
+            retry_attempts=h_conf.get("retries", 1),
+            adaptive_delay=h_conf.get("adaptive", True)
+        )
+        logger.info(f"Humanizer initialized: {h_conf}")
+
 
     def _cleanup_locks(self):
         """Removes Chrome's Singleton lock files that prevent multi-instance launch."""
@@ -149,21 +163,36 @@ class BrowserController:
         """Navigates to a URL with retry logic."""
         p = page if page else self.page
         logger.info(f"Navigating to {url}")
+        
+        # Humanizer wait before navigation
+        self.humanizer.smart_wait(0.5, 1.2)
+        
         p.goto(url, wait_until="domcontentloaded")
+        
+        # Wait for CAPTCHA if any
+        self.humanizer.check_captcha(p)
+        
+        # Light settle wait
+        self.humanizer.smart_wait(0.4, 0.8)
+
 
     @r_try()
     def click(self, selector, page=None):
         """Clicks an element specified by the selector."""
         p = page if page else self.page
         logger.info(f"Clicking element: {selector}")
-        p.click(selector)
+        self.humanizer.check_captcha(p)
+        self.humanizer.click_element(p, selector)
+
 
     @r_try()
     def fill(self, selector, text, page=None):
         """Fills an input field specified by the selector."""
         p = page if page else self.page
         logger.info(f"Filling element {selector} with text length {len(text)}")
-        p.fill(selector, text)
+        self.humanizer.check_captcha(p)
+        self.humanizer.type_text(p, selector, text)
+
 
     @r_try()
     def get_text(self, selector, page=None):
@@ -187,7 +216,25 @@ class BrowserController:
         except: pass
         return p.is_visible(selector)
 
+    def wait_for_stable_dom(self, page=None, timeout=3000):
+        """Waits until the DOM stops changing for a short period."""
+        p = page if page else self.page
+        try:
+            p.wait_for_load_state("networkidle", timeout=timeout)
+        except: pass
+        time.sleep(0.3) # Short settle
+
+
+    def get_value(self, selector, page=None):
+        """Gets the value of an input element."""
+        p = page if page else self.page
+        try:
+            return p.eval_on_selector(selector, "el => el.value")
+        except:
+            return None
+
     def screenshot(self, path, page=None):
+
         """Takes a screenshot and saves it to the given path."""
         p = page if page else self.page
         p.screenshot(path=path)

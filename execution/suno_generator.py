@@ -270,18 +270,14 @@ class SunoGenerator:
                 if not el or val is None: return
                 try:
                     logger.info(f"Filling field with: {str(val)[:20]}...")
-                    el.scroll_into_view_if_needed()
-                    time.sleep(1)
-                    el.fill(str(val))
-                    time.sleep(1)
+                    # Use humanizer 
+                    self.browser.humanizer.type_text(self.tab, el, val)
                 except Exception as fe:
-                    logger.warning(f"Native fill failed, trying keyboard: {fe}")
+                    logger.warning(f"Humanizer failed: {fe}")
+                    # Atomic fallback only if absolutely necessary
                     try:
-                        el.click()
-                        self.tab.keyboard.press("Control+A")
-                        self.tab.keyboard.press("Meta+A")
-                        self.tab.keyboard.press("Backspace")
-                        self.tab.keyboard.type(str(val), delay=30)
+                        el.scroll_into_view_if_needed()
+                        el.fill(str(val))
                     except: pass
 
             fill_field(textareas[0], content)

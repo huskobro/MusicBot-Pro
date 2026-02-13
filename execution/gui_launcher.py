@@ -250,6 +250,38 @@ class SettingsDialog(tk.Toplevel):
 
         f_adv_suno.columnconfigure(1, weight=1)
 
+        # --- TAB 2: Humanizer & Reliability (NEW) ---
+        self.tab_humanizer = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_humanizer, text="Humanizer & Reliability")
+        
+        f_human = ttk.LabelFrame(self.tab_humanizer, text="Human-like Interaction Settings", padding=10)
+        f_human.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # 1. Humanizer Level
+        ttk.Label(f_human, text="Humanizer Level:").grid(row=0, column=0, sticky="w", pady=5)
+        self.combo_human_level = ttk.Combobox(f_human, values=["LOW", "MEDIUM", "HIGH"], state="readonly")
+        self.combo_human_level.set(config.get("humanizer_level", "MEDIUM"))
+        self.combo_human_level.grid(row=0, column=1, sticky="w", pady=5)
+        
+        # 2. Typing Speed Multiplier
+        ttk.Label(f_human, text="Typing Speed (1.0 = Normal):").grid(row=1, column=0, sticky="w", pady=5)
+        self.scale_speed = tk.Scale(f_human, from_=0.5, to_=2.5, resolution=0.1, orient="horizontal")
+        self.scale_speed.set(config.get("humanizer_speed", 1.0))
+        self.scale_speed.grid(row=1, column=1, sticky="ew", pady=5)
+        
+        # 3. Max Retries
+        ttk.Label(f_human, text="Max Retries (if typing fails):").grid(row=2, column=0, sticky="w", pady=5)
+        self.spin_retries = tk.Spinbox(f_human, from_=0, to=3, width=5)
+        self.spin_retries.delete(0, tk.END)
+        self.spin_retries.insert(0, str(config.get("humanizer_retries", 1)))
+        self.spin_retries.grid(row=2, column=1, sticky="w", pady=5)
+        
+        # 4. Adaptive Delay
+        self.var_adaptive = tk.BooleanVar(value=config.get("humanizer_adaptive", True))
+        ttk.Checkbutton(f_human, text="Enable Adaptive Delays", variable=self.var_adaptive).grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
+        
+        f_human.columnconfigure(1, weight=1)
+
         # --- TAB 2: Master Prompts Editor ---
         self.tab_prompts = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_prompts, text="Master Prompts")
@@ -461,9 +493,13 @@ class SettingsDialog(tk.Toplevel):
             self.config["target_language"] = self.combo_lang.get()
             self.config["artist_name"] = self.ent_artist_name.get()
             self.config["artist_style"] = self.ent_artist_style.get()
-            self.config["artist_presets"] = self.presets
-            self.config["active_preset"] = self.combo_preset_select.get()
-            
+            # Humanizer Configs
+            self.config["humanizer_level"] = self.combo_human_level.get()
+            self.config["humanizer_speed"] = self.scale_speed.get()
+            self.config["humanizer_retries"] = int(self.spin_retries.get())
+            self.config["humanizer_adaptive"] = self.var_adaptive.get()
+
+
             # Defaults Config
             self.config["default_run_lyrics"] = self.var_def_lyrics.get()
             self.config["default_run_music"] = self.var_def_music.get()
@@ -1033,8 +1069,14 @@ class MusicBotGUI:
                 self.root.after(0, lambda: self.status_var.set(f"Processing Song {idx+1}/{len(target_ids)} (ID: {song_id})"))
                 
                 from browser_controller import BrowserController
-                # Start a fresh browser for this specific song to prevent state buildup/timeout issues
-                song_browser = BrowserController(headless=False)
+                # Start a fresh browser for this specific song with Humanizer config
+                h_conf = {
+                    "level": self.config.get("humanizer_level", "MEDIUM"),
+                    "speed": self.config.get("humanizer_speed", 1.0),
+                    "retries": self.config.get("humanizer_retries", 1),
+                    "adaptive": self.config.get("humanizer_adaptive", True)
+                }
+                song_browser = BrowserController(headless=False, humanizer_config=h_conf)
                 
                 try:
                     song_browser.start()
