@@ -427,13 +427,48 @@ class SunoGenerator:
 
     def _setup_advanced_options(self):
         try:
-            adv_btn = self.tab.locator("div[role='button']:has-text('Advanced Options'), button:has-text('Advanced Options')").first
-            if adv_btn.is_visible():
-                exclude_input = self.tab.locator("input[placeholder*='Exclude' i]").first
-                if not exclude_input.is_visible():
-                    adv_btn.click(force=True)
+            logger.info("Expanding Advanced Options panel...")
+            
+            for attempt in range(3):
+                # Check if already expanded
+                exclude_visible = self.tab.evaluate("""() => {
+                    const inp = document.querySelector('input[placeholder*="Exclude" i]');
+                    return inp && inp.offsetParent !== null;
+                }""")
+                
+                if exclude_visible:
+                    logger.info("Advanced Options already expanded.")
+                    break
+                
+                # Click the Advanced Options div[role=button] — exact text match
+                clicked = self.tab.evaluate("""() => {
+                    const candidates = Array.from(document.querySelectorAll('div[role="button"]'));
+                    const advBtn = candidates.find(el => el.textContent.trim() === 'Advanced Options');
+                    if (advBtn) {
+                        advBtn.scrollIntoView({ block: 'center' });
+                        advBtn.click();
+                        return true;
+                    }
+                    return false;
+                }""")
+                
+                if clicked:
+                    logger.info(f"Clicked Advanced Options (attempt {attempt+1})")
+                    time.sleep(3)
+                else:
+                    logger.warning(f"Advanced Options button not found (attempt {attempt+1})")
                     time.sleep(2)
             
+            # Verify
+            exclude_visible = self.tab.evaluate("""() => {
+                const inp = document.querySelector('input[placeholder*="Exclude" i]');
+                return inp && inp.offsetParent !== null;
+            }""")
+            if not exclude_visible:
+                logger.warning("Advanced Options panel did NOT expand.")
+                return
+
+            # Vocal Gender
             if self.vocal_gender != "Default":
                 self.tab.evaluate(f"""(gender) => {{
                     const btns = Array.from(document.querySelectorAll('button'));
@@ -442,21 +477,40 @@ class SunoGenerator:
                 }}""", self.vocal_gender)
                 time.sleep(1)
 
+            # Slider helper: finds the label, walks to parent row, double-clicks the percentage
             def set_numeric_value(label_text, target_val):
                 if target_val == "Default" or target_val is None: return
                 try:
-                    val_text = None
-                    label_loc = self.tab.locator(f"div:text-is('{label_text}'), span:text-is('{label_text}')").first
-                    if label_loc.is_visible():
-                        row = label_loc.locator("xpath=./ancestor::div[contains(@class, 'flex') or contains(@class, 'row')][1]").first
-                        val_text = row.locator("text=/\\d+%/").first
-                    if not val_text or not val_text.is_visible():
-                        slider = self.tab.locator(f"div[aria-label='{label_text}'][role='slider']").first
-                        if slider.is_visible():
-                             val_text = slider.locator("xpath=./ancestor::div[1]").first.locator("text=/\\d+%/").first
-                    if val_text and val_text.is_visible():
-                        val_text.scroll_into_view_if_needed()
-                        val_text.dblclick(force=True)
+                    logger.info(f"Setting {label_text} to {target_val}%...")
+                    
+                    # Find the percentage element's coordinates using JS
+                    coords = self.tab.evaluate("""(args) => {
+                        const label = args.label;
+                        const allEls = Array.from(document.querySelectorAll('div, span'));
+                        const labelEl = allEls.find(el => 
+                            el.childNodes.length === 1 && 
+                            el.textContent.trim() === label &&
+                            el.offsetParent !== null
+                        );
+                        if (!labelEl) return null;
+                        
+                        // Walk up from label to find the row with exactly one percentage
+                        let row = labelEl.parentElement;
+                        for (let depth = 0; depth < 10 && row; depth++) {
+                            const pcts = Array.from(row.querySelectorAll('div, span'))
+                                .filter(el => /^\\d+%$/.test(el.textContent.trim()) && el.offsetParent !== null);
+                            if (pcts.length === 1) {
+                                pcts[0].scrollIntoView({ block: 'center' });
+                                const rect = pcts[0].getBoundingClientRect();
+                                return { x: rect.x + rect.width/2, y: rect.y + rect.height/2 };
+                            }
+                            row = row.parentElement;
+                        }
+                        return null;
+                    }""", {"label": label_text})
+                    
+                    if coords:
+                        self.tab.mouse.dblclick(coords['x'], coords['y'])
                         time.sleep(1)
                         self.tab.keyboard.press("Control+A")
                         self.tab.keyboard.press("Meta+A")
@@ -464,13 +518,18 @@ class SunoGenerator:
                         self.tab.keyboard.type(str(target_val))
                         self.tab.keyboard.press("Enter")
                         time.sleep(2)
-                except: pass
+                        logger.info(f"Set {label_text} to {target_val}%")
+                    else:
+                        logger.warning(f"Could not find slider for {label_text}")
+                except Exception as e:
+                    logger.warning(f"Error setting {label_text}: {e}")
 
             if self.persona_link:
                 set_numeric_value("Audio Influence", self.audio_influence)
             set_numeric_value("Weirdness", self.weirdness)
             set_numeric_value("Style Influence", self.style_influence)
-        except: pass
+        except Exception as e:
+            logger.warning(f"Advanced options error: {e}")
 
     def update_row_status(self, row_idx, status):
         try:
