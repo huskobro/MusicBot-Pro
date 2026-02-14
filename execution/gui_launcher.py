@@ -312,6 +312,12 @@ import json
 from openpyxl.styles import PatternFill
 from browser_controller import BrowserController
 
+# PyInstaller bundle path handling
+if getattr(sys, 'frozen', False):
+    bundle_dir = sys._MEIPASS
+else:
+    bundle_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) # Root of project
+
 class GuiLogger(logging.Handler):
     """Custom logging handler that directs logs to a ScrolledText widget."""
     def __init__(self, text_widget):
@@ -1163,11 +1169,15 @@ class MusicBotGUI:
         if os.path.exists(settings_path):
             try:
                 with open(settings_path, "r", encoding="utf-8") as f:
-                    saved_config = json.load(f)
-                    self.config.update(saved_config)
-                logger.info(self.t("log_settings_loaded"))
+                    content = f.read().strip()
+                    if content:
+                        saved_config = json.loads(content)
+                        if isinstance(saved_config, dict):
+                            self.config.update(saved_config)
+                            logger.info(self.t("log_settings_loaded"))
             except Exception as e:
-                logger.error(self.t("log_settings_fail").format(error=e))
+                logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
+                # If settings are corrupted, we just continue with defaults
 
     def save_settings(self, new_config=None):
         """Saves current config to settings.json in workspace."""
@@ -1787,7 +1797,13 @@ class MusicBotGUI:
         # Init prompts.json if missing
         if not os.path.exists(prompts_path):
             # Try to find default prompts in bundle or source
-            bundle_prompts = os.path.join(bundle_dir, "data", "prompts.json") if getattr(sys, 'frozen', False) else os.path.join("data", "prompts.json")
+            # If frozen, sys._MEIPASS is the root where 'data' was added
+            # If not frozen, we are in 'execution/' so data is '../data'
+            if getattr(sys, 'frozen', False):
+                bundle_prompts = os.path.join(sys._MEIPASS, "data", "prompts.json")
+            else:
+                bundle_prompts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "prompts.json")
+
             if os.path.exists(bundle_prompts):
                 import shutil
                 shutil.copy(bundle_prompts, prompts_path)
