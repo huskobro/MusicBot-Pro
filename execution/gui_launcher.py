@@ -170,7 +170,27 @@ TRANSLATIONS = {
         "log_chrome_success": "✅ Chrome started successfully!",
         "log_chrome_profile": "📂 Profile Path: {path}",
         "log_chrome_login": "👉 Please log in to Suno/Gemini now.",
-        "log_chrome_close": "👉 You can close the browser window when finished."
+        "log_chrome_close": "👉 You can close the browser window when finished.",
+        "video_fps_label": "Frame Rate (FPS):",
+        "video_res_label": "Resolution:",
+        "video_intensity_label": "Effect Intensity:",
+        "video_assets_label": "Source Assets Folder:",
+        "video_res_shorts": "Vertical (Shorts - 1080x1920)",
+        "video_res_hd": "Horizontal (HD - 1920x1080)",
+        "video_res_sd": "Horizontal (SD - 1280x720)",
+        "glitch": "Glitch",
+        "ken_burns": "Ken Burns (Zoom)",
+        "vignette": "Vignette",
+        "browse": "Browse",
+        "msg_select_folder": "Please select a folder",
+        "msg_enter_test_link": "Please enter a link to test or select from the list.",
+        "info": "Info",
+        "video_output_mode_label": "Video Output Path:",
+        "video_output_same_label": "Save in input/profile folder",
+        "video_output_custom_label": "Save in 'Output_Videos' (System Default)",
+        "video_assets_hint": "💡 If empty, the profile folder will be used as the default source for images.",
+        "last_profile_label": "Last Profile:",
+        "save_to_profile_note": "Note: 'Save All' also updates the active preset."
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -317,7 +337,28 @@ TRANSLATIONS = {
         "log_chrome_success": "✅ Chrome başarıyla başlatıldı!",
         "log_chrome_profile": "📂 Profil Yolu: {path}",
         "log_chrome_login": "👉 Lütfen şimdi Suno/Gemini oturumu açın.",
-        "log_chrome_close": "👉 İşleminiz bitince tarayıcı penceresini kapatabilirsiniz."
+        "log_chrome_close": "👉 İşleminiz bitince tarayıcı penceresini kapatabilirsiniz.",
+        "video_fps_label": "Kare Hızı (FPS):",
+        "video_res_label": "Çözünürlük:",
+        "video_intensity_label": "Efekt Yoğunluğu:",
+        "video_assets_label": "Kaynak Materyal Klasörü:",
+        "video_res_shorts": "Dikey (Shorts - 1080x1920)",
+        "video_res_hd": "Yatay (HD - 1920x1080)",
+        "video_res_sd": "Yatay (SD - 1280x720)",
+        "glitch": "Bozulma (Glitch)",
+        "ken_burns": "Yakınlaşma (Ken Burns)",
+        "vignette": "Köşe Karartma (Vignette)",
+        "browse": "Gözat",
+        "msg_select_folder": "Lütfen bir klasör seçin",
+        "msg_persona_loaded": "'{alias}' düzenleme için yüklendi.\nDeğişiklik yapıp '+' butonuna basın.",
+        "msg_enter_test_link": "Lütfen test edilecek bir link girin veya listeden seçin.",
+        "info": "Bilgi",
+        "video_output_mode_label": "Video Çıktı Yolu:",
+        "video_output_same_label": "Girdi/Profil klasörüne kaydet",
+        "video_output_custom_label": "'Output_Videos' klasörüne kaydet (Varsayılan)",
+        "video_assets_hint": "💡 Boş bırakılırsa, resimler için profil klasörü varsayılan kaynak olacaktır.",
+        "last_profile_label": "Son Profil:",
+        "save_to_profile_note": "Not: 'Tümünü Kaydet' aktif preseti de günceller."
     }
 }
 
@@ -618,15 +659,71 @@ class SettingsDialog(tk.Toplevel):
 
         # --- TAB 3: Video ---
         self.tab_video = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_video, text="Video")
+        self.notebook.add(self.tab_video, text=self.app.t("video")) # Use t("video") for localization
         
-        f_video = ttk.LabelFrame(self.tab_video, text=self.app.t("video_settings_label"), padding=10)
-        f_video.pack(fill="both", expand=True, padx=10, pady=10)
+        # Scrollable area for Video Tab (to match others)
+        v_canvas = tk.Canvas(self.tab_video, borderwidth=0, highlightthickness=0)
+        v_scrollbar = ttk.Scrollbar(self.tab_video, orient="vertical", command=v_canvas.yview)
+        v_scroll_frame = ttk.Frame(v_canvas)
+        v_scroll_frame.bind("<Configure>", lambda e: v_canvas.configure(scrollregion=v_canvas.bbox("all")))
+        v_canvas.create_window((0, 0), window=v_scroll_frame, anchor="nw")
+        v_canvas.configure(yscrollcommand=v_scrollbar.set)
+        v_canvas.pack(side="left", fill="both", expand=True)
+        v_scrollbar.pack(side="right", fill="y")
+
+        # 1. Visual Effects (Multi-Select)
+        f_v_effects = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_effect_label"), padding=10)
+        f_v_effects.pack(fill="x", padx=10, pady=5)
         
-        ttk.Label(f_video, text=self.app.t("video_effect_label")).grid(row=0, column=0, sticky="w", pady=5)
-        self.combo_video_effect = ttk.Combobox(f_video, values=["None", "Snow", "Rain", "Particles"], state="readonly")
-        self.combo_video_effect.set(config.get("video_effect", "None"))
-        self.combo_video_effect.grid(row=0, column=1, sticky="ew", pady=5)
+        self.effect_vars = {}
+        effects = ["Snow", "Rain", "Particles", "Glitch", "Ken Burns", "Vignette"]
+        saved_effects = config.get("video_effects", [config.get("video_effect", "None")])
+        
+        for i, eff in enumerate(effects):
+            var = tk.BooleanVar(value=eff in saved_effects)
+            self.effect_vars[eff] = var
+            cb = ttk.Checkbutton(f_v_effects, text=self.app.t(eff.lower().replace(" ", "_")), variable=var)
+            cb.grid(row=i//3, column=i%3, sticky="w", padx=10, pady=2)
+
+        # 2. Quality Settings
+        f_v_quality = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_quality_label"), padding=10)
+        f_v_quality.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(f_v_quality, text=self.app.t("video_fps_label")).grid(row=0, column=0, sticky="w", pady=2)
+        self.spin_fps = tk.Spinbox(f_v_quality, from_=1, to_=60, width=5)
+        self.spin_fps.delete(0, tk.END)
+        self.spin_fps.insert(0, str(config.get("video_fps", 30)))
+        self.spin_fps.grid(row=0, column=1, sticky="w", padx=5)
+        
+        ttk.Label(f_v_quality, text=self.app.t("video_res_label")).grid(row=1, column=0, sticky="w", pady=2)
+        self.combo_res = ttk.Combobox(f_v_quality, values=[self.app.t("video_res_shorts"), self.app.t("video_res_hd"), self.app.t("video_res_sd")], state="readonly")
+        self.combo_res.set(config.get("video_resolution", self.app.t("video_res_shorts")))
+        self.combo_res.grid(row=1, column=1, sticky="ew", padx=5)
+        
+        ttk.Label(f_v_quality, text=self.app.t("video_intensity_label")).grid(row=2, column=0, sticky="w", pady=2)
+        self.scale_intensity = tk.Scale(f_v_quality, from_=0.1, to_=2.0, resolution=0.1, orient="horizontal")
+        self.scale_intensity.set(config.get("video_intensity", 1.0))
+        self.scale_intensity.grid(row=2, column=1, sticky="ew", padx=5)
+
+        # 3. Assets & Output
+        f_v_assets = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_assets_output_label"), padding=10)
+        f_v_assets.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(f_v_assets, text=self.app.t("video_assets_label")).pack(anchor="w")
+        f_path = ttk.Frame(f_v_assets)
+        f_path.pack(fill="x", pady=2)
+        self.ent_video_assets = ttk.Entry(f_path)
+        self.ent_video_assets.insert(0, config.get("video_assets_path", ""))
+        self.ent_video_assets.pack(side="left", fill="x", expand=True)
+        ttk.Button(f_path, text="...", width=3, command=lambda: self.browse_folder(self.ent_video_assets)).pack(side="left", padx=2)
+        ttk.Label(f_v_assets, text=self.app.t("video_assets_hint"), font=("Helvetica", 8, "italic"), foreground="gray").pack(anchor="w")
+
+        ttk.Label(f_v_assets, text=self.app.t("video_output_mode_label"), pady=(10,0)).pack(anchor="w")
+        self.var_video_output_mode = tk.StringVar(value=config.get("video_output_mode", "profile"))
+        ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_same_label"), variable=self.var_video_output_mode, value="profile").pack(anchor="w")
+        ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_custom_label"), variable=self.var_video_output_mode, value="custom").pack(anchor="w")
+
+        f_v_quality.columnconfigure(1, weight=1)
 
         ttk.Label(f_human, text=self.app.t("human_level_label")).grid(row=3, column=0, sticky="w", pady=5)
         self.combo_human_level = ttk.Combobox(f_human, values=[self.app.t("level_low"), self.app.t("level_medium"), self.app.t("level_high")], state="readonly")
@@ -769,7 +866,12 @@ class SettingsDialog(tk.Toplevel):
             "suno_active_persona": self.combo_persona_select.get(),
             
             # Video
-            "video_effect": self.combo_video_effect.get()
+            "video_effects": [eff for eff, var in self.effect_vars.items() if var.get()],
+            "video_fps": int(self.spin_fps.get()),
+            "video_resolution": self.combo_res.get(),
+            "video_intensity": self.scale_intensity.get(),
+            "video_assets_path": self.ent_video_assets.get(),
+            "video_output_mode": self.var_video_output_mode.get()
         }
         
         self.presets[alias] = {
@@ -817,8 +919,20 @@ class SettingsDialog(tk.Toplevel):
         self.combo_lyrics_mode.set(settings.get("lyrics_mode", "Default"))
         self.var_lyrics_mode_enabled.set(settings.get("lyrics_mode_enabled", False))
         
-        self.var_persona_link_enabled.set(settings.get("suno_persona_link_enabled", False))
         self.combo_persona_select.set(settings.get("suno_active_persona", ""))
+        
+        # Apply Video Settings to UI
+        target_effects = settings.get("video_effects", [settings.get("video_effect", "None")])
+        for eff, var in self.effect_vars.items():
+            var.set(eff in target_effects)
+            
+        self.spin_fps.delete(0, tk.END)
+        self.spin_fps.insert(0, str(settings.get("video_fps", 30)))
+        self.combo_res.set(settings.get("video_resolution", self.app.t("video_res_shorts")))
+        self.scale_intensity.set(settings.get("video_intensity", 1.0))
+        self.ent_video_assets.delete(0, tk.END)
+        self.ent_video_assets.insert(0, settings.get("video_assets_path", ""))
+        self.var_video_output_mode.set(settings.get("video_output_mode", "profile"))
         
         # Apply prompts to UI
         self.txt_lyrics.delete("1.0", tk.END)
@@ -910,6 +1024,12 @@ class SettingsDialog(tk.Toplevel):
         self.destroy() 
         self.app.open_chrome_profile()
 
+    def browse_folder(self, target_entry):
+        folder = filedialog.askdirectory(title=self.app.t("msg_select_folder"))
+        if folder:
+            target_entry.delete(0, tk.END)
+            target_entry.insert(0, folder)
+
     def save_settings(self):
         try:
             # 1. Config Object Update
@@ -955,6 +1075,14 @@ class SettingsDialog(tk.Toplevel):
             self.config["style_influence_enabled"] = self.var_style_enabled.get()
             self.config["lyrics_mode"] = self.combo_lyrics_mode.get()
             self.config["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
+            
+            # Video Configs
+            self.config["video_effects"] = [eff for eff, var in self.effect_vars.items() if var.get()]
+            self.config["video_fps"] = int(self.spin_fps.get())
+            self.config["video_resolution"] = self.combo_res.get()
+            self.config["video_intensity"] = self.scale_intensity.get()
+            self.config["video_assets_path"] = self.ent_video_assets.get()
+            self.config["video_output_mode"] = self.var_video_output_mode.get()
             
             # 2. Prompts Data Update
             import json
@@ -1880,80 +2008,60 @@ class MusicBotGUI:
                         if s_steps[3] and not self.stop_requested:
                             gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
 
-                    # --- Step 4: Video Generation (Updated for multiple versions) ---
+                    # --- Step 4: Video Generation (Consolidated) ---
                     if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                        from video_generator import VideoGenerator
-                        vgen = VideoGenerator(output_dir=output_media)
-                        
-                        # Find all audio files starting with {song_id}_
+                        # Find all audio files
                         found_audio = []
                         try:
                             for f in os.listdir(output_media):
                                 if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
                                     found_audio.append(f)
-                            
-                            # Also check generic ID.mp3
                             if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
                                 found_audio.append(f"{song_id}.mp3")
-                        except Exception as list_e:
-                            logger.error(f"Failed to scan output_media: {list_e}")
-
+                        except: pass
                         found_audio = sorted(list(set(found_audio)))
-                        
-                        if not found_audio:
-                            logger.warning(f"Skipping video for {song_id}: No audio files found (Pattern: {song_id}_*)")
-                        
-                        for aud_file in found_audio:
-                            if self.stop_requested: break
+
+                        if found_audio:
+                            from video_generator import VideoGenerator
+                            v_params = {
+                                "effects": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
+                                "fps": self.config.get("video_fps", 30),
+                                "resolution_label": self.config.get("video_resolution", "Vertical (Shorts - 1080x1920)"),
+                                "intensity_multiplier": self.config.get("video_intensity", 1.0)
+                            }
                             
-                            aud_full_path = os.path.join(output_media, aud_file)
-                            aud_base = os.path.splitext(aud_file)[0]
-                            
-                            # Determine Image Path
-                            # 1. Specific: {id}_{suffix}.png (e.g. 1_1.png)
-                            # 2. Generic: {id}.png
-                            
-                            # Try to extract the suffix (it's usually the part after the last underscore)
-                            suffix = None
-                            parts = aud_base.split("_")
-                            if len(parts) > 1:
-                                suffix = parts[-1]
-                            
-                            img_path = None
-                            # Priority 1: ID_Suffix.ext
-                            if suffix:
+                            for aud_file in found_audio:
+                                if self.stop_requested: break
+                                aud_full_path = os.path.join(output_media, aud_file)
+                                aud_base = os.path.splitext(aud_file)[0]
+                                
+                                # Find matching image
+                                img_path = None
+                                # Specific or generic ID.ext
                                 for ext in [".png", ".jpg", ".jpeg"]:
-                                    specific_img = f"{song_id}_{suffix}{ext}"
-                                    if os.path.exists(os.path.join(output_media, specific_img)):
-                                        img_path = os.path.join(output_media, specific_img)
-                                        break
-                            
-                            # Priority 2: Full filename match (backward compatibility)
-                            if not img_path:
-                                for ext in [".png", ".jpg", ".jpeg"]:
-                                    full_match_img = f"{aud_base}{ext}"
-                                    if os.path.exists(os.path.join(output_media, full_match_img)):
-                                        img_path = os.path.join(output_media, full_match_img)
-                                        break
-                            
-                            # Priority 3: Generic ID.ext
-                            if not img_path:
-                                for ext in [".png", ".jpg", ".jpeg"]:
-                                    generic_img = f"{song_id}{ext}"
-                                    if os.path.exists(os.path.join(output_media, generic_img)):
-                                        img_path = os.path.join(output_media, generic_img)
-                                        break
-                            
-                            if img_path:
-                                progress_callback(song_id, f"Video: {aud_file}... 🎬")
-                                vgen.generate_video(
-                                    audio_path=aud_full_path,
-                                    image_path=img_path, 
-                                    output_filename=f"{aud_base}.mp4",
-                                    effect_type=self.config.get("video_effect", "None")
-                                )
-                            else:
-                                logger.warning(f"Skipping video for {aud_file}: No matching image found (.png, .jpg, .jpeg)")
+                                    if os.path.exists(os.path.join(output_media, f"{aud_base}{ext}")):
+                                        img_path = os.path.join(output_media, f"{aud_base}{ext}"); break
+                                    if os.path.exists(os.path.join(output_media, f"{song_id}{ext}")):
+                                        img_path = os.path.join(output_media, f"{song_id}{ext}"); break
+                                
+                                if img_path:
+                                    # Output Directory Logic
+                                    video_out_dir = output_media
+                                    if self.config.get("video_output_mode") == "custom":
+                                        video_out_dir = os.path.join(workspace, "Output_Videos")
+                                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir)
+                                    
+                                    vgen = VideoGenerator(output_dir=video_out_dir)
+                                    vgen.generate_video(
+                                        audio_path=aud_full_path,
+                                        image_path=img_path, 
+                                        output_filename=f"{aud_base}.mp4",
+                                        **v_params
+                                    )
+                                else:
+                                    logger.warning(f"Skipping video for {aud_file}: No matching image found.")
+                        else:
+                            logger.warning(f"Skipping video for {song_id}: No audio files found.")
 
                 except Exception as e:
                     logger.error(f"Error processing {song_id}: {e}")

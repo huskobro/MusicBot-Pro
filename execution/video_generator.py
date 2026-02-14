@@ -1,7 +1,9 @@
 import os
 import random
 import numpy as np
-from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, VideoClip
+from moviepy.video.VideoClip import VideoClip, ImageClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,13 +14,24 @@ class VideoGenerator:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def generate_video(self, audio_path, image_path, output_filename, effect_type="None"):
+    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50):
         """
-        Generates an MP4 video by combining audio and image with optional effects.
-        effect_type: "None", "Snow", "Rain", "Particles"
+        Generates an MP4 video by combining audio and image with optional multiple effects.
         """
+        if effect_types is None:
+            effect_types = ["None"]
+
         try:
-            logger.info(f"Generating video for {audio_path} with effect {effect_type}")
+            logger.info(f"Generating video for {audio_path} with effects {effect_types}, intensity {intensity}")
+            
+            # Resolve Resolution
+            res_map = {
+                "Vertical (Shorts - 1080x1920)": (1080, 1920),
+                "Horizontal (HD - 1920x1080)": (1920, 1080),
+                "Horizontal (SD - 1280x720)": (1280, 720)
+            }
+            # Handle localized strings or fallback
+            target_res = res_map.get(resolution, (1080, 1920))
             
             # 1. Load Audio
             if not os.path.exists(audio_path):
@@ -28,33 +41,58 @@ class VideoGenerator:
             audio = AudioFileClip(audio_path)
             duration = audio.duration
             
-            # 2. Load Image
+            # 2. Load Image and Resize
             if not os.path.exists(image_path):
                 logger.error(f"Image file not found: {image_path}")
                 return False
                 
-            base_clip = ImageClip(image_path).set_duration(duration)
+            base_clip = ImageClip(image_path).resize(height=target_res[1] if target_res[0] < target_res[1] else None, 
+                                                   width=target_res[0] if target_res[0] >= target_res[1] else None)
+            base_clip = base_clip.crop(x_center=base_clip.w/2, y_center=base_clip.h/2, 
+                                      width=target_res[0], height=target_res[1]).with_duration(duration)
             
             # 3. Apply Effects
-            final_clip = base_clip
-            if effect_type and effect_type != "None":
-                effect_clip = self._create_procedural_effect(effect_type, duration, base_clip.size)
-                if effect_clip:
-                    final_clip = CompositeVideoClip([base_clip, effect_clip])
+            current_clip = base_clip
+            
+            # Custom Ken Burns Effect (Zoom) - Applies to the base content
+            if any(eff in effect_types for eff in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"]):
+                zoom_speed = 0.05 * (intensity / 50)
+                current_clip = base_clip.resize(lambda t: 1 + zoom_speed * t)
+            
+            # Collect procedural overlay effects
+            overlay_clips = []
+            for effect_type in effect_types:
+                if effect_type and effect_type != "None" and "Ken Burns" not in effect_type and "Yakınlaşma" not in effect_type:
+                    effect_clip = self._create_procedural_effect(effect_type, duration, target_res, intensity)
+                    if effect_clip:
+                        overlay_clips.append(effect_clip)
+            
+            if overlay_clips:
+                final_clip = CompositeVideoClip([current_clip] + overlay_clips)
+            else:
+                final_clip = current_clip
             
             # 4. Set Audio and Write
-            final_clip = final_clip.set_audio(audio)
+            final_clip = final_clip.with_audio(audio)
             
             output_path = os.path.join(self.output_dir, output_filename)
+            temp_audio_path = os.path.join(self.output_dir, f"temp_{output_filename}.m4a")
+            
             final_clip.write_videofile(
                 output_path, 
-                fps=24, 
+                fps=fps, 
                 codec="libx264", 
                 audio_codec="aac",
+                temp_audiofile=temp_audio_path,
                 threads=4,
-                logger=None # Suppress moviepy stdout spam
+                logger=None 
             )
             
+            # Cleanup temp audio
+            if os.path.exists(temp_audio_path):
+                try: os.remove(temp_audio_path)
+                except: pass
+                
             logger.info(f"Video generated successfully: {output_path}")
             return True
             
@@ -64,105 +102,111 @@ class VideoGenerator:
             logger.error(traceback.format_exc())
             return False
 
-    def _create_procedural_effect(self, effect_type, duration, resolution):
+    def _create_procedural_effect(self, effect_type, duration, resolution, intensity=50):
         """Generates a procedural effect clip using numpy and moviepy."""
         w, h = resolution
         
         if effect_type == "Snow":
-            # Snow: White particles moving down
-            num_particles = 100
-            # State: x, y, speed, size
-            particles = np.zeros((num_particles, 4))
-            particles[:, 0] = np.random.randint(0, w, num_particles) # x
-            particles[:, 1] = np.random.randint(0, h, num_particles) # y
-            particles[:, 2] = np.random.uniform(2, 5, num_particles) # speed
-            particles[:, 3] = np.random.uniform(1, 3, num_particles) # size
-
-            def make_frame(t):
-                # Update positions
-                particles[:, 1] += particles[:, 2] # y += speed
-                # Reset if out of bounds
-                mask = particles[:, 1] > h
-                particles[mask, 1] = 0
-                particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-
-                # Draw
-                frame = np.zeros((h, w, 4), dtype=np.uint8) # RGBA
-                for p in particles:
-                    x, y, s = int(p[0]), int(p[1]), int(p[3])
-                    # Draw a simple white square/circle approximation
-                    # Simple efficient drawing without cv2 dependency if possible
-                    # Or just direct array manipulation
-                    r_start = max(0, y)
-                    r_end = min(h, y+s)
-                    c_start = max(0, x)
-                    c_end = min(w, x+s)
-                    frame[r_start:r_end, c_start:c_end] = [255, 255, 255, 200]
-                return frame
-
-            return VideoClip(make_frame, duration=duration, ismask=False).set_position("center")
-
-        elif effect_type == "Rain":
-            # Rain: Thin lines moving fast down
-            # Using slightly blue-ish tint
-             # Rain: Blue/White lines moving fast down
-            num_particles = 200
+            num_particles = int(2 * intensity)
             particles = np.zeros((num_particles, 4))
             particles[:, 0] = np.random.randint(0, w, num_particles)
             particles[:, 1] = np.random.randint(0, h, num_particles)
-            particles[:, 2] = np.random.uniform(15, 25, num_particles) # fast speed
-            particles[:, 3] = np.random.uniform(1, 2, num_particles) # thickness
+            particles[:, 2] = np.random.uniform(1, 4, num_particles) * (intensity / 50) # speed
+            particles[:, 3] = np.random.uniform(1, 4, num_particles) # size
 
             def make_frame(t):
                 particles[:, 1] += particles[:, 2]
                 mask = particles[:, 1] > h
                 particles[mask, 1] = 0
                 particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-
                 frame = np.zeros((h, w, 4), dtype=np.uint8)
                 for p in particles:
                     x, y, s = int(p[0]), int(p[1]), int(p[3])
-                    length = int(s * 5)
-                    r_start = max(0, y)
-                    r_end = min(h, y+length)
-                    c_start = max(0, x)
-                    c_end = min(w, x+s)
-                    # Light blue rain
-                    frame[r_start:r_end, c_start:c_end] = [200, 200, 255, 150]
+                    r_start, r_end = max(0, y), min(h, y+s)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = [255, 255, 255, 180]
                 return frame
-            
-            return VideoClip(make_frame, duration=duration, ismask=False).set_position("center")
-            
-        elif effect_type == "Particles":
-             # Particles: Floating up slowly, golden
-            num_particles = 80
-            particles = np.zeros((num_particles, 5)) # x, y, speed, size, wobble_offset
+            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+
+        elif effect_type == "Rain":
+            num_particles = int(4 * intensity)
+            particles = np.zeros((num_particles, 4))
             particles[:, 0] = np.random.randint(0, w, num_particles)
             particles[:, 1] = np.random.randint(0, h, num_particles)
-            particles[:, 2] = np.random.uniform(0.5, 1.5, num_particles) # slow up speed
-            particles[:, 3] = np.random.uniform(2, 4, num_particles) # size
+            particles[:, 2] = np.random.uniform(10, 30, num_particles) * (intensity / 50)
+            particles[:, 3] = np.random.uniform(1, 3, num_particles)
+
+            def make_frame(t):
+                particles[:, 1] += particles[:, 2]
+                mask = particles[:, 1] > h
+                particles[mask, 1] = 0
+                particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
+                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                for p in particles:
+                    x, y, s = int(p[0]), int(p[1]), int(p[3])
+                    length = int(s * 8)
+                    r_start, r_end = max(0, y), min(h, y+length)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = [180, 200, 255, 120]
+                return frame
+            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+            
+        elif effect_type == "Particles":
+            num_particles = int(1.5 * intensity)
+            particles = np.zeros((num_particles, 5))
+            particles[:, 0] = np.random.randint(0, w, num_particles)
+            particles[:, 1] = np.random.randint(0, h, num_particles)
+            particles[:, 2] = np.random.uniform(0.5, 2, num_particles) * (intensity / 50)
+            particles[:, 3] = np.random.uniform(2, 6, num_particles)
             particles[:, 4] = np.random.uniform(0, 2*np.pi, num_particles)
 
             def make_frame(t):
-                particles[:, 1] -= particles[:, 2] # y -= speed (up)
-                particles[:, 0] += np.sin(t + particles[:, 4]) * 0.5 # wobble x
-                
+                particles[:, 1] -= particles[:, 2]
+                particles[:, 0] += np.sin(t + particles[:, 4]) * 0.8
                 mask = particles[:, 1] < 0
                 particles[mask, 1] = h
                 particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-
                 frame = np.zeros((h, w, 4), dtype=np.uint8)
                 for p in particles:
                     x, y, s = int(p[0]), int(p[1]), int(p[3])
-                    r_start = max(0, y)
-                    r_end = min(h, y+s)
-                    c_start = max(0, x)
-                    c_end = min(w, x+s)
-                    # Gold/Yellow
-                    frame[r_start:r_end, c_start:c_end] = [255, 215, 0, 180]
+                    r_start, r_end = max(0, y), min(h, y+s)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = [255, 220, 100, 150]
                 return frame
-            
-            return VideoClip(make_frame, duration=duration, ismask=False).set_position("center")
+            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+
+        elif effect_type == "Glitch" or effect_type == "Bozulma (Glitch)":
+            def make_frame(t):
+                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                if random.random() < (0.1 * intensity / 50):
+                    # Vertical slice shift
+                    y_slice = random.randint(0, h-50)
+                    h_slice = random.randint(20, 100)
+                    offset = random.randint(-40, 40)
+                    # Instead of real glitch, we'll draw some rectangles for effect
+                    # because we are generating an overlay
+                    r_start, r_end = max(0, y_slice), min(h, y_slice+h_slice)
+                    frame[r_start:r_end, :, 0] = 255 # Red shift
+                    frame[r_start:r_end, :, 3] = 40 # Alpha
+                return frame
+            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+
+        elif effect_type == "Vignette" or effect_type == "Köşe Karartma (Vignette)":
+            def make_frame(t):
+                # Create a radial gradient for vignette
+                Y, X = np.ogrid[:h, :w]
+                center_y, center_x = h / 2, w / 2
+                dist_from_center = np.sqrt((X - center_x)**2 + (Y - center_y)**2)
+                max_dist = np.sqrt(center_x**2 + center_y**2)
+                
+                # Vignette strength based on intensity
+                radius = 1.0 - (intensity / 150)
+                vignette = 1.0 - np.clip((dist_from_center / (max_dist * radius)), 0, 1)
+                
+                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                frame[:, :, 3] = (1.0 - vignette) * 200 # Black with variable alpha
+                return frame
+            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
 
         return None
 
