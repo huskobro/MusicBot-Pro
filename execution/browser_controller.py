@@ -79,6 +79,7 @@ class BrowserController:
             retry_attempts=h_conf.get("retries", 1),
             adaptive_delay=h_conf.get("adaptive", True)
         )
+        self.humanizer_enabled = True # Global toggle for this instance
         logger.info(f"Humanizer initialized: {h_conf}")
 
 
@@ -181,8 +182,11 @@ class BrowserController:
         """Clicks an element specified by the selector."""
         p = page if page else self.page
         logger.info(f"Clicking element: {selector}")
-        self.humanizer.check_captcha(p)
-        self.humanizer.click_element(p, selector)
+        if self.humanizer_enabled:
+            self.humanizer.check_captcha(p)
+            self.humanizer.click_element(p, selector)
+        else:
+            p.click(selector)
 
 
     @r_try()
@@ -190,8 +194,11 @@ class BrowserController:
         """Fills an input field specified by the selector."""
         p = page if page else self.page
         logger.info(f"Filling element {selector} with text length {len(text)}")
-        self.humanizer.check_captcha(p)
-        self.humanizer.type_text(p, selector, text)
+        if self.humanizer_enabled:
+            self.humanizer.check_captcha(p)
+            self.humanizer.type_text(p, selector, text)
+        else:
+            p.fill(selector, text)
 
 
     @r_try()
