@@ -173,7 +173,7 @@ class SunoGenerator:
                 elif status == "found_but_inactive":
                     logger.info(f"Button found but not ready yet (Attempt {attempt+1}/15)...")
                 
-                time.sleep(2)
+                time.sleep(3)
 
             if clicked:
                 logger.info("Clicked 'Create with Persona'. Waiting for /create page...")

@@ -536,11 +536,13 @@ class SettingsDialog(tk.Toplevel):
         self.ent_pm_alias.pack(side="left", padx=2)
         
         ttk.Label(f_pm_controls, text=self.app.t("link_label")).pack(side="left")
-        self.ent_pm_link = ttk.Entry(f_pm_controls, width=15)
-        self.ent_pm_link.pack(side="left", padx=2)
+        self.ent_pm_link = ttk.Entry(f_pm_controls, width=30) # Increased width
+        self.ent_pm_link.pack(side="left", padx=2, fill="x", expand=True)
         
         ttk.Button(f_pm_controls, text="+", width=3, command=self.add_persona).pack(side="left", padx=2)
         ttk.Button(f_pm_controls, text="-", width=3, command=self.delete_persona).pack(side="left", padx=2)
+        ttk.Button(f_pm_controls, text="✎", width=3, command=self.edit_persona).pack(side="left", padx=2)
+        ttk.Button(f_pm_controls, text="🧪", width=3, command=self.test_persona_link).pack(side="left", padx=2)
 
         # 2. Vocal Gender
         self.var_gender_enabled = tk.BooleanVar(value=config.get("vocal_gender_enabled", False))
@@ -843,6 +845,32 @@ class SettingsDialog(tk.Toplevel):
             del self.personas[selection]
             self.update_persona_combo()
             self.combo_persona_select.set('')
+
+    def edit_persona(self):
+        selection = self.combo_persona_select.get()
+        if selection and selection in self.personas:
+            link = self.personas[selection]
+            # Load into entry fields
+            self.ent_pm_alias.delete(0, tk.END)
+            self.ent_pm_alias.insert(0, selection)
+            self.ent_pm_link.delete(0, tk.END)
+            self.ent_pm_link.insert(0, link)
+            messagebox.showinfo("Bilgi", f"'{selection}' düzenleme için yüklendi.\nDeğişiklik yapıp '+' butonuna basın.")
+
+    def test_persona_link(self):
+        """Opens the entered link in system default browser to check for 404s."""
+        link = self.ent_pm_link.get().strip()
+        if not link:
+            # If entry empty, try selected item
+            selection = self.combo_persona_select.get()
+            if selection and selection in self.personas:
+                link = self.personas[selection]
+        
+        if link:
+            import webbrowser
+            webbrowser.open(link)
+        else:
+            messagebox.showwarning(self.app.t("warning"), "Lütfen test edilecek bir link girin veya listeden seçin.")
 
     def update_persona_combo(self):
         self.combo_persona_select['values'] = list(self.personas.keys())
