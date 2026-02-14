@@ -10,9 +10,12 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-:: 2. Projeyi indir veya guncelle
-if exist "MusicBot-Pro" (
-    echo Guncellemeler denetleniyor...
+:: 2. Projeyi Guncelle (Eger klasorun icindeysen sadece pull yap)
+if exist ".git" (
+    echo Mevcut klasor guncelleniyor...
+    git pull
+) else if exist "MusicBot-Pro" (
+    echo MusicBot-Pro klasoru bulundu, guncelleniyor...
     cd MusicBot-Pro
     git pull
 ) else (
