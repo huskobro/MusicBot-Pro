@@ -1139,6 +1139,11 @@ class MusicBotGUI:
         columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
+        self.tree.bind("<Motion>", self.on_tree_hover)
+        self.tree.bind("<Leave>", self.on_tree_leave)
+        
+        # Style Tags
+        self.tree.tag_configure("hover", background="#eef6ff") 
         
         # Drag & Drop Events
         self.tree.bind("<ButtonPress-1>", self.on_reorder_start, add="+")
@@ -1564,13 +1569,17 @@ class MusicBotGUI:
             item_id = self.tree.identify_row(event.y)
             if not item_id: return
 
-            if column == "#1": # 'sel' column
+            if column not in ["#9", "#10", "#11", "#12", "#13"]: # Any column EXCEPT the phase toggles
                 if item_id in self.selected_songs:
                     self.selected_songs.remove(item_id)
                     self.tree.set(item_id, "sel", "☐")
                 else:
                     self.selected_songs.add(item_id)
                     self.tree.set(item_id, "sel", "☑️")
+                
+                # Visual Highlight
+                self.tree.selection_set(item_id)
+                self.tree.focus(item_id)
             
             elif column in ["#9", "#10", "#11", "#12", "#13"]: # L, M, AP, AI, V
                 idx = int(column[1:]) - 9 # 0, 1, 2, 3, 4
@@ -1605,6 +1614,20 @@ class MusicBotGUI:
                 self.tree.set(item_id, col_name, char)
             
             return "break" # Prevent selection change if clicking checkbox
+            
+    def on_tree_hover(self, event):
+        item = self.tree.identify_row(event.y)
+        # Clear existing hover tags
+        for i in self.tree.tag_has("hover"):
+            self.tree.item(i, tags=())
+        # Apply to current
+        if item:
+            self.tree.item(item, tags=("hover",))
+
+    def on_tree_leave(self, event):
+        # Clear all hover tags when mouse leaves the widget
+        for i in self.tree.tag_has("hover"):
+            self.tree.item(i, tags=())
 
     def start_process(self):
         # --- Pre-flight Checks 🛡️ ---
@@ -1765,24 +1788,14 @@ class MusicBotGUI:
                 self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{len(target_ids)})"))
                 self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
                 
-                from browser_controller import BrowserController
-                
-                # Start a fresh browser for this specific song with Humanizer config
-                h_conf = {
-                    "level": self.config.get("humanizer_level", "MEDIUM"),
-                    "speed": self.config.get("humanizer_speed", 1.0),
-                    "retries": self.config.get("humanizer_retries", 1),
-                    "adaptive": self.config.get("humanizer_adaptive", True)
-                }
-                song_browser = BrowserController(headless=False, humanizer_config=h_conf)
+                # Start browser ONLY IF NEEDED
+                song_browser = None
+                self.active_browser = None
                 
                 # Global Humanizer State
                 global_human = self.config.get("humanizer_enabled", True)
 
                 try:
-                    song_browser.start()
-                    self.active_browser = song_browser
-                    
                     # Get specific steps for THIS song
                     s_steps = self.song_steps.get(song_id)
                     if s_steps is None:
@@ -1797,8 +1810,23 @@ class MusicBotGUI:
                     # Ensure length
                     while len(s_steps) < 5: s_steps.append(False)
 
+                    # Determine if browser is actually needed
+                    browser_needed = s_steps[0] or s_steps[1] or s_steps[2] # Lyrics, Music, or Art Prompt
+                    
+                    if browser_needed:
+                        from browser_controller import BrowserController
+                        h_conf = {
+                            "level": self.config.get("humanizer_level", "MEDIUM"),
+                            "speed": self.config.get("humanizer_speed", 1.0),
+                            "retries": self.config.get("humanizer_retries", 1),
+                            "adaptive": self.config.get("humanizer_adaptive", True)
+                        }
+                        song_browser = BrowserController(headless=False, humanizer_config=h_conf)
+                        song_browser.start()
+                        self.active_browser = song_browser
+                    
                     # --- Step 1: Lyrics ---
-                    if s_steps[0] and not self.stop_requested:
+                    if s_steps[0] and not self.stop_requested and song_browser:
                         # Phase-based Humanizer Activation
                         song_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
                         
@@ -1814,9 +1842,9 @@ class MusicBotGUI:
                             language=self.config.get("target_language", "Turkish")
                         )
                         gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
-
+                    
                     # --- Step 2: Music ---
-                    if s_steps[1] and not self.stop_requested:
+                    if s_steps[1] and not self.stop_requested and song_browser:
                         # Phase-based Humanizer Activation
                         song_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
                         
@@ -1837,16 +1865,16 @@ class MusicBotGUI:
                         suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 3: Art (Prompts & Images) ---
-                    if s_steps[2] or s_steps[3]:
+                    if (s_steps[2] or s_steps[3]) and not self.stop_requested:
                         from gemini_prompter import GeminiPrompter
                         gemini_art = GeminiPrompter(
                             project_file=project_file, # Unified Path
-                            browser=song_browser,
+                            browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
                             startup_delay=self.config.get("startup_delay", 5),
                             language=self.config.get("target_language", "Turkish")
                         )
                         
-                        if s_steps[2] and not self.stop_requested:
+                        if s_steps[2] and not self.stop_requested and song_browser:
                             gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
                         
                         if s_steps[3] and not self.stop_requested:
@@ -1934,9 +1962,10 @@ class MusicBotGUI:
                     # Safe Shutdown
                     try:
                         time.sleep(1)
-                        song_browser.stop()
-                        self.active_browser = None
+                        if song_browser:
+                            song_browser.stop()
                     except: pass
+                    self.active_browser = None
 
             self.root.after(0, lambda: self.current_song_var.set(""))
             self.play_chime()

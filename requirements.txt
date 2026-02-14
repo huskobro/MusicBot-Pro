@@ -4,3 +4,5 @@ google-generativeai
 pyinstaller
 moviepy
 numpy
+imageio
+imageio-ffmpeg

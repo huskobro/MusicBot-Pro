@@ -6,6 +6,10 @@ if ! command -v pyinstaller &> /dev/null; then
     pip install pyinstaller
 fi
 
+# Ensure requirements are installed
+echo "Checking dependencies..."
+pip install -r requirements.txt
+
 # Clean previous builds
 rm -rf build dist
 
@@ -30,6 +34,8 @@ pyinstaller --noconfirm --clean \
     --add-data "data:data" \
     --add-data "execution:execution" \
     --paths "execution" \
+    --collect-all moviepy \
+    --collect-all imageio \
     execution/gui_launcher.py
 
 # Remove strict quarantine attribute which causes "Damaged" or permission loops
