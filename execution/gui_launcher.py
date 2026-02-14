@@ -1414,13 +1414,15 @@ class MusicBotGUI:
             
             # Step Toggles (Per-song Phase Selection)
             # Default to global var state if not previously customized
-            steps = self.song_steps.get(rid, [
-                self.var_run_lyrics.get(), 
-                self.var_run_music.get(), 
-                self.var_run_art_prompt.get(), 
-                self.var_run_art_image.get()
-            ])
-            self.song_steps[rid] = steps # Persist initialization
+            steps = self.song_steps.get(rid)
+            if steps is None:
+                steps = [
+                    self.var_run_lyrics.get(), 
+                    self.var_run_music.get(), 
+                    self.var_run_art_prompt.get(), 
+                    self.var_run_art_image.get()
+                ]
+            # --- REMOVED self.song_steps[rid] = steps to allow global defaults to flow through ---
             
             # UNIQUE COLORS per step as requested
             # L: Purple, M: Blue, AP: Yellow, AI: Green
@@ -1603,12 +1605,14 @@ class MusicBotGUI:
                     
                     if rid in target_ids:
                         # Get specific steps for THIS song
-                        s_steps = self.song_steps.get(rid, [
-                            self.var_run_lyrics.get(), 
-                            self.var_run_music.get(),
-                            self.var_run_art_prompt.get(),
-                            self.var_run_art_image.get()
-                        ])
+                        s_steps = self.song_steps.get(rid)
+                        if s_steps is None:
+                            s_steps = [
+                                self.var_run_lyrics.get(), 
+                                self.var_run_music.get(),
+                                self.var_run_art_prompt.get(),
+                                self.var_run_art_image.get()
+                            ]
 
                         # Check if user wants lyrics for THIS song AND they exist
                         if s_steps[0] and lyrics_col is not None and row[lyrics_col]:
@@ -1632,7 +1636,15 @@ class MusicBotGUI:
             # before calling _check_existing_data
             any_gemini_requested = False
             for rid in target_ids:
-                s_steps = self.song_steps.get(rid, [False, False, False, False])
+                s_steps = self.song_steps.get(rid)
+                if s_steps is None:
+                    s_steps = [
+                        self.var_run_lyrics.get(),
+                        self.var_run_music.get(),
+                        self.var_run_art_prompt.get(),
+                        self.var_run_art_image.get()
+                    ]
+                
                 if s_steps[0] or s_steps[2]:
                     any_gemini_requested = True
                     break
@@ -1690,7 +1702,14 @@ class MusicBotGUI:
                     self.active_browser = song_browser
                     
                     # Get specific steps for THIS song
-                    s_steps = self.song_steps.get(song_id, [True, True, True, True])
+                    s_steps = self.song_steps.get(song_id)
+                    if s_steps is None:
+                        s_steps = [
+                            self.var_run_lyrics.get(),
+                            self.var_run_music.get(),
+                            self.var_run_art_prompt.get(),
+                            self.var_run_art_image.get()
+                        ]
 
                     # --- Step 1: Lyrics ---
                     if s_steps[0] and not self.stop_requested:
