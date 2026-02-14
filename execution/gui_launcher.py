@@ -3,9 +3,16 @@ import os
 import sys
 
 # Configure logging IMMEDIATELY to catch all imports and initializations.
-workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
-if not os.path.exists(workspace): os.makedirs(workspace)
+def get_safe_workspace():
+    ws = os.path.expanduser("~/Documents/MusicBot_Workspace")
+    try:
+        if not os.path.exists(ws): os.makedirs(ws, exist_ok=True)
+    except: pass
+    return ws
+
+workspace = get_safe_workspace()
 debug_log_path = os.path.join(workspace, "musicbot_debug.log")
+crash_report_path = os.path.join(workspace, "crash_report.txt")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -313,10 +320,14 @@ from openpyxl.styles import PatternFill
 from browser_controller import BrowserController
 
 # PyInstaller bundle path handling
-if getattr(sys, 'frozen', False):
-    bundle_dir = sys._MEIPASS
-else:
-    bundle_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) # Root of project
+def get_bundle_dir():
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    # If not frozen, we assume we are in 'MusicBot/execution/gui_launcher.py'
+    # So root is two levels up
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+bundle_dir = get_bundle_dir()
 
 class GuiLogger(logging.Handler):
     """Custom logging handler that directs logs to a ScrolledText widget."""
@@ -1797,16 +1808,14 @@ class MusicBotGUI:
         # Init prompts.json if missing
         if not os.path.exists(prompts_path):
             # Try to find default prompts in bundle or source
-            # If frozen, sys._MEIPASS is the root where 'data' was added
-            # If not frozen, we are in 'execution/' so data is '../data'
-            if getattr(sys, 'frozen', False):
-                bundle_prompts = os.path.join(sys._MEIPASS, "data", "prompts.json")
-            else:
-                bundle_prompts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "prompts.json")
-
+            bundle_prompts = os.path.join(bundle_dir, "data", "prompts.json")
+            
             if os.path.exists(bundle_prompts):
                 import shutil
-                shutil.copy(bundle_prompts, prompts_path)
+                try:
+                    shutil.copy(bundle_prompts, prompts_path)
+                except Exception as e:
+                    logger.error(f"Failed to copy prompts: {e}")
             else:
                 # Fallback: Create with basic defaults if bundle also missing
                 try:
@@ -1816,7 +1825,8 @@ class MusicBotGUI:
                             "lyrics_master_prompt": "Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün...",
                             "art_master_prompt": "Create a high-quality YouTube music thumbnail..."
                         }, f, indent=4)
-                except: pass
+                except Exception as e:
+                    logger.error(f"Failed to create default prompts.json: {e}")
 
         # Init Input if missing
         if not os.path.exists(input_path):
@@ -1825,7 +1835,8 @@ class MusicBotGUI:
                 ws = wb.active
                 ws.append(["id", "prompt", "style"])
                 wb.save(input_path)
-            except: pass
+            except Exception as e:
+                logger.error(f"Failed to create default input_songs.xlsx: {e}")
             
         return input_path, output_path, output_dir
 
@@ -1871,7 +1882,8 @@ class MusicBotGUI:
                         # New tab for gemini
                         p2 = self.chrome_session.context.new_page()
                         p2.goto("https://gemini.google.com/app")
-                except: pass
+                except Exception as e:
+                    logger.warning(f"Failed to open browser tabs: {e}")
                 
             except Exception as e:
                 import traceback
@@ -1887,11 +1899,15 @@ class MusicBotGUI:
         self.btn_stop.config(state="normal")
 
     def enable_buttons(self):
-        self.root.after(0, lambda: self.btn_run.config(state="normal"))
-        self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
-        self.root.after(0, lambda: self.status_var.set(self.t("ready")))
-        self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
-        self.root.after(0, lambda: self.load_project_data()) # Auto refresh
+        self.master.after(0, lambda: self.btn_run.config(state="normal"))
+        self.master.after(0, lambda: self.btn_stop.config(state="disabled"))
+        self.master.after(0, lambda: self.status_var.set(self.t("ready")))
+        self.master.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
+        self.master.after(0, lambda: self.load_project_data()) # Auto refresh
+
+    def load_data(self):
+        # Dummy load_data for the finally block
+        pass
 
 if __name__ == "__main__":
     try:
@@ -1899,6 +1915,17 @@ if __name__ == "__main__":
         app = MusicBotGUI(root)
         root.mainloop()
     except Exception as e:
-        with open("CRASH_LOG.txt", "w") as f:
-            import traceback
-            f.write(str(e) + "\n" + traceback.format_exc())
+        import traceback
+        error_msg = traceback.format_exc()
+        # Log to console
+        print(f"CRITICAL STARTUP ERROR:\n{error_msg}")
+        # Log to crash report file
+        try:
+            ws_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
+            os.makedirs(ws_path, exist_ok=True)
+            with open(os.path.join(ws_path, "crash_report.txt"), "w", encoding="utf-8") as f:
+                f.write(f"Timestamp: {time.ctime()}\n")
+                f.write(error_msg)
+        except Exception as file_e:
+            print(f"Failed to write crash report: {file_e}")
+        sys.exit(1)
