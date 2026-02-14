@@ -18,6 +18,290 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+TRANSLATIONS = {
+    "English": {
+        "title": "MusicBot Pro",
+        "settings": "⚙️ Settings",
+        "refresh": "🔄 Refresh",
+        "new_project": "✨ New Project",
+        "load_project": "📂 Load Project",
+        "images": "🖼️ Images",
+        "search": "🔍 Search:",
+        "global_settings": "🚀 Global Run Settings (Defaults for items)",
+        "lyrics": "Lyrics",
+        "music": "Music",
+        "art_prompt": "Art Prompt",
+        "art_image": "Art Image",
+        "column_id": "ID",
+        "column_title": "Title / Prompt",
+        "column_style": "Style",
+        "column_progress": "Status & Progress",
+        "start": "▶ START ENGINE",
+        "stop": "⬛ STOP ENGINE",
+        "show_log": "▲ SHOW ACTIVITY LOG",
+        "hide_log": "▼ HIDE ACTIVITY LOG",
+        "no_project": "No Project Loaded",
+        "ready": "Ready",
+        "working_on": "Working on:",
+        "processing": "Processing",
+        "done": "Done",
+        "error": "Error",
+        "ui_language": "UI Language",
+        "log_startup": "Open Activity Log at Startup",
+        "active_run": "Active Run",
+        "general": "General",
+        "humanizer": "Humanizer",
+        "prompts": "Prompts",
+        "log": "Log",
+        "save_all": "💾 Save All Settings & Prompts",
+        "vocal_gender": "Vocal Gender",
+        "audio_influence": "Audio Influence",
+        "weirdness": "Weirdness",
+        "style_influence": "Style Influence",
+        "lyrics_mode": "Lyrics Mode",
+        "profiles_tab": "Profiles",
+        "profile_mgmt": "Artist Identity & Preset Management",
+        "active_profile": "Active Profile:",
+        "preset_alias": "Preset Alias:",
+        "artist_name_label": "Artist Name:",
+        "artist_style_label": "Artist Music Style:",
+        "save_preset_btn": "💾 Save Current as Preset",
+        "load_selected_btn": "📂 Load Selected",
+        "delete_selected_btn": "🗑️ Delete Selected",
+        "default_steps": "Default Run Steps (Checked on Start)",
+        "note_changes": "Note: Changes take effect on next 'Start'.",
+        "gemini_logic": "Gemini Content Logic",
+        "gen_lyrics_vs_title": "Generate Lyrics (vs just Title)",
+        "gen_music_style": "Generate Music Style",
+        "gen_visual_prompts": "Generate Visual Prompts",
+        "gen_video_prompts": "Generate Video Prompts",
+        "automation_delays": "Automation Delays",
+        "suno_delay_label": "Suno Gen Delay (s):",
+        "startup_delay_label": "Browser Startup Delay (s):",
+        "lang_reg": "Language & Regional",
+        "target_lang_label": "Target Song Language:",
+        "browser_action_label": "Browser Action",
+        "open_chrome_btn": "🌐 Open Chrome for Login",
+        "suno_adv_params": "Music Generation Parameters",
+        "suno_adv_tab": "Suno Adv",
+        "enable_persona_label": "Enable Persona Profile:",
+        "alias_label": "Alias:",
+        "link_label": "Link:",
+        "enable_vocal_gender_label": "Enable Vocal Gender:",
+        "enable_audio_influence_label": "Enable Audio Influence (%):",
+        "enable_weirdness_label": "Enable Weirdness:",
+        "enable_style_influence_label": "Enable Style Influence:",
+        "enable_lyrics_mode_label": "Enable Lyrics Mode:",
+        "human_settings_label": "Human-like Interaction Settings",
+        "enable_humanizer_label": "ENABLE HUMANIZER (Global)",
+        "activate_humanizer_label": "Activate Humanizer in:",
+        "phase1_label": "Phase 1: Gemini",
+        "phase2_label": "Phase 2: Suno",
+        "human_level_label": "Humanizer Level:",
+        "typing_speed_label": "Typing Speed:",
+        "speed_hint": "(0.05 = Fastest / 1.0 = Normal / 2.5 = Slowest)",
+        "max_retries_label": "Max Retries:",
+        "enable_adaptive_label": "Enable Adaptive Delays",
+        "lyrics_master_label": "1. Lyrics Master Prompt (Gemini):",
+        "visual_master_label": "2. Visual Master Prompt (Midjourney Style):",
+        "video_master_label": "3. Video Master Prompt (Sora/Runway):",
+        "art_master_label": "4. Art Master Prompt (YouTube Thumbnail):",
+        "startup_opts_label": "Startup Options",
+        "msg_no_project": "❌ No Project Loaded! Please Load or Create a project.",
+        "msg_load_first": "Please load a project file first.",
+        "msg_no_steps": "❌ No steps selected! Please check at least one 'Run Step'.",
+        "msg_select_step_warn": "Please select at least one step to run.",
+        "msg_confirm_process_all": "No songs selected. Process ALL listed songs?",
+        "msg_stopping": "Stopping engine...",
+        "msg_halted": "Process halted by user command.",
+        "msg_done_title": "Done",
+        "msg_done_info": "Selected tasks completed! 🎵",
+        "msg_critical_error": "Critical Error",
+        "msg_confirm_regen": "Regenerate?",
+        "msg_regen_body": "Some rows already have data (Lyrics, Prompts, etc.).\n\nDo you want to regenerate them?\n\n'Yes' will update data, 'No' will only complete missing ones.",
+        "msg_restart_lang": "Restart the application to apply UI language changes.",
+        "msg_settings_saved": "Settings and Prompts saved successfully!",
+        "msg_enter_preset_alias": "Please enter a Preset Alias name.",
+        "msg_preset_saved": "Preset '{alias}' saved successfully!",
+        "msg_preset_loaded": "Preset '{alias}' loaded!",
+        "msg_confirm_delete_preset": "Delete preset '{alias}'?",
+        "msg_failed_to_save": "Failed to save: {error}",
+        "msg_new_project_created": "New project created and loaded! 🚀",
+        "msg_failed_to_create_project": "Could not create project",
+        "msg_loaded_songs": "Loaded {count} songs from project.",
+        "msg_failed_to_load_project": "Failed to load project",
+        "vocal_default": "Default",
+        "vocal_none": "None",
+        "vocal_male": "Male",
+        "vocal_female": "Female",
+        "mode_manual": "Manual",
+        "mode_auto": "Auto",
+        "level_low": "LOW",
+        "level_medium": "MEDIUM",
+        "success": "Success",
+        "error_title": "Error",
+        "warning": "Warning",
+        "confirm": "Confirm",
+        "badge_idle": "IDLE",
+        "badge_active": "ACTIVE",
+        "badge_stopping": "STOPPING",
+        "badge_error": "ERROR",
+        "log_settings_loaded": "✅ Settings loaded from settings.json",
+        "log_settings_fail": "❌ Failed to load settings: {error}",
+        "log_project_init": "✅ Project structure initialized for {name}",
+        "log_project_load_error": "❌ Error loading project: {error}",
+        "log_halted": "🛑 Process halted by user command.",
+        "log_browser_stop": "🛑 Browser terminated by user stop command.",
+        "log_chrome_start": "🌐 Initializing Chrome for Login...",
+        "log_wait_chrome": "⏳ Please wait, browser is starting...",
+        "log_chrome_success": "✅ Chrome started successfully!",
+        "log_chrome_profile": "📂 Profile Path: {path}",
+        "log_chrome_login": "👉 Please log in to Suno/Gemini now.",
+        "log_chrome_close": "👉 You can close the browser window when finished."
+    },
+    "Turkish": {
+        "title": "MusicBot Pro",
+        "settings": "⚙️ Ayarlar",
+        "refresh": "🔄 Yenile",
+        "new_project": "✨ Yeni Proje",
+        "load_project": "📂 Proje Yükle",
+        "images": "🖼️ Resimler",
+        "search": "🔍 Ara:",
+        "global_settings": "🚀 Global Çalıştırma Ayarları (Varsayılanlar)",
+        "lyrics": "Sözler",
+        "music": "Müzik",
+        "art_prompt": "Resim Prompt",
+        "art_image": "Resim Üretim",
+        "column_id": "ID",
+        "column_title": "Başlık / Prompt",
+        "column_style": "Tarz",
+        "column_progress": "Durum & İlerleme",
+        "start": "▶ MOTORU BAŞLAT",
+        "stop": "⬛ MOTORU DURDUR",
+        "show_log": "▲ AKTİVİTE GÜNLÜĞÜNÜ GÖSTER",
+        "hide_log": "▼ AKTİVİTE GÜNLÜĞÜNÜ GİZLE",
+        "no_project": "Proje Yüklü Değil",
+        "ready": "Hazır",
+        "working_on": "Çalışılan:",
+        "processing": "İşleniyor",
+        "done": "Tamamlandı",
+        "error": "Hata",
+        "ui_language": "Arayüz Dili",
+        "log_startup": "Başlangıçta Günlüğü Aç",
+        "active_run": "Aktif Çalışma",
+        "general": "Genel",
+        "humanizer": "İnsanlaştırıcı",
+        "prompts": "Promptlar",
+        "log": "Günlük",
+        "save_all": "💾 Tüm Ayarları ve Promptları Kaydet",
+        "vocal_gender": "Vokal Cinsiyeti",
+        "audio_influence": "Ses Etkisi",
+        "weirdness": "Tuhaflık",
+        "style_influence": "Stil Etkisi",
+        "lyrics_mode": "Şarkı Sözü Modu",
+        "profiles_tab": "Profiller",
+        "profile_mgmt": "Sanatçı Kimliği ve Preset Yönetimi",
+        "active_profile": "Aktif Profil:",
+        "preset_alias": "Preset Adı:",
+        "artist_name_label": "Sanatçı Adı:",
+        "artist_style_label": "Sanatçı Müzik Tarzı:",
+        "save_preset_btn": "💾 Mevcutu Preset Olarak Kaydet",
+        "load_selected_btn": "📂 Seçileni Yükle",
+        "delete_selected_btn": "🗑️ Seçileni Sil",
+        "default_steps": "Varsayılan Çalıştırma Aşamaları (Başlangıçta Seçili)",
+        "note_changes": "Not: Değişiklikler bir sonraki 'Başlat' işleminde etkili olur.",
+        "gemini_logic": "Gemini İçerik Mantığı",
+        "gen_lyrics_vs_title": "Söz Üret (Sadece Başlık Yerine)",
+        "gen_music_style": "Müzik Tarzı Üret",
+        "gen_visual_prompts": "Görsel Promptları Üret",
+        "gen_video_prompts": "Video Promptları Üret",
+        "automation_delays": "Otomasyon Gecikmeleri",
+        "suno_delay_label": "Suno Üretim Gecikmesi (sn):",
+        "startup_delay_label": "Tarayıcı Başlangıç Gecikmesi (sn):",
+        "lang_reg": "Dil ve Bölgesel",
+        "target_lang_label": "Hedef Şarkı Dili:",
+        "browser_action_label": "Tarayıcı İşlemi",
+        "open_chrome_btn": "🌐 Giriş için Chrome'u Aç",
+        "suno_adv_params": "Müzik Üretim Parametreleri",
+        "suno_adv_tab": "Suno Gelişmiş",
+        "enable_persona_label": "Persona Profilini Etkinleştir:",
+        "alias_label": "Takma Ad:",
+        "link_label": "Bağlantı:",
+        "enable_vocal_gender_label": "Vokal Cinsiyetini Etkinleştir:",
+        "enable_audio_influence_label": "Ses Etkisini Etkinleştir (%):",
+        "enable_weirdness_label": "Tuhaflığı Etkinleştir:",
+        "enable_style_influence_label": "Stil Etkisini Etkinleştir:",
+        "enable_lyrics_mode_label": "Şarkı Sözü Modunu Etkinleştir:",
+        "human_settings_label": "İnsan Benzeri Etkileşim Ayarları",
+        "enable_humanizer_label": "İNSANLAŞTIRICIYI ETKİNLEŞTİR (Global)",
+        "activate_humanizer_label": "İnsanlaştırıcıyı Şurada Aktifleştir:",
+        "phase1_label": "Aşama 1: Gemini",
+        "phase2_label": "Aşama 2: Suno",
+        "human_level_label": "İnsanlaştırma Seviyesi:",
+        "typing_speed_label": "Yazma Hızı:",
+        "speed_hint": "(0.05 = En Hızlı / 1.0 = Normal / 2.5 = En Yavaş)",
+        "max_retries_label": "Maksimum Deneme:",
+        "enable_adaptive_label": "Uyarlanabilir Gecikmeleri Etkinleştir",
+        "lyrics_master_label": "1. Şarkı Sözü Ana Promptu (Gemini):",
+        "visual_master_label": "2. Görsel Ana Promptu (Midjourney):",
+        "video_master_label": "3. Video Ana Promptu (Sora/Runway):",
+        "art_master_label": "4. Resim Ana Promptu (YouTube):",
+        "startup_opts_label": "Başlangıç Seçenekleri",
+        "msg_no_project": "❌ Proje Yüklü Değil! Lütfen bir proje yükleyin veya oluşturun.",
+        "msg_load_first": "Lütfen önce bir proje dosyası yükleyin.",
+        "msg_no_steps": "❌ Hiçbir aşama seçilmedi! Lütfen en az bir 'Çalıştırma Aşaması' seçin.",
+        "msg_select_step_warn": "Lütfen çalıştırmak için en az bir aşama seçin.",
+        "msg_confirm_process_all": "Şarkı seçilmedi. Listedeki TÜM şarkılar işlensin mi?",
+        "msg_stopping": "Motor durduruluyor...",
+        "msg_halted": "İşlem kullanıcı komutuyla durduruldu.",
+        "msg_done_title": "Tamamlandı",
+        "msg_done_info": "Seçilen işlemler tamamlandı! 🎵",
+        "msg_critical_error": "Kritik Hata",
+        "msg_confirm_regen": "Yeniden Üret?",
+        "msg_regen_body": "Bazı satırlarda zaten veri (Söz, Prompt vb.) mevcut.\n\nBunları yeniden üretmek ister misiniz?\n\n'Evet' derseniz veriler güncellenir, 'Hayır' derseniz sadece eksikler tamamlanır.",
+        "msg_restart_lang": "Arayüz dili değişikliklerinin uygulanması için uygulamayı yeniden başlatın.",
+        "msg_settings_saved": "Ayarlar ve Promptlar başarıyla kaydedildi!",
+        "msg_enter_preset_alias": "Lütfen bir Preset Adı girin.",
+        "msg_preset_saved": "Preset '{alias}' başarıyla kaydedildi!",
+        "msg_preset_loaded": "Preset '{alias}' yüklendi!",
+        "msg_confirm_delete_preset": "Preset '{alias}' silinsin mi?",
+        "msg_failed_to_save": "Kaydetme hatası: {error}",
+        "msg_new_project_created": "Yeni proje oluşturuldu ve yüklendi! 🚀",
+        "msg_failed_to_create_project": "Proje oluşturulamadı",
+        "msg_loaded_songs": "Projeden {count} şarkı yüklendi.",
+        "msg_failed_to_load_project": "Proje yüklenemedi",
+        "vocal_default": "Varsayılan",
+        "vocal_none": "Yok",
+        "vocal_male": "Erkek",
+        "vocal_female": "Kadın",
+        "mode_manual": "Manuel",
+        "mode_auto": "Otomatik",
+        "level_low": "DÜŞÜK",
+        "level_medium": "ORTA",
+        "level_high": "YÜKSEK",
+        "success": "Başarı",
+        "error_title": "Hata",
+        "warning": "Uyarı",
+        "confirm": "Onay",
+        "badge_idle": "BEKLEMEDE",
+        "badge_active": "AKTİF",
+        "badge_stopping": "DURDURULUYOR",
+        "badge_error": "HATA",
+        "log_settings_loaded": "✅ Ayarlar settings.json dosyasından yüklendi",
+        "log_settings_fail": "❌ Ayarlar yüklenemedi: {error}",
+        "log_project_init": "✅ Proje yapısı {name} için hazırlandı",
+        "log_project_load_error": "❌ Proje yükleme hatası: {error}",
+        "log_halted": "🛑 İşlem kullanıcı komutuyla durduruldu.",
+        "log_browser_stop": "🛑 Tarayıcı kullanıcı tarafından kapatıldı.",
+        "log_chrome_start": "🌐 Giriş için Chrome başlatılıyor...",
+        "log_wait_chrome": "⏳ Lütfen bekleyin, tarayıcı açılıyor...",
+        "log_chrome_success": "✅ Chrome başarıyla başlatıldı!",
+        "log_chrome_profile": "📂 Profil Yolu: {path}",
+        "log_chrome_login": "👉 Lütfen şimdi Suno/Gemini oturumu açın.",
+        "log_chrome_close": "👉 İşleminiz bitince tarayıcı penceresini kapatabilirsiniz."
+    }
+}
+
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, scrolledtext, filedialog
 import time
@@ -52,7 +336,7 @@ class GuiLogger(logging.Handler):
 class SettingsDialog(tk.Toplevel):
     def __init__(self, parent, config, app_instance):
         super().__init__(parent)
-        self.title("⚙️ Settings")
+        self.title(app_instance.t("settings"))
         self.geometry("950x750") # Widened to ensure all tabs are visible on all OSs
         self.config = config
         self.parent = parent
@@ -64,31 +348,31 @@ class SettingsDialog(tk.Toplevel):
 
         # --- TAB 0: Profiles ---
         self.tab_presets = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_presets, text="Profiles")
+        self.notebook.add(self.tab_presets, text=self.app.t("profiles_tab"))
         
-        f_presets = ttk.LabelFrame(self.tab_presets, text="Artist Identity & Preset Management", padding=10)
+        f_presets = ttk.LabelFrame(self.tab_presets, text=self.app.t("profile_mgmt"), padding=10)
         f_presets.pack(fill="both", expand=True, padx=10, pady=10)
 
         # 1. Preset Selection
-        ttk.Label(f_presets, text="Active Profile:").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(f_presets, text=self.app.t("active_profile")).grid(row=0, column=0, sticky="w", pady=5)
         self.presets = config.get("artist_presets", {}) # Dict: {Alias: Data}
         self.combo_preset_select = ttk.Combobox(f_presets, values=list(self.presets.keys()), state="readonly")
         self.combo_preset_select.grid(row=0, column=1, sticky="ew", pady=5)
         self.combo_preset_select.bind("<<ComboboxSelected>>", lambda e: self.load_preset())
         
         # 2. Profile Alias (for saving)
-        ttk.Label(f_presets, text="Preset Alias:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(f_presets, text=self.app.t("preset_alias")).grid(row=1, column=0, sticky="w", pady=5)
         self.ent_preset_alias = ttk.Entry(f_presets)
         self.ent_preset_alias.grid(row=1, column=1, sticky="ew", pady=5)
 
         # 3. Artist Name
-        ttk.Label(f_presets, text="Artist Name:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(f_presets, text=self.app.t("artist_name_label")).grid(row=2, column=0, sticky="w", pady=5)
         self.ent_artist_name = ttk.Entry(f_presets)
         self.ent_artist_name.insert(0, config.get("artist_name", ""))
         self.ent_artist_name.grid(row=2, column=1, sticky="ew", pady=5)
 
         # 4. Artist Style
-        ttk.Label(f_presets, text="Artist Music Style:").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Label(f_presets, text=self.app.t("artist_style_label")).grid(row=3, column=0, sticky="w", pady=5)
         self.ent_artist_style = ttk.Entry(f_presets)
         self.ent_artist_style.insert(0, config.get("artist_style", ""))
         self.ent_artist_style.grid(row=3, column=1, sticky="ew", pady=5)
@@ -97,15 +381,15 @@ class SettingsDialog(tk.Toplevel):
         f_preset_btns = ttk.Frame(f_presets)
         f_preset_btns.grid(row=4, column=0, columnspan=2, pady=10)
         
-        ttk.Button(f_preset_btns, text="💾 Save Current as Preset", command=self.save_preset).pack(side="left", padx=5)
-        ttk.Button(f_preset_btns, text="📂 Load Selected", command=self.load_preset).pack(side="left", padx=5)
-        ttk.Button(f_preset_btns, text="🗑️ Delete Selected", command=self.delete_preset).pack(side="left", padx=5)
+        ttk.Button(f_preset_btns, text=self.app.t("save_preset_btn"), command=self.save_preset).pack(side="left", padx=5)
+        ttk.Button(f_preset_btns, text=self.app.t("load_selected_btn"), command=self.load_preset).pack(side="left", padx=5)
+        ttk.Button(f_preset_btns, text=self.app.t("delete_selected_btn"), command=self.delete_preset).pack(side="left", padx=5)
 
         f_presets.columnconfigure(1, weight=1)
         
         # --- TAB 1: General ---
         self.tab_general = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_general, text="General")
+        self.notebook.add(self.tab_general, text=self.app.t("general"))
         
         # Scrollable area for General Tab
         canvas = tk.Canvas(self.tab_general, borderwidth=0, highlightthickness=0)
@@ -123,82 +407,94 @@ class SettingsDialog(tk.Toplevel):
         scrollbar.pack(side="right", fill="y")
 
         # 1. Default Checked Steps
-        f_defaults = ttk.LabelFrame(scroll_frame, text="Default Run Steps (Checked on Start)", padding=10)
+        f_defaults = ttk.LabelFrame(scroll_frame, text=self.app.t("default_steps"), padding=10)
         f_defaults.pack(fill="x", padx=10, pady=5)
         
         self.var_def_lyrics = tk.BooleanVar(value=config.get("default_run_lyrics", True))
-        ttk.Checkbutton(f_defaults, text="1. Lyrics & Prompts", variable=self.var_def_lyrics).pack(anchor="w")
+        ttk.Checkbutton(f_defaults, text="1. " + self.app.t("lyrics"), variable=self.var_def_lyrics).pack(anchor="w")
         self.var_def_music = tk.BooleanVar(value=config.get("default_run_music", True))
-        ttk.Checkbutton(f_defaults, text="2. Suno Music", variable=self.var_def_music).pack(anchor="w")
+        ttk.Checkbutton(f_defaults, text="2. " + self.app.t("music"), variable=self.var_def_music).pack(anchor="w")
         self.var_def_art_p = tk.BooleanVar(value=config.get("default_run_art_prompt", True))
-        ttk.Checkbutton(f_defaults, text="3. Art Prompts", variable=self.var_def_art_p).pack(anchor="w")
+        ttk.Checkbutton(f_defaults, text="3. " + self.app.t("art_prompt"), variable=self.var_def_art_p).pack(anchor="w")
         self.var_def_art_i = tk.BooleanVar(value=config.get("default_run_art_image", True))
-        ttk.Checkbutton(f_defaults, text="4. Cover Images", variable=self.var_def_art_i).pack(anchor="w")
+        ttk.Checkbutton(f_defaults, text="4. " + self.app.t("art_image"), variable=self.var_def_art_i).pack(anchor="w")
 
         # --- TAB 1.2: Active Workflow ---
         self.tab_workflow = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_workflow, text="Active Run")
+        self.notebook.add(self.tab_workflow, text=self.app.t("active_run"))
         
-        f_active = ttk.LabelFrame(self.tab_workflow, text="Select Steps for Next Run", padding=15)
+        f_active = ttk.LabelFrame(self.tab_workflow, text=self.app.t("active_run"), padding=15)
         f_active.pack(fill="both", expand=True, padx=10, pady=10)
         
-        ttk.Checkbutton(f_active, text="1. Lyrics & Prompts (Gemini)", variable=self.app.var_run_lyrics).pack(anchor="w", pady=5)
-        ttk.Checkbutton(f_active, text="2. Music Generation (Suno)", variable=self.app.var_run_music).pack(anchor="w", pady=5)
-        ttk.Checkbutton(f_active, text="3. Art Prompts (Gemini)", variable=self.app.var_run_art_prompt).pack(anchor="w", pady=5)
-        ttk.Checkbutton(f_active, text="4. Cover Images (Gemini)", variable=self.app.var_run_art_image).pack(anchor="w", pady=5)
+        ttk.Checkbutton(f_active, text="1. " + self.app.t("lyrics"), variable=self.app.var_run_lyrics).pack(anchor="w", pady=5)
+        ttk.Checkbutton(f_active, text="2. " + self.app.t("music"), variable=self.app.var_run_music).pack(anchor="w", pady=5)
+        ttk.Checkbutton(f_active, text="3. " + self.app.t("art_prompt"), variable=self.app.var_run_art_prompt).pack(anchor="w", pady=5)
+        ttk.Checkbutton(f_active, text="4. " + self.app.t("art_image"), variable=self.app.var_run_art_image).pack(anchor="w", pady=5)
         
-        ttk.Label(f_active, text="Note: Changes take effect on next 'Start'.", font=("Helvetica", 9, "italic"), foreground="gray").pack(pady=20)
+        ttk.Label(f_active, text=self.app.t("note_changes"), font=("Helvetica", 9, "italic"), foreground="gray").pack(pady=20)
 
         # 2. Gemini Generation Logic
-        f_gemini = ttk.LabelFrame(scroll_frame, text="Gemini Content Logic", padding=10)
+        f_gemini = ttk.LabelFrame(scroll_frame, text=self.app.t("gemini_logic"), padding=10)
         f_gemini.pack(fill="x", padx=10, pady=5)
         
         self.var_lyrics = tk.BooleanVar(value=config.get("gemini_lyrics", True))
-        ttk.Checkbutton(f_gemini, text="Generate Lyrics (vs just Title)", variable=self.var_lyrics).pack(anchor="w")
+        ttk.Checkbutton(f_gemini, text=self.app.t("gen_lyrics_vs_title"), variable=self.var_lyrics).pack(anchor="w")
         self.var_style = tk.BooleanVar(value=config.get("gemini_style", True))
-        ttk.Checkbutton(f_gemini, text="Generate Music Style", variable=self.var_style).pack(anchor="w")
+        ttk.Checkbutton(f_gemini, text=self.app.t("gen_music_style"), variable=self.var_style).pack(anchor="w")
         self.var_visual = tk.BooleanVar(value=config.get("gemini_visual", True))
-        ttk.Checkbutton(f_gemini, text="Generate Visual Prompts", variable=self.var_visual).pack(anchor="w")
+        ttk.Checkbutton(f_gemini, text=self.app.t("gen_visual_prompts"), variable=self.var_visual).pack(anchor="w")
         self.var_video = tk.BooleanVar(value=config.get("gemini_video", False))
-        ttk.Checkbutton(f_gemini, text="Generate Video Prompts", variable=self.var_video).pack(anchor="w")
+        ttk.Checkbutton(f_gemini, text=self.app.t("gen_video_prompts"), variable=self.var_video).pack(anchor="w")
         
         # 3. Automation Delays
-        f_suno = ttk.LabelFrame(scroll_frame, text="Automation Delays", padding=10)
+        f_suno = ttk.LabelFrame(scroll_frame, text=self.app.t("automation_delays"), padding=10)
         f_suno.pack(fill="x", padx=10, pady=5)
         
-        ttk.Label(f_suno, text="Suno Gen Delay (s):").pack(anchor="w")
+        ttk.Label(f_suno, text=self.app.t("suno_delay_label")).pack(anchor="w")
         self.entry_delay = ttk.Entry(f_suno)
         self.entry_delay.insert(0, str(config.get("suno_delay", 15)))
         self.entry_delay.pack(fill="x", pady=2)
-
-        ttk.Label(f_suno, text="Browser Startup Delay (s):").pack(anchor="w")
+        
+        ttk.Label(f_suno, text=self.app.t("startup_delay_label")).pack(anchor="w")
         self.entry_startup = ttk.Entry(f_suno)
         self.entry_startup.insert(0, str(config.get("startup_delay", 5)))
         self.entry_startup.pack(fill="x", pady=2)
         
         # 4. Language
-        f_lang = ttk.LabelFrame(scroll_frame, text="Language & Regional", padding=10)
+        f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
+        ttk.Label(f_lang, text=self.app.t("target_lang_label")).pack(anchor="w")
         self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese"], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
-        # 5. Browser Action
-        f_browser = ttk.LabelFrame(scroll_frame, text="Browser Action", padding=10)
-        f_browser.pack(fill="x", padx=10, pady=5)
-        ttk.Button(f_browser, text="🌐 Open Chrome for Login", command=self.open_chrome).pack(fill="x")
+        # UI Language
+        f_ui_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("ui_language"), padding=10)
+        f_ui_lang.pack(fill="x", padx=10, pady=5)
+        
+        self.combo_ui_lang = ttk.Combobox(f_ui_lang, values=["Turkish", "English"], state="readonly")
+        self.combo_ui_lang.set(config.get("ui_language", "Turkish"))
+        self.combo_ui_lang.pack(fill="x", pady=2)
+
+        # Activity Log Startup State
+        f_startup_opts = ttk.LabelFrame(scroll_frame, text=self.app.t("startup_opts_label"), padding=10)
+        f_startup_opts.pack(fill="x", padx=10, pady=5)
+        self.var_log_at_start = tk.BooleanVar(value=config.get("log_open_at_start", False))
+        ttk.Checkbutton(f_startup_opts, text=self.app.t("log_startup"), variable=self.var_log_at_start).pack(anchor="w")
+
+        # 4. Language
 
         # --- TAB 1.5: Suno Adv ---
         self.tab_adv_suno = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_adv_suno, text="Suno Adv")
+        self.notebook.add(self.tab_adv_suno, text=self.app.t("suno_adv_tab"))
         
-        f_adv_suno = ttk.LabelFrame(self.tab_adv_suno, text="Music Generation Parameters", padding=10)
+        f_adv_suno = ttk.LabelFrame(self.tab_adv_suno, text=self.app.t("suno_adv_params"), padding=10)
         f_adv_suno.pack(fill="both", expand=True, padx=10, pady=10)
 
 
         # Persona Profile Section
         self.var_persona_link_enabled = tk.BooleanVar(value=config.get("suno_persona_link_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Persona Profile:", variable=self.var_persona_link_enabled).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_persona_label"), variable=self.var_persona_link_enabled).grid(row=1, column=0, sticky="w", pady=2)
         
         # Frame for Persona Manager
         f_persona_mgr = ttk.Frame(f_adv_suno)
@@ -218,11 +514,11 @@ class SettingsDialog(tk.Toplevel):
         f_pm_controls = ttk.Frame(f_persona_mgr)
         f_pm_controls.pack(side="top", fill="x")
         
-        ttk.Label(f_pm_controls, text="Alias:").pack(side="left")
+        ttk.Label(f_pm_controls, text=self.app.t("alias_label")).pack(side="left")
         self.ent_pm_alias = ttk.Entry(f_pm_controls, width=10)
         self.ent_pm_alias.pack(side="left", padx=2)
         
-        ttk.Label(f_pm_controls, text="Link:").pack(side="left")
+        ttk.Label(f_pm_controls, text=self.app.t("link_label")).pack(side="left")
         self.ent_pm_link = ttk.Entry(f_pm_controls, width=15)
         self.ent_pm_link.pack(side="left", padx=2)
         
@@ -231,74 +527,74 @@ class SettingsDialog(tk.Toplevel):
 
         # 2. Vocal Gender
         self.var_gender_enabled = tk.BooleanVar(value=config.get("vocal_gender_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Vocal Gender:", variable=self.var_gender_enabled).grid(row=2, column=0, sticky="w", pady=2)
-        self.combo_gender = ttk.Combobox(f_adv_suno, values=["Default", "None", "Male", "Female"], state="readonly")
-        self.combo_gender.set(config.get("vocal_gender", "Default"))
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_vocal_gender_label"), variable=self.var_gender_enabled).grid(row=2, column=0, sticky="w", pady=2)
+        self.combo_gender = ttk.Combobox(f_adv_suno, values=[self.app.t("vocal_default"), self.app.t("vocal_none"), self.app.t("vocal_male"), self.app.t("vocal_female")], state="readonly")
+        self.combo_gender.set(config.get("vocal_gender", self.app.t("vocal_default")))
         self.combo_gender.grid(row=2, column=1, sticky="ew", pady=2)
 
         # 3. Audio Influence (%)
         self.var_audio_enabled = tk.BooleanVar(value=config.get("audio_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Audio Influence (%):", variable=self.var_audio_enabled).grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_audio_influence_label"), variable=self.var_audio_enabled).grid(row=3, column=0, sticky="w", pady=2)
         self.scale_audio = tk.Scale(f_adv_suno, from_=10, to_=90, orient="horizontal")
         self.scale_audio.set(config.get("audio_influence", 25))
         self.scale_audio.grid(row=3, column=1, sticky="ew", pady=2)
 
         # 4. Weirdness
         self.var_weird_enabled = tk.BooleanVar(value=config.get("weirdness_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Weirdness:", variable=self.var_weird_enabled).grid(row=4, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_weirdness_label"), variable=self.var_weird_enabled).grid(row=4, column=0, sticky="w", pady=2)
         self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_weird.set(50 if config.get("weirdness") == "Default" else int(config.get("weirdness", 50)))
         self.scale_weird.grid(row=4, column=1, sticky="ew", pady=2)
 
         # 5. Style Influence
         self.var_style_enabled = tk.BooleanVar(value=config.get("style_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Style Influence:", variable=self.var_style_enabled).grid(row=5, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_style_influence_label"), variable=self.var_style_enabled).grid(row=5, column=0, sticky="w", pady=2)
         self.scale_style = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_style.set(50 if config.get("style_influence") == "Default" else int(config.get("style_influence", 50)))
         self.scale_style.grid(row=5, column=1, sticky="ew", pady=2)
 
         # 6. Lyrics Mode
         self.var_lyrics_mode_enabled = tk.BooleanVar(value=config.get("lyrics_mode_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text="Enable Lyrics Mode:", variable=self.var_lyrics_mode_enabled).grid(row=6, column=0, sticky="w", pady=2)
-        self.combo_lyrics_mode = ttk.Combobox(f_adv_suno, values=["Default", "Manual", "Auto"], state="readonly")
-        self.combo_lyrics_mode.set(config.get("lyrics_mode", "Default"))
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_lyrics_mode_label"), variable=self.var_lyrics_mode_enabled).grid(row=6, column=0, sticky="w", pady=2)
+        self.combo_lyrics_mode = ttk.Combobox(f_adv_suno, values=[self.app.t("vocal_default"), self.app.t("mode_manual"), self.app.t("mode_auto")], state="readonly")
+        self.combo_lyrics_mode.set(config.get("lyrics_mode", self.app.t("vocal_default")))
         self.combo_lyrics_mode.grid(row=6, column=1, sticky="ew", pady=2)
 
         f_adv_suno.columnconfigure(1, weight=1)
 
         # --- TAB 2: Humanizer ---
         self.tab_humanizer = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_humanizer, text="Humanizer")
+        self.notebook.add(self.tab_humanizer, text=self.app.t("humanizer"))
         
-        f_human = ttk.LabelFrame(self.tab_humanizer, text="Human-like Interaction Settings", padding=10)
+        f_human = ttk.LabelFrame(self.tab_humanizer, text=self.app.t("human_settings_label"), padding=10)
         f_human.pack(fill="both", expand=True, padx=10, pady=10)
         
         # 1. Main Toggle
         self.var_humanizer_enabled = tk.BooleanVar(value=config.get("humanizer_enabled", True))
-        ttk.Checkbutton(f_human, text="ENABLE HUMANIZER (Global)", variable=self.var_humanizer_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=10)
+        ttk.Checkbutton(f_human, text=self.app.t("enable_humanizer_label"), variable=self.var_humanizer_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=10)
 
         # 2. Phase-specific activity
-        ttk.Label(f_human, text="Activate Humanizer in:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(f_human, text=self.app.t("activate_humanizer_label")).grid(row=1, column=0, sticky="w", pady=5)
         self.var_h_gemini = tk.BooleanVar(value=config.get("h_activate_gemini", True))
-        ttk.Checkbutton(f_human, text="Phase 1: Gemini", variable=self.var_h_gemini).grid(row=2, column=0, sticky="w")
+        ttk.Checkbutton(f_human, text=self.app.t("phase1_label"), variable=self.var_h_gemini).grid(row=2, column=0, sticky="w")
         self.var_h_suno = tk.BooleanVar(value=config.get("h_activate_suno", True))
-        ttk.Checkbutton(f_human, text="Phase 2: Suno", variable=self.var_h_suno).grid(row=2, column=1, sticky="w")
+        ttk.Checkbutton(f_human, text=self.app.t("phase2_label"), variable=self.var_h_suno).grid(row=2, column=1, sticky="w")
 
         # 3. Humanizer Level
-        ttk.Label(f_human, text="Humanizer Level:").grid(row=3, column=0, sticky="w", pady=5)
-        self.combo_human_level = ttk.Combobox(f_human, values=["LOW", "MEDIUM", "HIGH"], state="readonly")
-        self.combo_human_level.set(config.get("humanizer_level", "MEDIUM"))
+        ttk.Label(f_human, text=self.app.t("human_level_label")).grid(row=3, column=0, sticky="w", pady=5)
+        self.combo_human_level = ttk.Combobox(f_human, values=[self.app.t("level_low"), self.app.t("level_medium"), self.app.t("level_high")], state="readonly")
+        self.combo_human_level.set(config.get("humanizer_level", self.app.t("level_medium")))
         self.combo_human_level.grid(row=3, column=1, sticky="w", pady=5)
         
         # 4. Typing Speed Multiplier
-        ttk.Label(f_human, text="Typing Speed:").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Label(f_human, text=self.app.t("typing_speed_label")).grid(row=4, column=0, sticky="w", pady=5)
         self.scale_speed = tk.Scale(f_human, from_=0.05, to_=2.5, resolution=0.05, orient="horizontal")
         self.scale_speed.set(config.get("humanizer_speed", 1.0))
         self.scale_speed.grid(row=4, column=1, sticky="ew", pady=5)
-        ttk.Label(f_human, text="(0.05 = Fastest / 1.0 = Normal / 2.5 = Slowest)", foreground="gray").grid(row=5, column=1, sticky="w")
+        ttk.Label(f_human, text=self.app.t("speed_hint"), foreground="gray").grid(row=5, column=1, sticky="w")
         
         # 5. Max Retries
-        ttk.Label(f_human, text="Max Retries:").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Label(f_human, text=self.app.t("max_retries_label")).grid(row=6, column=0, sticky="w", pady=5)
         self.spin_retries = tk.Spinbox(f_human, from_=0, to_=3, width=5)
         self.spin_retries.delete(0, tk.END)
         self.spin_retries.insert(0, str(config.get("humanizer_retries", 1)))
@@ -306,13 +602,13 @@ class SettingsDialog(tk.Toplevel):
         
         # 6. Adaptive Delay
         self.var_adaptive = tk.BooleanVar(value=config.get("humanizer_adaptive", True))
-        ttk.Checkbutton(f_human, text="Enable Adaptive Delays", variable=self.var_adaptive).grid(row=7, column=0, columnspan=2, sticky="w", pady=5)
+        ttk.Checkbutton(f_human, text=self.app.t("enable_adaptive_label"), variable=self.var_adaptive).grid(row=7, column=0, columnspan=2, sticky="w", pady=5)
         
         f_human.columnconfigure(1, weight=1)
 
         # --- TAB 3: Prompts ---
         self.tab_prompts = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_prompts, text="Prompts")
+        self.notebook.add(self.tab_prompts, text=self.app.t("prompts"))
         
         # Scrollable area for Prompts Tab
         p_canvas = tk.Canvas(self.tab_prompts, borderwidth=0, highlightthickness=0)
@@ -332,22 +628,22 @@ class SettingsDialog(tk.Toplevel):
         self.prompts_path = os.path.join(os.path.dirname(config.get("metadata_path", "")), "prompts.json")
         
         # Lyrics
-        ttk.Label(p_scroll_frame, text="1. Lyrics Master Prompt (Gemini):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        ttk.Label(p_scroll_frame, text=self.app.t("lyrics_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
         self.txt_lyrics = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
         self.txt_lyrics.pack(fill="x", padx=10, pady=5)
         
         # Visual
-        ttk.Label(p_scroll_frame, text="2. Visual Master Prompt (Midjourney Style):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        ttk.Label(p_scroll_frame, text=self.app.t("visual_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
         self.txt_visual = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
         self.txt_visual.pack(fill="x", padx=10, pady=5)
         
         # Video
-        ttk.Label(p_scroll_frame, text="3. Video Master Prompt (Sora/Runway):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        ttk.Label(p_scroll_frame, text=self.app.t("video_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
         self.txt_video = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
         self.txt_video.pack(fill="x", padx=10, pady=5)
         
         # Art (Thumbnail)
-        ttk.Label(p_scroll_frame, text="4. Art Master Prompt (YouTube Thumbnail):", font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+        ttk.Label(p_scroll_frame, text=self.app.t("art_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
         self.txt_art = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
         self.txt_art.pack(fill="x", padx=10, pady=5)
         
@@ -355,7 +651,7 @@ class SettingsDialog(tk.Toplevel):
 
         # --- TAB: Activity Log (MOVED TO END) ---
         self.tab_logs = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_logs, text="Log")
+        self.notebook.add(self.tab_logs, text=self.app.t("log"))
         
         self.log_disp = scrolledtext.ScrolledText(self.tab_logs, state='disabled', font=("Consolas", 9), bg="#ffffff", fg="#1e1e1e")
         self.log_disp.pack(fill="both", expand=True, padx=5, pady=5)
@@ -377,7 +673,7 @@ class SettingsDialog(tk.Toplevel):
         # Save Button
         f_btn = ttk.Frame(self, padding=10)
         f_btn.pack(fill="x", side="bottom")
-        ttk.Button(f_btn, text="💾 Save All Settings & Prompts", command=self.save_settings).pack(fill="x")
+        ttk.Button(f_btn, text=self.app.t("save_all"), command=self.save_settings).pack(fill="x")
         
         # Cleanup handler on close
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -390,7 +686,7 @@ class SettingsDialog(tk.Toplevel):
     def save_preset(self):
         alias = self.ent_preset_alias.get().strip()
         if not alias:
-            messagebox.showwarning("Warning", "Please enter a Preset Alias name.")
+            messagebox.showwarning(self.app.t("warning"), self.app.t("msg_enter_preset_alias"))
             return
         
         # Capture current prompts
@@ -432,7 +728,7 @@ class SettingsDialog(tk.Toplevel):
         }
         self.update_preset_combo()
         self.combo_preset_select.set(alias)
-        messagebox.showinfo("Success", f"Preset '{alias}' saved successfully!")
+        messagebox.showinfo(self.app.t("success"), self.app.t("msg_preset_saved").format(alias=alias))
 
     def load_preset(self):
         alias = self.combo_preset_select.get()
@@ -487,12 +783,12 @@ class SettingsDialog(tk.Toplevel):
         self.ent_preset_alias.delete(0, tk.END)
         self.ent_preset_alias.insert(0, alias)
         
-        messagebox.showinfo("Success", f"Preset '{alias}' loaded!")
+        messagebox.showinfo(self.app.t("success"), self.app.t("msg_preset_loaded").format(alias=alias))
 
     def delete_preset(self):
         alias = self.combo_preset_select.get()
         if alias and alias in self.presets:
-            if messagebox.askyesno("Confirm", f"Delete preset '{alias}'?"):
+            if messagebox.askyesno(self.app.t("confirm"), self.app.t("msg_confirm_delete_preset").format(alias=alias)):
                 del self.presets[alias]
                 self.update_preset_combo()
                 self.combo_preset_select.set('')
@@ -511,7 +807,8 @@ class SettingsDialog(tk.Toplevel):
                     self.txt_visual.insert("1.0", data.get("visual_master_prompt", ""))
                     self.txt_video.insert("1.0", data.get("video_master_prompt", ""))
                     self.txt_art.insert("1.0", data.get("art_master_prompt", ""))
-            except: pass
+            except Exception as e:
+                logger.error(f"Failed to load prompts data: {e}")
 
     def add_persona(self):
         alias = self.ent_pm_alias.get().strip()
@@ -547,6 +844,8 @@ class SettingsDialog(tk.Toplevel):
             self.config["suno_delay"] = int(self.entry_delay.get())
             self.config["startup_delay"] = int(self.entry_startup.get())
             self.config["target_language"] = self.combo_lang.get()
+            self.config["ui_language"] = self.combo_ui_lang.get()
+            self.config["log_open_at_start"] = self.var_log_at_start.get()
             self.config["artist_name"] = self.ent_artist_name.get()
             self.config["artist_style"] = self.ent_artist_style.get()
             # Humanizer Configs
@@ -597,18 +896,24 @@ class SettingsDialog(tk.Toplevel):
             if hasattr(self.app, "save_settings"):
                 self.app.save_settings(self.config)
             
-            messagebox.showinfo("Success", "Settings and Prompts saved successfully!")
+            # Warn about language change
+            if self.combo_ui_lang.get() != self.app.config.get("ui_language"):
+                messagebox.showinfo(self.app.t("ready"), self.app.t("msg_restart_lang"))
+
+            messagebox.showinfo(self.app.t("success"), self.app.t("msg_settings_saved"))
             self.destroy()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save: {e}")
+            messagebox.showerror(self.app.t("error"), self.app.t("msg_failed_to_save").format(error=e))
 
 class MusicBotGUI:
+    def t(self, key):
+        lang = self.config.get("ui_language", "Turkish")
+        return TRANSLATIONS.get(lang, TRANSLATIONS["Turkish"]).get(key, key)
+
     def __init__(self, root):
         self.root = root
-        self.root.title("MusicBot Pro Dashboard")
-        self.root.geometry("1100x800")
         
-        # State & Logic Flags (Initialize FIRST)
+        # 1. State & Logic Flags (Initialize FIRST)
         self.stop_requested = False
         self.active_browser = None
         self._search_timer = None
@@ -617,20 +922,16 @@ class MusicBotGUI:
         self.current_song_var = tk.StringVar(value="")
         self.selected_songs = set()
         self.song_steps = {} # Per-song phase selection: {rid: [L, M, AP, AI]}
-        
-        # Configuration (Default Values)
+
+        # 2. Configuration (Default Values)
         input_path, _, _ = self.get_data_paths()
         self.config = {
             "gemini_lyrics": True, "gemini_style": True, "gemini_visual": True, "gemini_video": False,
             "suno_delay": 15, "startup_delay": 5,
             "metadata_path": input_path,
-            "target_language": "Turkish",
-            "default_run_lyrics": True,
-            "default_run_music": True,
-            "default_run_art_prompt": True,
             "default_run_art_image": True,
-            # Suno Advanced Options
-            # Suno Advanced Options
+            "ui_language": "Turkish",
+            "log_open_at_start": False,
             "audio_influence": 25,
             "vocal_gender": "Default",
             "lyrics_mode": "Default",
@@ -640,13 +941,20 @@ class MusicBotGUI:
             "artist_style": "",
             "artist_presets": {},
             "active_preset": "",
-            # Enabled Flags
             "weirdness_enabled": False,
             "style_influence_enabled": False,
             "vocal_gender_enabled": False,
             "audio_influence_enabled": False
         }
+        
+        # 3. Load Saved Settings
         self.load_settings()
+
+        # 4. Finalize Window
+        self.root.title(self.t("title"))
+        self.root.geometry("1200x850") # Slightly larger for more columns
+
+        # --- THEME (Modernized) ---
 
         # Workflow Logic Variables
         self.var_run_lyrics = tk.BooleanVar(value=self.config.get("default_run_lyrics", True))
@@ -707,41 +1015,42 @@ class MusicBotGUI:
         self.f_top = ttk.Frame(self.root, padding=10)
         self.f_top.pack(fill="x")
         
-        ttk.Button(self.f_top, text="⚙️ Settings", command=self.open_settings).pack(side="right", padx=5)
-        ttk.Button(self.f_top, text="🔄 Refresh", command=self.load_project_data).pack(side="right", padx=5)
+        ttk.Button(self.f_top, text=self.t("settings"), command=self.open_settings).pack(side="right", padx=5)
+        ttk.Button(self.f_top, text=self.t("refresh"), command=self.load_project_data).pack(side="right", padx=5)
         
         ttk.Label(self.f_top, text="MusicBot Pro", style="Header.TLabel").pack(side="left", padx=5)
         
         # Unified "Load Project" Button
-        self.btn_new = ttk.Button(self.f_top, text="✨ New Project", command=self.create_new_project)
+        self.btn_new = ttk.Button(self.f_top, text=self.t("new_project"), command=self.create_new_project)
         self.btn_new.pack(side="left", padx=5)
         
-        self.btn_load = ttk.Button(self.f_top, text="📂 Load Project", command=self.load_project_file)
+        self.btn_load = ttk.Button(self.f_top, text=self.t("load_project"), command=self.load_project_file)
         self.btn_load.pack(side="left", padx=5)
         
         # Project Status Label
-        self.lbl_project = ttk.Label(self.f_top, text="No Project Loaded", font=("Helvetica", 10, "italic"), foreground="gray")
+        self.lbl_project_text = tk.StringVar(value=self.t("no_project"))
+        self.lbl_project = ttk.Label(self.f_top, textvariable=self.lbl_project_text, font=("Helvetica", 10, "italic"), foreground="gray")
         self.lbl_project.pack(side="left", padx=10)
         
-        ttk.Button(self.f_top, text="🖼️ Images", command=self.open_image_folder).pack(side="left", padx=2)
+        ttk.Button(self.f_top, text=self.t("images"), command=self.open_image_folder).pack(side="left", padx=2)
 
         # Filter (Enhanced)
         self.f_filter = ttk.Frame(self.root, padding="5 0 5 10")
         self.f_filter.pack(fill="x", padx=10)
-        ttk.Label(self.f_filter, text="🔍 Search:").pack(side="left")
+        ttk.Label(self.f_filter, text=self.t("search")).pack(side="left")
         self.filter_var = tk.StringVar()
         self.filter_var.trace("w", self.apply_filter)
         self.ent_filter = ttk.Entry(self.f_filter, textvariable=self.filter_var)
         self.ent_filter.pack(side="left", fill="x", expand=True, padx=5)
 
         # Active Run Controls (MODERNIZED & INTEGRATED TO DASHBOARD)
-        self.f_run_ops = ttk.LabelFrame(self.root, text="🚀 Global Run Settings (Defaults for items)", padding=5)
+        self.f_run_ops = ttk.LabelFrame(self.root, text=self.t("global_settings"), padding=5)
         self.f_run_ops.pack(fill="x", padx=10, pady=(0, 5))
         
-        ttk.Checkbutton(self.f_run_ops, text="Lyrics", variable=self.var_run_lyrics).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text="Music", variable=self.var_run_music).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text="Art Prompt", variable=self.var_run_art_prompt).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text="Art Image", variable=self.var_run_art_image).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("lyrics"), variable=self.var_run_lyrics, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("music"), variable=self.var_run_music, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("art_prompt"), variable=self.var_run_art_prompt, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self.apply_filter).pack(side="left", padx=10)
 
         # Main Table
         self.f_tree = ttk.Frame(self.root)
@@ -759,13 +1068,13 @@ class MusicBotGUI:
 
         # Setup Columns
         self.tree.heading("sel", text="✔")
-        self.tree.heading("id", text="ID")
-        self.tree.heading("title", text="Title / Prompt")
-        self.tree.heading("style", text="Style")
-        self.tree.heading("progress", text="Status & Progress")
-        self.tree.heading("lyrics", text="Lyrics")
-        self.tree.heading("music", text="Music")
-        self.tree.heading("art", text="Art")
+        self.tree.heading("id", text=self.t("column_id"))
+        self.tree.heading("title", text=self.t("column_title"))
+        self.tree.heading("style", text=self.t("column_style"))
+        self.tree.heading("progress", text=self.t("column_progress"))
+        self.tree.heading("lyrics", text=self.t("lyrics"))
+        self.tree.heading("music", text=self.t("music"))
+        self.tree.heading("art", text=self.t("art_image")) 
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
         self.tree.heading("run_ap", text="AP")
@@ -797,23 +1106,24 @@ class MusicBotGUI:
         self.status_bar = ttk.Frame(self.f_bottom)
         self.status_bar.pack(fill="x", pady=(0, 5))
         
-        self.lbl_badge = tk.Label(self.status_bar, text=" ● IDLE ", font=("Helvetica", 9, "bold"), bg="#888888", fg="white", padx=8, pady=2)
+        self.lbl_badge = tk.Label(self.status_bar, text=f" ● {self.t('badge_idle')} ", font=("Helvetica", 9, "bold"), bg="#888888", fg="white", padx=8, pady=2)
         self.lbl_badge.pack(side="left")
         
-        self.status_var = tk.StringVar(value="Ready")
+        self.status_var = tk.StringVar(value=self.t("ready"))
         ttk.Label(self.status_bar, textvariable=self.status_var, font=("Helvetica", 10, "italic")).pack(side="left", padx=10)
         
         ttk.Label(self.status_bar, text="|", foreground="gray").pack(side="left", padx=5)
-        ttk.Label(self.status_bar, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2").pack(side="left", padx=5)
+        self.lbl_current_song = ttk.Label(self.status_bar, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2")
+        self.lbl_current_song.pack(side="left", padx=5, fill="x", expand=True)
 
         # Action Buttons
         self.f_btns = ttk.Frame(self.f_bottom)
         self.f_btns.pack(fill="x")
         
-        self.btn_run = ttk.Button(self.f_btns, text="▶ START ENGINE", style="Action.TButton", command=self.start_process)
+        self.btn_run = ttk.Button(self.f_btns, text=self.t("start"), style="Action.TButton", command=self.start_process)
         self.btn_run.pack(side="left", fill="x", expand=True, padx=2)
         
-        self.btn_stop = ttk.Button(self.f_btns, text="⬛ STOP ENGINE", command=self.stop_process)
+        self.btn_stop = ttk.Button(self.f_btns, text=self.t("stop"), command=self.stop_process)
         self.btn_stop.pack(side="left", fill="x", expand=True, padx=2)
         self.btn_stop.configure(state="disabled")
 
@@ -821,7 +1131,7 @@ class MusicBotGUI:
         self.f_log_container = ttk.Frame(self.root)
         self.f_log_container.pack(fill="x", side="bottom", padx=10, pady=(0, 5))
         
-        self.btn_toggle_log = ttk.Button(self.f_log_container, text="▲ SHOW ACTIVITY LOG", command=self.toggle_logs)
+        self.btn_toggle_log = ttk.Button(self.f_log_container, text=self.t("show_log"), command=self.toggle_logs)
         self.btn_toggle_log.pack(fill="x")
         
         self.f_log_content = ttk.Frame(self.f_log_container)
@@ -841,6 +1151,10 @@ class MusicBotGUI:
         
         # Initial Load
         self.load_project_data() # Load last project or show no project
+        
+        # Handle log visibility at startup
+        if self.config.get("log_open_at_start", False):
+            self.root.after(100, self.toggle_logs)
 
     def load_settings(self):
         """Loads settings from settings.json in workspace."""
@@ -851,9 +1165,9 @@ class MusicBotGUI:
                 with open(settings_path, "r", encoding="utf-8") as f:
                     saved_config = json.load(f)
                     self.config.update(saved_config)
-                logger.info("✅ Settings loaded from settings.json")
+                logger.info(self.t("log_settings_loaded"))
             except Exception as e:
-                logger.error(f"Failed to load settings: {e}")
+                logger.error(self.t("log_settings_fail").format(error=e))
 
     def save_settings(self, new_config=None):
         """Saves current config to settings.json in workspace."""
@@ -901,7 +1215,7 @@ class MusicBotGUI:
         path = filedialog.asksaveasfilename(
             initialdir=workspace,
             initialfile=initial_file,
-            title="Create New Project",
+            title=self.t("new_project"),
             filetypes=[("Excel Files", "*.xlsx")]
         )
         
@@ -928,17 +1242,17 @@ class MusicBotGUI:
             
             # 4. Load it immediately
             self.load_project_data(path)
-            messagebox.showinfo("Success", "New project created and loaded! 🚀")
+            messagebox.showinfo(self.t("success"), self.t("msg_new_project_created"))
             
         except Exception as e:
             logger.error(f"Failed to create project: {e}")
-            messagebox.showerror("Error", f"Could not create project: {e}")
+            messagebox.showerror(self.t("error"), f"{self.t('msg_failed_to_create_project')}: {e}")
 
     def load_project_file(self):
         """Opens file dialog to select a project file."""
         from tkinter import filedialog
         path = filedialog.askopenfilename(
-            title="Select Project File",
+            title=self.t("load_project"),
             filetypes=[("Excel Files", "*.xlsx")],
             initialdir=os.path.expanduser("~/Documents")
         )
@@ -952,16 +1266,17 @@ class MusicBotGUI:
             path = self.config.get("last_project")
             
         if not path or not os.path.exists(path):
-            self.lbl_project.config(text="No Project Loaded", foreground="gray")
+            self.lbl_project.config(text=self.t("no_project"), foreground="gray")
             self.all_songs = {}
             for item in self.tree.get_children():
                 self.tree.delete(item)
             self.apply_filter() # Clear the treeview
-            self.status_var.set("Ready")
+            self.status_var.set(self.t("ready"))
             return
 
         self.project_path = path
-        self.lbl_project.config(text=f"📄 {os.path.basename(path)}", foreground="green")
+        self.lbl_project_text.set(f"📄 {os.path.basename(path)}")
+        self.lbl_project.config(foreground="green")
         
         # Ensure Output Logic (Auto-Initialize columns)
         self.ensure_project_structure(path)
@@ -1000,11 +1315,11 @@ class MusicBotGUI:
                     }
             
             self.apply_filter()
-            self.status_var.set(f"Loaded {len(self.all_songs)} songs from project.")
+            self.status_var.set(f"{self.t('msg_loaded_songs').format(count=len(self.all_songs))}")
             
         except Exception as e:
             logger.error(f"Error loading project: {e}")
-            messagebox.showerror("Error", f"Failed to load project: {e}")
+            messagebox.showerror(self.t("error"), f"{self.t('msg_failed_to_load_project')}: {e}")
 
     def ensure_project_structure(self, path):
         """Adds missing columns to a raw input file to make it a Project File."""
@@ -1086,11 +1401,12 @@ class MusicBotGUI:
             ])
             self.song_steps[rid] = steps # Persist initialization
             
-            # Using Blue/Orange characters for visual distinction as requested
-            s_rl = "🔵" if steps[0] else "☐"
+            # UNIQUE COLORS per step as requested
+            # L: Purple, M: Blue, AP: Yellow, AI: Green
+            s_rl = "🟣" if steps[0] else "☐"
             s_rm = "🔵" if steps[1] else "☐"
-            s_rap = "🟠" if steps[2] else "☐"
-            s_rai = "🟠" if steps[3] else "☐"
+            s_rap = "🟡" if steps[2] else "☐"
+            s_rai = "🟢" if steps[3] else "☐"
 
             self.tree.insert("", "end", iid=rid, values=(
                 s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art,
@@ -1103,11 +1419,11 @@ class MusicBotGUI:
     def toggle_logs(self):
         if self.log_visible.get():
             self.f_log_content.pack_forget()
-            self.btn_toggle_log.config(text="▲ SHOW ACTIVITY LOG")
+            self.btn_toggle_log.config(text=self.t("show_log"))
             self.log_visible.set(False)
         else:
             self.f_log_content.pack(fill="x", pady=5)
-            self.btn_toggle_log.config(text="▼ HIDE ACTIVITY LOG")
+            self.btn_toggle_log.config(text=self.t("hide_log"))
             self.log_visible.set(True)
 
     def on_space_toggle(self, event):
@@ -1167,15 +1483,20 @@ class MusicBotGUI:
             
             elif column in ["#9", "#10", "#11", "#12"]: # L, M, AP, AI
                 idx = int(column[1:]) - 9 # 0, 1, 2, 3
-                steps = self.song_steps.get(item_id, [True, True, True, True])
+                steps = self.song_steps.get(item_id, [
+                    self.var_run_lyrics.get(),
+                    self.var_run_music.get(),
+                    self.var_run_art_prompt.get(),
+                    self.var_run_art_image.get()
+                ]).copy() # Use current globals as base if missing, and COPY to avoid shared ref issues
                 steps[idx] = not steps[idx]
                 self.song_steps[item_id] = steps
                 
-                # Update UI (Blue for Lyrics/Music, Orange for Art as thematic distinction)
-                if idx < 2:
-                    char = "🔵" if steps[idx] else "☐"
-                else:
-                    char = "🟠" if steps[idx] else "☐"
+                # Update UI with UNIQUE COLORS
+                if idx == 0: char = "🟣" if steps[idx] else "☐"
+                elif idx == 1: char = "🔵" if steps[idx] else "☐"
+                elif idx == 2: char = "🟡" if steps[idx] else "☐"
+                else: char = "🟢" if steps[idx] else "☐"
 
                 col_name = self.tree.cget("columns")[idx + 8] # column name index 8 is run_l
                 self.tree.set(item_id, col_name, char)
@@ -1185,8 +1506,8 @@ class MusicBotGUI:
     def start_process(self):
         # --- Pre-flight Checks 🛡️ ---
         if not self.project_path:
-            logger.error("❌ No Project Loaded! Please Load or Create a project.")
-            messagebox.showerror("Error", "Please load a project file first.")
+            logger.error(self.t("msg_no_project"))
+            messagebox.showerror(self.t("error"), self.t("msg_load_first"))
             return
 
         # Check input file existence
@@ -1197,8 +1518,8 @@ class MusicBotGUI:
 
         # Check if at least one step is selected
         if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get()]):
-            logger.error("❌ No steps selected! Please check at least one 'Run Step'.")
-            messagebox.showwarning("Warning", "Please select at least one step to run.")
+            logger.error(self.t("msg_no_steps"))
+            messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
             return
 
         # 1. Use manual checkboxes if any
@@ -1211,7 +1532,7 @@ class MusicBotGUI:
                 target_ids = list(selected_items)
             else:
                 # If filter is active and nothing selected, ask to process all filtered
-                if messagebox.askyesno("Confirm", "No songs selected. Process ALL listed songs?"):
+                if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
                     target_ids = self.filtered_ids
         
         if not target_ids:
@@ -1223,12 +1544,12 @@ class MusicBotGUI:
 
     def stop_process(self):
         self.stop_requested = True
-        self.status_var.set("Stopping engine...")
-        self.set_badge("STOPPING", "#ffaa00")
+        self.status_var.set(self.t("msg_stopping"))
+        self.set_badge(self.t("badge_stopping"), "#ffaa00")
         if self.active_browser:
             try:
                 self.active_browser.stop()
-                logger.warning("🛑 Browser terminated by user stop command.")
+                logger.warning(self.t("log_browser_stop"))
             except: pass
 
     def _check_existing_data(self, target_ids):
@@ -1242,33 +1563,64 @@ class MusicBotGUI:
             visual_col = headers.get('visual_prompt')
             video_col = headers.get('video_prompt')
             id_col = headers.get('id', 0)
+            title_col = headers.get('title')
+            prompt_col = headers.get('prompt')
             
+            row_idx = 0
             for row in ws.iter_rows(min_row=2, values_only=True):
+                # We must replicate the same ID generation logic as load_project_data
                 rid = str(row[id_col]) if row[id_col] is not None else ""
-                if rid in target_ids:
-                    # Check if user wants lyrics AND they exist
-                    if self.var_run_lyrics.get() and lyrics_col is not None and row[lyrics_col]:
-                        return True
-                    # Check if user wants visuals AND they exist
-                    if self.config.get("gemini_visual", True) and visual_col is not None and row[visual_col]:
-                        # Note: we check config because var_run_lyrics usually triggers the sequential run
-                        return True
-                    # Check if user wants videos AND they exist
-                    if self.config.get("gemini_video", False) and video_col is not None and row[video_col]:
-                        return True
+                
+                # Check Prompt/Title as fallback for ID generation
+                prompt_val = ""
+                if prompt_col is not None and row[prompt_col] is not None: prompt_val = str(row[prompt_col])
+                elif title_col is not None and row[title_col] is not None: prompt_val = str(row[title_col])
+                
+                if rid or prompt_val:
+                    row_idx += 1
+                    if not rid: rid = f"PENDING_{row_idx}"
+                    
+                    if rid in target_ids:
+                        # Get specific steps for THIS song
+                        s_steps = self.song_steps.get(rid, [
+                            self.var_run_lyrics.get(), 
+                            self.var_run_music.get(),
+                            self.var_run_art_prompt.get(),
+                            self.var_run_art_image.get()
+                        ])
+
+                        # Check if user wants lyrics for THIS song AND they exist
+                        if s_steps[0] and lyrics_col is not None and row[lyrics_col]:
+                            return True
+                        # Check if user wants visuals for THIS song AND they exist
+                        if s_steps[2] and visual_col is not None and row[visual_col]:
+                            return True
+                        # Check if user wants videos for THIS song AND they exist
+                        if s_steps[2] and self.config.get("gemini_video", False) and video_col is not None and row[video_col]:
+                            return True
             return False
-        except:
+        except Exception as e:
+            logger.error(f"Error checking existing data: {e}")
             return False
 
     def run_process(self, target_ids):
         try:
             # Check for existing data if we are running Gemini steps
             force_update = False
-            if self.var_run_lyrics.get():
+            # We must check if ANY of the target songs have s_steps[0] (Purple) or s_steps[2] (Yellow) enabled
+            # before calling _check_existing_data
+            any_gemini_requested = False
+            for rid in target_ids:
+                s_steps = self.song_steps.get(rid, [False, False, False, False])
+                if s_steps[0] or s_steps[2]:
+                    any_gemini_requested = True
+                    break
+
+            if any_gemini_requested:
                 has_data = self._check_existing_data(target_ids)
                 if has_data:
                     # Ask user if they want to re-generate
-                    if messagebox.askyesno("Yeniden Üret?", "Bazı satırlarda zaten veri (Söz, Prompt vb.) mevcut.\n\nBunları yeniden üretmek ister misiniz?\n\n'Evet' derseniz veriler güncellenir, 'Hayır' derseniz sadece eksikler tamamlanır."):
+                    if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
                         force_update = True
 
             # Unified Project Path
@@ -1287,16 +1639,16 @@ class MusicBotGUI:
             
             for idx, song_id in enumerate(target_ids):
                 if self.stop_requested:
-                    logger.info("Process halted by user command.")
+                    logger.info(self.t("log_halted"))
                     break
                     
                 # Update status
                 song_data = self.all_songs.get(song_id, {})
                 title = song_data.get("title", "Unknown")
-                title_short = title[:20] + ".." if len(title) > 20 else title
-                self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"Working on: {id} ({t})"))
-                self.root.after(0, lambda: self.status_var.set(f"Processing ({idx+1}/{len(target_ids)})"))
-                self.root.after(0, lambda: self.set_badge("ACTIVE", "#00aa00"))
+                title_short = title[:50] + ".." if len(title) > 50 else title
+                self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
+                self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{len(target_ids)})"))
+                self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
                 
                 from browser_controller import BrowserController
                 
@@ -1387,12 +1739,12 @@ class MusicBotGUI:
 
             self.root.after(0, lambda: self.current_song_var.set(""))
             self.play_chime()
-            self.root.after(0, lambda: messagebox.showinfo("Done", "Selected tasks completed! 🎵"))
+            self.root.after(0, lambda: messagebox.showinfo(self.t("msg_done_title"), self.t("msg_done_info")))
             self.root.after(0, self.load_project_data) # Refresh UI
 
         except Exception as e:
             logger.error(f"Critical Process Error: {e}")
-            self.root.after(0, lambda: messagebox.showerror("Critical Error", str(e)))
+            self.root.after(0, lambda: messagebox.showerror(self.t("msg_critical_error"), str(e)))
         finally:
             self.root.after(0, self.enable_buttons)
             self.load_data()
@@ -1482,18 +1834,18 @@ class MusicBotGUI:
         def _launch():
             try:
                 # 1. Notify User via Log
-                logger.info("Initializing Chrome for Login...")
-                logger.info("Please wait, browser is starting...")
+                logger.info(self.t("log_chrome_start"))
+                logger.info(self.t("log_wait_chrome"))
                                     
                 # 2. Start
                 # Store in self to prevent Garbage Collection from closing it immediately
                 self.chrome_session = BrowserController(headless=False)
                 self.chrome_session.start()
                 
-                logger.info("✅ Chrome started successfully!")
-                logger.info(f"📂 Profile Path: {self.chrome_session.user_data_dir}")
-                logger.info("👉 Please log in to Suno/Gemini now.")
-                logger.info("👉 You can close the browser window when finished.")
+                logger.info(self.t("log_chrome_success"))
+                logger.info(self.t("log_chrome_profile").format(path=self.chrome_session.user_data_dir))
+                logger.info(self.t("log_chrome_login"))
+                logger.info(self.t("log_chrome_close"))
                 
                 # 3. Open Tabs
                 try:
@@ -1521,8 +1873,8 @@ class MusicBotGUI:
     def enable_buttons(self):
         self.root.after(0, lambda: self.btn_run.config(state="normal"))
         self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
-        self.root.after(0, lambda: self.status_var.set("Ready"))
-        self.root.after(0, lambda: self.set_badge("IDLE", "#888888"))
+        self.root.after(0, lambda: self.status_var.set(self.t("ready")))
+        self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
         self.root.after(0, lambda: self.load_project_data()) # Auto refresh
 
 if __name__ == "__main__":
