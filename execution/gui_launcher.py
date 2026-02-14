@@ -1056,7 +1056,7 @@ class MusicBotGUI:
         self.f_filter.pack(fill="x", padx=10)
         ttk.Label(self.f_filter, text=self.t("search")).pack(side="left")
         self.filter_var = tk.StringVar()
-        self.filter_var.trace("w", self.apply_filter)
+        self.filter_var.trace_add("write", self.apply_filter)
         self.ent_filter = ttk.Entry(self.f_filter, textvariable=self.filter_var)
         self.ent_filter.pack(side="left", fill="x", expand=True, padx=5)
 
