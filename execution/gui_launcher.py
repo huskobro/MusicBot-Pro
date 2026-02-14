@@ -1620,7 +1620,7 @@ class MusicBotGUI:
              return
 
         # Check if at least one step is selected
-        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get()]):
+        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]):
             logger.error(self.t("msg_no_steps"))
             messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
             return
@@ -1691,7 +1691,8 @@ class MusicBotGUI:
                                 self.var_run_lyrics.get(), 
                                 self.var_run_music.get(),
                                 self.var_run_art_prompt.get(),
-                                self.var_run_art_image.get()
+                                self.var_run_art_image.get(),
+                                self.var_run_video.get()
                             ]
 
                         # Check if user wants lyrics for THIS song AND they exist
