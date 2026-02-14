@@ -2,3 +2,5 @@ playwright
 openpyxl
 google-generativeai
 pyinstaller
+moviepy
+numpy

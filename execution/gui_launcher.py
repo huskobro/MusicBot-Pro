@@ -38,7 +38,9 @@ TRANSLATIONS = {
         "lyrics": "Lyrics",
         "music": "Music",
         "art_prompt": "Art Prompt",
+        "art_prompt": "Art Prompt",
         "art_image": "Art Image",
+        "video": "Video",
         "column_id": "ID",
         "column_title": "Title / Prompt",
         "column_style": "Style",
@@ -103,12 +105,16 @@ TRANSLATIONS = {
         "enable_humanizer_label": "ENABLE HUMANIZER (Global)",
         "activate_humanizer_label": "Activate Humanizer in:",
         "phase1_label": "Phase 1: Gemini",
+        "phase1_label": "Phase 1: Gemini",
         "phase2_label": "Phase 2: Suno",
+        "phase3_label": "Phase 3: Video",
         "human_level_label": "Humanizer Level:",
         "typing_speed_label": "Typing Speed:",
         "speed_hint": "(0.05 = Fastest / 1.0 = Normal / 2.5 = Slowest)",
         "max_retries_label": "Max Retries:",
         "enable_adaptive_label": "Enable Adaptive Delays",
+        "video_settings_label": "Video Generation Settings",
+        "video_effect_label": "Visual Effect:",
         "lyrics_master_label": "1. Lyrics Master Prompt (Gemini):",
         "visual_master_label": "2. Visual Master Prompt (Midjourney Style):",
         "video_master_label": "3. Video Master Prompt (Sora/Runway):",
@@ -178,7 +184,9 @@ TRANSLATIONS = {
         "lyrics": "Sözler",
         "music": "Müzik",
         "art_prompt": "Resim Prompt",
+        "art_prompt": "Resim Prompt",
         "art_image": "Resim Üretim",
+        "video": "Video",
         "column_id": "ID",
         "column_title": "Başlık / Prompt",
         "column_style": "Tarz",
@@ -243,12 +251,16 @@ TRANSLATIONS = {
         "enable_humanizer_label": "İNSANLAŞTIRICIYI ETKİNLEŞTİR (Global)",
         "activate_humanizer_label": "İnsanlaştırıcıyı Şurada Aktifleştir:",
         "phase1_label": "Aşama 1: Gemini",
+        "phase1_label": "Aşama 1: Gemini",
         "phase2_label": "Aşama 2: Suno",
+        "phase3_label": "Aşama 3: Video",
         "human_level_label": "İnsanlaştırma Seviyesi:",
         "typing_speed_label": "Yazma Hızı:",
         "speed_hint": "(0.05 = En Hızlı / 1.0 = Normal / 2.5 = En Yavaş)",
         "max_retries_label": "Maksimum Deneme:",
         "enable_adaptive_label": "Uyarlanabilir Gecikmeleri Etkinleştir",
+        "video_settings_label": "Video Oluşturma Ayarları",
+        "video_effect_label": "Görsel Efekt:",
         "lyrics_master_label": "1. Şarkı Sözü Ana Promptu (Gemini):",
         "visual_master_label": "2. Görsel Ana Promptu (Midjourney):",
         "video_master_label": "3. Video Ana Promptu (Sora/Runway):",
@@ -435,6 +447,8 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_defaults, text="3. " + self.app.t("art_prompt"), variable=self.var_def_art_p).pack(anchor="w")
         self.var_def_art_i = tk.BooleanVar(value=config.get("default_run_art_image", True))
         ttk.Checkbutton(f_defaults, text="4. " + self.app.t("art_image"), variable=self.var_def_art_i).pack(anchor="w")
+        self.var_def_video = tk.BooleanVar(value=config.get("default_run_video", False))
+        ttk.Checkbutton(f_defaults, text="5. " + self.app.t("video"), variable=self.var_def_video).pack(anchor="w")
 
         # --- TAB 1.2: Active Workflow ---
         self.tab_workflow = ttk.Frame(self.notebook)
@@ -447,6 +461,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_active, text="2. " + self.app.t("music"), variable=self.app.var_run_music).pack(anchor="w", pady=5)
         ttk.Checkbutton(f_active, text="3. " + self.app.t("art_prompt"), variable=self.app.var_run_art_prompt).pack(anchor="w", pady=5)
         ttk.Checkbutton(f_active, text="4. " + self.app.t("art_image"), variable=self.app.var_run_art_image).pack(anchor="w", pady=5)
+        ttk.Checkbutton(f_active, text="5. " + self.app.t("video"), variable=self.app.var_run_video).pack(anchor="w", pady=5)
         
         ttk.Label(f_active, text=self.app.t("note_changes"), font=("Helvetica", 9, "italic"), foreground="gray").pack(pady=20)
 
@@ -598,8 +613,21 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_human, text=self.app.t("phase1_label"), variable=self.var_h_gemini).grid(row=2, column=0, sticky="w")
         self.var_h_suno = tk.BooleanVar(value=config.get("h_activate_suno", True))
         ttk.Checkbutton(f_human, text=self.app.t("phase2_label"), variable=self.var_h_suno).grid(row=2, column=1, sticky="w")
+        self.var_h_video = tk.BooleanVar(value=config.get("h_activate_video", False))
+        ttk.Checkbutton(f_human, text=self.app.t("phase3_label"), variable=self.var_h_video).grid(row=2, column=2, sticky="w")
 
-        # 3. Humanizer Level
+        # --- TAB 3: Video ---
+        self.tab_video = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_video, text="Video")
+        
+        f_video = ttk.LabelFrame(self.tab_video, text=self.app.t("video_settings_label"), padding=10)
+        f_video.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        ttk.Label(f_video, text=self.app.t("video_effect_label")).grid(row=0, column=0, sticky="w", pady=5)
+        self.combo_video_effect = ttk.Combobox(f_video, values=["None", "Snow", "Rain", "Particles"], state="readonly")
+        self.combo_video_effect.set(config.get("video_effect", "None"))
+        self.combo_video_effect.grid(row=0, column=1, sticky="ew", pady=5)
+
         ttk.Label(f_human, text=self.app.t("human_level_label")).grid(row=3, column=0, sticky="w", pady=5)
         self.combo_human_level = ttk.Combobox(f_human, values=[self.app.t("level_low"), self.app.t("level_medium"), self.app.t("level_high")], state="readonly")
         self.combo_human_level.set(config.get("humanizer_level", self.app.t("level_medium")))
@@ -738,7 +766,10 @@ class SettingsDialog(tk.Toplevel):
             "lyrics_mode": self.combo_lyrics_mode.get(),
             "lyrics_mode_enabled": self.var_lyrics_mode_enabled.get(),
             "suno_persona_link_enabled": self.var_persona_link_enabled.get(),
-            "suno_active_persona": self.combo_persona_select.get()
+            "suno_active_persona": self.combo_persona_select.get(),
+            
+            # Video
+            "video_effect": self.combo_video_effect.get()
         }
         
         self.presets[alias] = {
@@ -1006,6 +1037,8 @@ class MusicBotGUI:
         self.var_run_music = tk.BooleanVar(value=self.config.get("default_run_music", True))
         self.var_run_art_prompt = tk.BooleanVar(value=self.config.get("default_run_art_prompt", True))
         self.var_run_art_image = tk.BooleanVar(value=self.config.get("default_run_art_image", True))
+        self.var_run_video = tk.BooleanVar(value=self.config.get("default_run_video", False))
+        self.var_run_video = tk.BooleanVar(value=self.config.get("default_run_video", False))
 
         # Keyboard Bindings
         self.root.bind("<Return>", lambda e: self.start_process())
@@ -1096,13 +1129,14 @@ class MusicBotGUI:
         ttk.Checkbutton(self.f_run_ops, text=self.t("music"), variable=self.var_run_music, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("art_prompt"), variable=self.var_run_art_prompt, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self.apply_filter).pack(side="left", padx=10)
 
         # Main Table
         self.f_tree = ttk.Frame(self.root)
         self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "run_l", "run_m", "run_ap", "run_ai")
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
         
@@ -1113,31 +1147,34 @@ class MusicBotGUI:
 
         # Setup Columns
         self.tree.heading("sel", text="✔")
-        self.tree.heading("id", text=self.t("column_id"))
-        self.tree.heading("title", text=self.t("column_title"))
+        self.tree.heading("id", text="ID", command=lambda: self.sort_tree("id", False))
+        self.tree.heading("title", text=self.t("column_title"), command=lambda: self.sort_tree("title", False))
         self.tree.heading("style", text=self.t("column_style"))
         self.tree.heading("progress", text=self.t("column_progress"))
-        self.tree.heading("lyrics", text=self.t("lyrics"))
-        self.tree.heading("music", text=self.t("music"))
-        self.tree.heading("art", text=self.t("art_image")) 
+        self.tree.heading("lyrics", text="📝")
+        self.tree.heading("music", text="🎵")
+        self.tree.heading("art", text="🎨")
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
         self.tree.heading("run_ap", text="AP")
         self.tree.heading("run_ai", text="AI")
+        self.tree.heading("run_v", text="V")
         
-        self.tree.column("sel", width=40, anchor="center")
-        self.tree.column("id", width=60, anchor="center")
+        # Columns Config
+        self.tree.column("sel", width=30, anchor="center")
+        self.tree.column("id", width=50, anchor="center")
         self.tree.column("title", width=200)
-        self.tree.column("style", width=120)
-        self.tree.column("progress", width=200, anchor="w") 
-        self.tree.column("lyrics", width=50, anchor="center")
-        self.tree.column("music", width=50, anchor="center")
-        self.tree.column("art", width=50, anchor="center")
+        self.tree.column("style", width=100)
+        self.tree.column("progress", width=120)
+        self.tree.column("lyrics", width=30, anchor="center")
+        self.tree.column("music", width=30, anchor="center")
+        self.tree.column("art", width=30, anchor="center")
         self.tree.column("run_l", width=30, anchor="center")
         self.tree.column("run_m", width=30, anchor="center")
         self.tree.column("run_ap", width=30, anchor="center")
         self.tree.column("run_ai", width=30, anchor="center")
-        
+        self.tree.column("run_v", width=30, anchor="center")
+
         # Scrollbar
         scrollbar = ttk.Scrollbar(self.f_tree, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
@@ -1448,20 +1485,23 @@ class MusicBotGUI:
                     self.var_run_lyrics.get(), 
                     self.var_run_music.get(), 
                     self.var_run_art_prompt.get(), 
-                    self.var_run_art_image.get()
+                    self.var_run_art_image.get(),
+                    self.var_run_video.get()
                 ]
             # --- REMOVED self.song_steps[rid] = steps to allow global defaults to flow through ---
             
             # UNIQUE COLORS per step as requested
-            # L: Purple, M: Blue, AP: Yellow, AI: Green
+            # L: Purple, M: Blue, AP: Yellow, AI: Green, V: Orange
             s_rl = "🟣" if steps[0] else "☐"
             s_rm = "🔵" if steps[1] else "☐"
             s_rap = "🟡" if steps[2] else "☐"
             s_rai = "🟢" if steps[3] else "☐"
+            # Handle migration for existing steps that might lack index 4
+            s_rv = "🟠" if (len(steps) > 4 and steps[4]) else "☐"
 
             self.tree.insert("", "end", iid=rid, values=(
                 s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art,
-                s_rl, s_rm, s_rap, s_rai
+                s_rl, s_rm, s_rap, s_rai, s_rv
             ))
             
     def set_badge(self, text, bg, fg="white"):
@@ -1532,22 +1572,34 @@ class MusicBotGUI:
                     self.selected_songs.add(item_id)
                     self.tree.set(item_id, "sel", "☑️")
             
-            elif column in ["#9", "#10", "#11", "#12"]: # L, M, AP, AI
-                idx = int(column[1:]) - 9 # 0, 1, 2, 3
-                steps = self.song_steps.get(item_id, [
+            elif column in ["#9", "#10", "#11", "#12", "#13"]: # L, M, AP, AI, V
+                idx = int(column[1:]) - 9 # 0, 1, 2, 3, 4
+                
+                # Get current setting or defaults
+                current_defaults = [
                     self.var_run_lyrics.get(),
                     self.var_run_music.get(),
                     self.var_run_art_prompt.get(),
-                    self.var_run_art_image.get()
-                ]).copy() # Use current globals as base if missing, and COPY to avoid shared ref issues
+                    self.var_run_art_image.get(),
+                    self.var_run_video.get()
+                ]
+                
+                steps = self.song_steps.get(item_id, current_defaults).copy()
+                
+                # Ensure steps list is long enough (backwards compatibility)
+                while len(steps) < 5: steps.append(False)
+                
                 steps[idx] = not steps[idx]
                 self.song_steps[item_id] = steps
                 
                 # Update UI with UNIQUE COLORS
-                if idx == 0: char = "🟣" if steps[idx] else "☐"
-                elif idx == 1: char = "🔵" if steps[idx] else "☐"
-                elif idx == 2: char = "🟡" if steps[idx] else "☐"
-                else: char = "🟢" if steps[idx] else "☐"
+                char = "☐"
+                if steps[idx]:
+                    if idx == 0: char = "🟣"
+                    elif idx == 1: char = "🔵"
+                    elif idx == 2: char = "🟡"
+                    elif idx == 3: char = "🟢"
+                    elif idx == 4: char = "🟠"
 
                 col_name = self.tree.cget("columns")[idx + 8] # column name index 8 is run_l
                 self.tree.set(item_id, col_name, char)
@@ -1670,7 +1722,8 @@ class MusicBotGUI:
                         self.var_run_lyrics.get(),
                         self.var_run_music.get(),
                         self.var_run_art_prompt.get(),
-                        self.var_run_art_image.get()
+                        self.var_run_art_image.get(),
+                        self.var_run_video.get()
                     ]
                 
                 if s_steps[0] or s_steps[2]:
@@ -1736,8 +1789,12 @@ class MusicBotGUI:
                             self.var_run_lyrics.get(),
                             self.var_run_music.get(),
                             self.var_run_art_prompt.get(),
-                            self.var_run_art_image.get()
+                            self.var_run_art_image.get(),
+                            self.var_run_video.get()
                         ]
+                    
+                    # Ensure length
+                    while len(s_steps) < 5: s_steps.append(False)
 
                     # --- Step 1: Lyrics ---
                     if s_steps[0] and not self.stop_requested:
@@ -1793,6 +1850,58 @@ class MusicBotGUI:
                         
                         if s_steps[3] and not self.stop_requested:
                             gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
+
+                    # --- Step 4: Video Generation (Updated for multiple versions) ---
+                    if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
+                        from video_generator import VideoGenerator
+                        vgen = VideoGenerator(output_dir=output_media)
+                        
+                        # Find all audio files starting with {song_id}_
+                        found_audio = []
+                        try:
+                            for f in os.listdir(output_media):
+                                if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
+                                    found_audio.append(f)
+                            
+                            # Also check generic ID.mp3
+                            if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
+                                found_audio.append(f"{song_id}.mp3")
+                        except Exception as list_e:
+                            logger.error(f"Failed to scan output_media: {list_e}")
+
+                        found_audio = sorted(list(set(found_audio)))
+                        
+                        if not found_audio:
+                            logger.warning(f"Skipping video for {song_id}: No audio files found (Pattern: {song_id}_*)")
+                        
+                        for aud_file in found_audio:
+                            if self.stop_requested: break
+                            
+                            aud_full_path = os.path.join(output_media, aud_file)
+                            aud_base = os.path.splitext(aud_file)[0]
+                            
+                            # Determine Image Path
+                            # 1. Specific: {aud_file_name}.png
+                            # 2. Generic: {song_id}.png
+                            specific_img = f"{aud_base}.png"
+                            generic_img = f"{song_id}.png"
+                            
+                            img_path = None
+                            if os.path.exists(os.path.join(output_media, specific_img)):
+                                img_path = os.path.join(output_media, specific_img)
+                            elif os.path.exists(os.path.join(output_media, generic_img)):
+                                img_path = os.path.join(output_media, generic_img)
+                            
+                            if img_path:
+                                progress_callback(song_id, f"Video: {aud_file}... 🎬")
+                                vgen.generate_video(
+                                    audio_path=aud_full_path,
+                                    image_path=img_path, 
+                                    output_filename=f"{aud_base}.mp4",
+                                    effect_type=self.config.get("video_effect", "None")
+                                )
+                            else:
+                                logger.warning(f"Skipping video for {aud_file}: Image missing (Tried {specific_img} and {generic_img})")
 
                 except Exception as e:
                     logger.error(f"Error processing {song_id}: {e}")
