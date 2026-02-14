@@ -1881,16 +1881,33 @@ class MusicBotGUI:
                             aud_base = os.path.splitext(aud_file)[0]
                             
                             # Determine Image Path
-                            # 1. Specific: {aud_file_name}.png
-                            # 2. Generic: {song_id}.png
-                            specific_img = f"{aud_base}.png"
-                            generic_img = f"{song_id}.png"
+                            # 1. Specific: {id}_{suffix}.png (e.g. 1_1.png)
+                            # 2. Generic: {id}.png
+                            
+                            # Try to extract the suffix (it's usually the part after the last underscore)
+                            suffix = None
+                            parts = aud_base.split("_")
+                            if len(parts) > 1:
+                                suffix = parts[-1]
                             
                             img_path = None
-                            if os.path.exists(os.path.join(output_media, specific_img)):
-                                img_path = os.path.join(output_media, specific_img)
-                            elif os.path.exists(os.path.join(output_media, generic_img)):
-                                img_path = os.path.join(output_media, generic_img)
+                            # Priority 1: ID_Suffix.png
+                            if suffix:
+                                specific_img = f"{song_id}_{suffix}.png"
+                                if os.path.exists(os.path.join(output_media, specific_img)):
+                                    img_path = os.path.join(output_media, specific_img)
+                            
+                            # Priority 2: Full filename match (backward compatibility/edge cases)
+                            if not img_path:
+                                full_match_img = f"{aud_base}.png"
+                                if os.path.exists(os.path.join(output_media, full_match_img)):
+                                    img_path = os.path.join(output_media, full_match_img)
+                            
+                            # Priority 3: Generic ID.png
+                            if not img_path:
+                                generic_img = f"{song_id}.png"
+                                if os.path.exists(os.path.join(output_media, generic_img)):
+                                    img_path = os.path.join(output_media, generic_img)
                             
                             if img_path:
                                 progress_callback(song_id, f"Video: {aud_file}... 🎬")
@@ -1901,7 +1918,7 @@ class MusicBotGUI:
                                     effect_type=self.config.get("video_effect", "None")
                                 )
                             else:
-                                logger.warning(f"Skipping video for {aud_file}: Image missing (Tried {specific_img} and {generic_img})")
+                                logger.warning(f"Skipping video for {aud_file}: No matching image (Tried {song_id}_{suffix}.png, {aud_base}.png, {song_id}.png)")
 
                 except Exception as e:
                     logger.error(f"Error processing {song_id}: {e}")
