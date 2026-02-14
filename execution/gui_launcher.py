@@ -74,6 +74,7 @@ class SettingsDialog(tk.Toplevel):
         self.presets = config.get("artist_presets", {}) # Dict: {Alias: Data}
         self.combo_preset_select = ttk.Combobox(f_presets, values=list(self.presets.keys()), state="readonly")
         self.combo_preset_select.grid(row=0, column=1, sticky="ew", pady=5)
+        self.combo_preset_select.bind("<<ComboboxSelected>>", lambda e: self.load_preset())
         
         # 2. Profile Alias (for saving)
         ttk.Label(f_presets, text="Preset Alias:").grid(row=1, column=0, sticky="w", pady=5)
@@ -356,7 +357,7 @@ class SettingsDialog(tk.Toplevel):
         self.tab_logs = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_logs, text="Log")
         
-        self.log_disp = scrolledtext.ScrolledText(self.tab_logs, state='disabled', font=("Consolas", 9), bg="#ffffff")
+        self.log_disp = scrolledtext.ScrolledText(self.tab_logs, state='disabled', font=("Consolas", 9), bg="#ffffff", fg="#1e1e1e")
         self.log_disp.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Live Logger handler for Settings window
@@ -614,6 +615,8 @@ class MusicBotGUI:
         self._drag_data = {"item": None}
         self.log_visible = tk.BooleanVar(value=False)
         self.current_song_var = tk.StringVar(value="")
+        self.selected_songs = set()
+        self.song_steps = {} # Per-song phase selection: {rid: [L, M, AP, AI]}
         
         # Configuration (Default Values)
         input_path, _, _ = self.get_data_paths()
@@ -731,15 +734,23 @@ class MusicBotGUI:
         self.ent_filter = ttk.Entry(self.f_filter, textvariable=self.filter_var)
         self.ent_filter.pack(side="left", fill="x", expand=True, padx=5)
 
+        # Active Run Controls (MODERNIZED & INTEGRATED TO DASHBOARD)
+        self.f_run_ops = ttk.LabelFrame(self.root, text="🚀 Global Run Settings (Defaults for items)", padding=5)
+        self.f_run_ops.pack(fill="x", padx=10, pady=(0, 5))
+        
+        ttk.Checkbutton(self.f_run_ops, text="Lyrics", variable=self.var_run_lyrics).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text="Music", variable=self.var_run_music).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text="Art Prompt", variable=self.var_run_art_prompt).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text="Art Image", variable=self.var_run_art_image).pack(side="left", padx=10)
+
         # Main Table
         self.f_tree = ttk.Frame(self.root)
         self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art")
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "run_l", "run_m", "run_ap", "run_ai")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
-        self.selected_songs = set()
         
         # Drag & Drop Events
         self.tree.bind("<ButtonPress-1>", self.on_reorder_start, add="+")
@@ -755,6 +766,10 @@ class MusicBotGUI:
         self.tree.heading("lyrics", text="Lyrics")
         self.tree.heading("music", text="Music")
         self.tree.heading("art", text="Art")
+        self.tree.heading("run_l", text="L")
+        self.tree.heading("run_m", text="M")
+        self.tree.heading("run_ap", text="AP")
+        self.tree.heading("run_ai", text="AI")
         
         self.tree.column("sel", width=40, anchor="center")
         self.tree.column("id", width=60, anchor="center")
@@ -764,6 +779,10 @@ class MusicBotGUI:
         self.tree.column("lyrics", width=50, anchor="center")
         self.tree.column("music", width=50, anchor="center")
         self.tree.column("art", width=50, anchor="center")
+        self.tree.column("run_l", width=30, anchor="center")
+        self.tree.column("run_m", width=30, anchor="center")
+        self.tree.column("run_ap", width=30, anchor="center")
+        self.tree.column("run_ai", width=30, anchor="center")
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(self.f_tree, orient=tk.VERTICAL, command=self.tree.yview)
@@ -815,12 +834,6 @@ class MusicBotGUI:
         formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%H:%M:%S')
         self.gui_handler.setFormatter(formatter)
         logging.getLogger().addHandler(self.gui_handler)
-        
-        # Tray Support (Placeholder/Button for now as Pystray might not be in env)
-        ttk.Button(self.f_top, text="📥 Tray", command=self.minimize_to_tray).pack(side="right", padx=2)
-        
-        # Update Check
-        ttk.Button(self.f_top, text="🚀 Update", command=self.check_updates).pack(side="right", padx=2)
         
         # Data Cache
         self.all_songs = {} 
@@ -1063,8 +1076,25 @@ class MusicBotGUI:
             done_cnt = sum([s["lyrics"], s["music"], s["art"]])
             prog_bar = self.get_progress_bar(done_cnt, 3)
             
+            # Step Toggles (Per-song Phase Selection)
+            # Default to global var state if not previously customized
+            steps = self.song_steps.get(rid, [
+                self.var_run_lyrics.get(), 
+                self.var_run_music.get(), 
+                self.var_run_art_prompt.get(), 
+                self.var_run_art_image.get()
+            ])
+            self.song_steps[rid] = steps # Persist initialization
+            
+            # Using Blue/Orange characters for visual distinction as requested
+            s_rl = "🔵" if steps[0] else "☐"
+            s_rm = "🔵" if steps[1] else "☐"
+            s_rap = "🟠" if steps[2] else "☐"
+            s_rai = "🟠" if steps[3] else "☐"
+
             self.tree.insert("", "end", iid=rid, values=(
-                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art
+                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art,
+                s_rl, s_rm, s_rap, s_rai
             ))
             
     def set_badge(self, text, bg, fg="white"):
@@ -1103,14 +1133,7 @@ class MusicBotGUI:
                 winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
         except: pass
 
-    def check_updates(self):
-        messagebox.showinfo("Update Check", "System is up to date! (Prompts & Assets verified)")
 
-    def minimize_to_tray(self):
-       # Placeholder for real Tray integration which requires pystray library
-       messagebox.showinfo("Tray", "Bot minimized to tray. (Simulated)")
-       self.root.withdraw()
-       self.root.after(3000, self.root.deiconify) # Re-show after 3 secs for demo
 
     # --- DRAG & DROP REORDERING ---
     def on_reorder_start(self, event):
@@ -1131,16 +1154,33 @@ class MusicBotGUI:
         region = self.tree.identify("region", event.x, event.y)
         if region == "cell":
             column = self.tree.identify_column(event.x)
+            item_id = self.tree.identify_row(event.y)
+            if not item_id: return
+
             if column == "#1": # 'sel' column
-                item_id = self.tree.identify_row(event.y)
-                if item_id:
-                    if item_id in self.selected_songs:
-                        self.selected_songs.remove(item_id)
-                        self.tree.set(item_id, "sel", "☐")
-                    else:
-                        self.selected_songs.add(item_id)
-                        self.tree.set(item_id, "sel", "☑️")
-                    return "break" # Prevent selection change if clicking checkbox
+                if item_id in self.selected_songs:
+                    self.selected_songs.remove(item_id)
+                    self.tree.set(item_id, "sel", "☐")
+                else:
+                    self.selected_songs.add(item_id)
+                    self.tree.set(item_id, "sel", "☑️")
+            
+            elif column in ["#9", "#10", "#11", "#12"]: # L, M, AP, AI
+                idx = int(column[1:]) - 9 # 0, 1, 2, 3
+                steps = self.song_steps.get(item_id, [True, True, True, True])
+                steps[idx] = not steps[idx]
+                self.song_steps[item_id] = steps
+                
+                # Update UI (Blue for Lyrics/Music, Orange for Art as thematic distinction)
+                if idx < 2:
+                    char = "🔵" if steps[idx] else "☐"
+                else:
+                    char = "🟠" if steps[idx] else "☐"
+
+                col_name = self.tree.cget("columns")[idx + 8] # column name index 8 is run_l
+                self.tree.set(item_id, col_name, char)
+            
+            return "break" # Prevent selection change if clicking checkbox
 
     def start_process(self):
         # --- Pre-flight Checks 🛡️ ---
@@ -1276,8 +1316,11 @@ class MusicBotGUI:
                     song_browser.start()
                     self.active_browser = song_browser
                     
+                    # Get specific steps for THIS song
+                    s_steps = self.song_steps.get(song_id, [True, True, True, True])
+
                     # --- Step 1: Lyrics ---
-                    if self.var_run_lyrics.get() and not self.stop_requested:
+                    if s_steps[0] and not self.stop_requested:
                         # Phase-based Humanizer Activation
                         song_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
                         
@@ -1295,7 +1338,7 @@ class MusicBotGUI:
                         gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
 
                     # --- Step 2: Music ---
-                    if self.var_run_music.get() and not self.stop_requested:
+                    if s_steps[1] and not self.stop_requested:
                         # Phase-based Humanizer Activation
                         song_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
                         
@@ -1316,9 +1359,7 @@ class MusicBotGUI:
                         suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 3: Art (Prompts & Images) ---
-                    # Note: Art usually benefits from batching to avoid closing/opening browser too much,
-                    # but here we do it per-song to ensure isolation.
-                    if self.var_run_art_prompt.get() or self.var_run_art_image.get():
+                    if s_steps[2] or s_steps[3]:
                         from gemini_prompter import GeminiPrompter
                         gemini_art = GeminiPrompter(
                             project_file=project_file, # Unified Path
@@ -1327,10 +1368,10 @@ class MusicBotGUI:
                             language=self.config.get("target_language", "Turkish")
                         )
                         
-                        if self.var_run_art_prompt.get() and not self.stop_requested:
+                        if s_steps[2] and not self.stop_requested:
                             gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
                         
-                        if self.var_run_art_image.get() and not self.stop_requested:
+                        if s_steps[3] and not self.stop_requested:
                             gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
 
                 except Exception as e:
