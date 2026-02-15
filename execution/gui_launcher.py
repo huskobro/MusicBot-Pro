@@ -62,7 +62,7 @@ TRANSLATIONS = {
         "humanizer": "Humanizer",
         "prompts": "Prompts",
         "log": "Log",
-        "save_all": "💾 Save All Settings & Prompts",
+        "save_all": "💾 Save All Settings & Active Profile",
         "vocal_gender": "Vocal Gender",
         "audio_influence": "Audio Influence",
         "weirdness": "Weirdness",
@@ -134,10 +134,10 @@ TRANSLATIONS = {
         "msg_regen_body": "Some rows already have data (Lyrics, Prompts, etc.).\n\nDo you want to regenerate them?\n\n'Yes' will update data, 'No' will only complete missing ones.",
         "msg_restart_lang": "Restart the application to apply UI language changes.",
         "msg_settings_saved": "Settings and Prompts saved successfully!",
-        "msg_enter_preset_alias": "Please enter a Preset Alias name.",
-        "msg_preset_saved": "Preset '{alias}' saved successfully!",
-        "msg_preset_loaded": "Preset '{alias}' loaded!",
-        "msg_confirm_delete_preset": "Delete preset '{alias}'?",
+        "msg_enter_preset_alias": "Please enter a Profile Alias name.",
+        "msg_preset_saved": "Profile '{alias}' saved successfully!",
+        "msg_preset_loaded": "Profile '{alias}' loaded!",
+        "msg_confirm_delete_preset": "Delete profile '{alias}'?",
         "msg_failed_to_save": "Failed to save: {error}",
         "msg_new_project_created": "New project created and loaded! 🚀",
         "msg_failed_to_create_project": "Could not create project",
@@ -188,9 +188,10 @@ TRANSLATIONS = {
         "video_output_mode_label": "Video Output Path:",
         "video_output_same_label": "Save in input/profile folder",
         "video_output_custom_label": "Save in 'Output_Videos' (System Default)",
-        "video_assets_hint": "💡 If empty, the profile folder will be used as the default source for images.",
+        "video_assets_hint": "💡 If empty, 'output_media/[Profile_Name]' will be searched for images first.",
         "last_profile_label": "Last Profile:",
-        "save_to_profile_note": "Note: 'Save All' also updates the active preset."
+        "save_to_profile_note": "Note: 'Save All' also updates the active preset.",
+        "add_new_profile_btn": "✨ Add New Profile"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -228,19 +229,19 @@ TRANSLATIONS = {
         "humanizer": "İnsanlaştırıcı",
         "prompts": "Promptlar",
         "log": "Günlük",
-        "save_all": "💾 Tüm Ayarları ve Promptları Kaydet",
+        "save_all": "💾 Tüm Ayarları ve Aktif Profili Kaydet",
         "vocal_gender": "Vokal Cinsiyeti",
         "audio_influence": "Ses Etkisi",
         "weirdness": "Tuhaflık",
         "style_influence": "Stil Etkisi",
         "lyrics_mode": "Şarkı Sözü Modu",
         "profiles_tab": "Profiller",
-        "profile_mgmt": "Sanatçı Kimliği ve Preset Yönetimi",
-        "active_profile": "Aktif Profil:",
-        "preset_alias": "Preset Adı:",
+        "profile_mgmt": "Sanatçı Kimliği ve Profil Yönetimi",
+        "active_profile": "Aktif Profil Seçimi:",
+        "preset_alias": "Profil İsmi (Alias):",
         "artist_name_label": "Sanatçı Adı:",
         "artist_style_label": "Sanatçı Müzik Tarzı:",
-        "save_preset_btn": "💾 Mevcutu Preset Olarak Kaydet",
+        "save_preset_btn": "💾 Profili Kaydet/Güncelle",
         "load_selected_btn": "📂 Seçileni Yükle",
         "delete_selected_btn": "🗑️ Seçileni Sil",
         "default_steps": "Varsayılan Çalıştırma Aşamaları (Başlangıçta Seçili)",
@@ -345,6 +346,9 @@ TRANSLATIONS = {
         "video_res_shorts": "Dikey (Shorts - 1080x1920)",
         "video_res_hd": "Yatay (HD - 1920x1080)",
         "video_res_sd": "Yatay (SD - 1280x720)",
+        "snow": "Kar Efekti",
+        "rain": "Yağmur Efekti",
+        "particles": "Parçacıklar",
         "glitch": "Bozulma (Glitch)",
         "ken_burns": "Yakınlaşma (Ken Burns)",
         "vignette": "Köşe Karartma (Vignette)",
@@ -356,9 +360,10 @@ TRANSLATIONS = {
         "video_output_mode_label": "Video Çıktı Yolu:",
         "video_output_same_label": "Girdi/Profil klasörüne kaydet",
         "video_output_custom_label": "'Output_Videos' klasörüne kaydet (Varsayılan)",
-        "video_assets_hint": "💡 Boş bırakılırsa, resimler için profil klasörü varsayılan kaynak olacaktır.",
+        "video_assets_hint": "💡 Boş bırakılırsa, resimler için önce 'output_media/[Profil_Adı]' klasörüne bakılır.",
         "last_profile_label": "Son Profil:",
-        "save_to_profile_note": "Not: 'Tümünü Kaydet' aktif preseti de günceller."
+        "save_to_profile_note": "💡 İpucu: Yeni bir profil oluşturmak için 'Profil İsmi'ni değiştirip '+'ya basın. Mevcutu silmek için '-'ye, formu temizlemek için '✨'ye basın.",
+        "add_new_profile_btn": "✨ Yeni Profil Ekle"
     }
 }
 
@@ -395,13 +400,21 @@ class GuiLogger(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
         def append():
-            self.text_widget.configure(state='normal')
-            self.text_widget.insert(tk.END, msg + '\n', record.levelname)
-            self.text_widget.configure(state='disabled')
-            self.text_widget.yview(tk.END)
+            try:
+                if self.text_widget.winfo_exists():
+                    self.text_widget.configure(state='normal')
+                    self.text_widget.insert(tk.END, msg + '\n', record.levelname)
+                    self.text_widget.configure(state='disabled')
+                    self.text_widget.yview(tk.END)
+            except:
+                pass
         
         # Ensure thread safety by scheduling update on main loop
-        self.text_widget.after(0, append)
+        try:
+            if self.text_widget.winfo_exists():
+                self.text_widget.after(0, append)
+        except:
+            pass
 
 class SettingsDialog(tk.Toplevel):
     def __init__(self, parent, config, app_instance):
@@ -412,50 +425,127 @@ class SettingsDialog(tk.Toplevel):
         self.parent = parent
         self.app = app_instance
         
-        # Notebook for Tabs
+        # Initialize variables early to avoid AttributeErrors
+        self.var_video_output_mode = tk.StringVar(value=config.get("video_output_mode", "profile"))
+        
+        # Root Configuration: Force Button Frame to Bottom using PACK (safer than grid for footers)
+        # 1. Create Notebook (but don't pack yet)
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # 2. Create and Pack Button Frame (BOTTOM) - Guaranteed Visibility
+        f_btn = ttk.Frame(self, padding=10)
+        f_btn.pack(side="bottom", fill="x")
+        
+        btn_save = ttk.Button(f_btn, text=self.app.t("save_all"), command=self.save_settings, style="Action.TButton")
+        btn_save.pack(fill="x", ipady=12) 
+
+        self.notebook.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 5))
+
+        # --- PRE-INITIALIZE ALL UI ATTRIBUTES TO PREVENT ATTRIBUTE ERRORS ---
+        self.prompts_path = os.path.join(os.path.dirname(config.get("metadata_path", "")), "prompts.json")
+        self.personas = []
+        self.ent_preset_alias = None
+        self.ent_artist_name = None
+        self.ent_artist_style = None
+        self.combo_preset_select = None
+        self.ent_video_assets = None
+        self.ent_video_custom_path = None
+        self.combo_res = None
+        self.spin_fps = None
+        self.scale_intensity = None
+        self.txt_lyrics = None
+        self.txt_visual = None
+        self.txt_video = None
+        self.txt_art = None
+        self.var_lyrics = None
+        self.var_style = None
+        self.var_visual = None
+        self.var_video = None
+        self.entry_delay = None
+        self.entry_startup = None
+        self.combo_lang = None
+        self.combo_ui_lang = None
+        self.var_log_at_start = None
+        self.var_def_lyrics = None
+        self.var_def_music = None
+        self.var_def_art_p = None
+        self.var_def_art_i = None
+        self.var_def_video = None
+        self.var_persona_link_enabled = None
+        self.combo_persona_select = None
+        self.var_gender_enabled = None
+        self.combo_gender = None
+        self.scale_audio = None
+        self.var_audio_enabled = None
+        self.scale_weird = None
+        self.var_weird_enabled = None
+        self.scale_style = None
+        self.var_style_enabled = None
+        self.var_lyrics_mode_enabled = None
+        self.combo_lyrics_mode = None
+        self.var_humanizer_enabled = None
+        self.var_h_gemini = None
+        self.var_h_suno = None
+        self.var_h_video = None
+        self.combo_human_level = None
+        self.scale_speed = None
+        self.spin_retries = None
+        self.var_adaptive = None
+        self.effect_vars = {}
 
         # --- TAB 0: Profiles ---
         self.tab_presets = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_presets, text=self.app.t("profiles_tab"))
         
-        f_presets = ttk.LabelFrame(self.tab_presets, text=self.app.t("profile_mgmt"), padding=10)
-        f_presets.pack(fill="both", expand=True, padx=10, pady=10)
+        f_pre_root = ttk.Frame(self.tab_presets, padding=15)
+        f_pre_root.pack(fill="both", expand=True)
 
-        # 1. Preset Selection
-        ttk.Label(f_presets, text=self.app.t("active_profile")).grid(row=0, column=0, sticky="w", pady=5)
-        self.presets = config.get("artist_presets", {}) # Dict: {Alias: Data}
-        self.combo_preset_select = ttk.Combobox(f_presets, values=list(self.presets.keys()), state="readonly")
-        self.combo_preset_select.grid(row=0, column=1, sticky="ew", pady=5)
+        f_presets = ttk.LabelFrame(f_pre_root, text=self.app.t("profile_mgmt"), padding=15)
+        f_presets.pack(fill="x", padx=5, pady=5)
+
+        # 1. Selection Row (Which profile are we viewing/using?)
+        f_sel = ttk.Frame(f_presets)
+        f_sel.pack(fill="x", pady=(0, 10))
+        ttk.Label(f_sel, text=self.app.t("active_profile"), font=("Helvetica", 10, "bold")).pack(side="left")
+        
+        self.presets = config.get("artist_presets", {})
+        self.combo_preset_select = ttk.Combobox(f_sel, values=list(self.presets.keys()), state="readonly")
+        self.combo_preset_select.pack(side="left", fill="x", expand=True, padx=10)
         self.combo_preset_select.bind("<<ComboboxSelected>>", lambda e: self.load_preset())
+
+        # 2. Management & Alias Row (Persona style)
+        f_mgmt = ttk.Frame(f_presets)
+        f_mgmt.pack(fill="x", pady=(0, 15))
         
-        # 2. Profile Alias (for saving)
-        ttk.Label(f_presets, text=self.app.t("preset_alias")).grid(row=1, column=0, sticky="w", pady=5)
-        self.ent_preset_alias = ttk.Entry(f_presets)
-        self.ent_preset_alias.grid(row=1, column=1, sticky="ew", pady=5)
-
-        # 3. Artist Name
-        ttk.Label(f_presets, text=self.app.t("artist_name_label")).grid(row=2, column=0, sticky="w", pady=5)
-        self.ent_artist_name = ttk.Entry(f_presets)
-        self.ent_artist_name.insert(0, config.get("artist_name", ""))
-        self.ent_artist_name.grid(row=2, column=1, sticky="ew", pady=5)
-
-        # 4. Artist Style
-        ttk.Label(f_presets, text=self.app.t("artist_style_label")).grid(row=3, column=0, sticky="w", pady=5)
-        self.ent_artist_style = ttk.Entry(f_presets)
-        self.ent_artist_style.insert(0, config.get("artist_style", ""))
-        self.ent_artist_style.grid(row=3, column=1, sticky="ew", pady=5)
-
-        # Buttons
-        f_preset_btns = ttk.Frame(f_presets)
-        f_preset_btns.grid(row=4, column=0, columnspan=2, pady=10)
+        ttk.Label(f_mgmt, text=self.app.t("preset_alias")).pack(side="left")
+        self.ent_preset_alias = ttk.Entry(f_mgmt)
+        self.ent_preset_alias.pack(side="left", padx=5, fill="x", expand=True)
         
-        ttk.Button(f_preset_btns, text=self.app.t("save_preset_btn"), command=self.save_preset).pack(side="left", padx=5)
-        ttk.Button(f_preset_btns, text=self.app.t("load_selected_btn"), command=self.load_preset).pack(side="left", padx=5)
-        ttk.Button(f_preset_btns, text=self.app.t("delete_selected_btn"), command=self.delete_preset).pack(side="left", padx=5)
+        # Action Buttons clustered next to the Alias entry
+        btn_add = ttk.Button(f_mgmt, text="+", width=3, command=lambda: self.save_preset(silent=False))
+        btn_add.pack(side="left", padx=1)
+        btn_del = ttk.Button(f_mgmt, text="-", width=3, command=self.delete_preset)
+        btn_del.pack(side="left", padx=1)
+        btn_clear = ttk.Button(f_mgmt, text="✨", width=3, command=self.clear_preset_form)
+        btn_clear.pack(side="left", padx=1)
 
-        f_presets.columnconfigure(1, weight=1)
+        # 3. Details Grid (The "Old Beauty" - for artist specific fields)
+        f_grid = ttk.Frame(f_presets)
+        f_grid.pack(fill="x")
+
+        # Artist Name
+        ttk.Label(f_grid, text=self.app.t("artist_name_label")).grid(row=0, column=0, sticky="w", pady=5)
+        self.ent_artist_name = ttk.Entry(f_grid)
+        self.ent_artist_name.grid(row=0, column=1, sticky="ew", pady=5)
+
+        # Artist Style
+        ttk.Label(f_grid, text=self.app.t("artist_style_label")).grid(row=1, column=0, sticky="w", pady=5)
+        self.ent_artist_style = ttk.Entry(f_grid)
+        self.ent_artist_style.grid(row=1, column=1, sticky="ew", pady=5)
+
+        f_grid.columnconfigure(1, weight=1)
+
+        ttk.Label(f_pre_root, text=self.app.t("save_to_profile_note"), font=("Helvetica", 9, "italic"), foreground="gray", wraplength=800).pack(pady=10)
         
         # --- TAB 1: General ---
         self.tab_general = ttk.Frame(self.notebook)
@@ -657,6 +747,29 @@ class SettingsDialog(tk.Toplevel):
         self.var_h_video = tk.BooleanVar(value=config.get("h_activate_video", False))
         ttk.Checkbutton(f_human, text=self.app.t("phase3_label"), variable=self.var_h_video).grid(row=2, column=2, sticky="w")
 
+        # 3. Levels and Speed
+        ttk.Label(f_human, text=self.app.t("human_level_label")).grid(row=3, column=0, sticky="w", pady=5)
+        self.combo_human_level = ttk.Combobox(f_human, values=[self.app.t("level_low"), self.app.t("level_medium"), self.app.t("level_high")], state="readonly")
+        self.combo_human_level.set(config.get("humanizer_level", self.app.t("level_medium")))
+        self.combo_human_level.grid(row=3, column=1, sticky="w", pady=5)
+        
+        ttk.Label(f_human, text=self.app.t("typing_speed_label")).grid(row=4, column=0, sticky="w", pady=5)
+        self.scale_speed = tk.Scale(f_human, from_=0.05, to_=2.5, resolution=0.05, orient="horizontal")
+        self.scale_speed.set(config.get("humanizer_speed", 1.0))
+        self.scale_speed.grid(row=4, column=1, sticky="ew", pady=5)
+        ttk.Label(f_human, text=self.app.t("speed_hint"), foreground="gray").grid(row=5, column=1, sticky="w")
+        
+        ttk.Label(f_human, text=self.app.t("max_retries_label")).grid(row=6, column=0, sticky="w", pady=5)
+        self.spin_retries = tk.Spinbox(f_human, from_=0, to_=3, width=5)
+        self.spin_retries.delete(0, tk.END)
+        self.spin_retries.insert(0, str(config.get("humanizer_retries", 1)))
+        self.spin_retries.grid(row=6, column=1, sticky="w", pady=5)
+        
+        self.var_adaptive = tk.BooleanVar(value=config.get("humanizer_adaptive", True))
+        ttk.Checkbutton(f_human, text=self.app.t("enable_adaptive_label"), variable=self.var_adaptive).grid(row=7, column=0, columnspan=2, sticky="w", pady=5)
+        
+        f_human.columnconfigure(1, weight=1)
+
         # --- TAB 3: Video ---
         self.tab_video = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_video, text=self.app.t("video")) # Use t("video") for localization
@@ -718,37 +831,16 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(f_path, text="...", width=3, command=lambda: self.browse_folder(self.ent_video_assets)).pack(side="left", padx=2)
         ttk.Label(f_v_assets, text=self.app.t("video_assets_hint"), font=("Helvetica", 8, "italic"), foreground="gray").pack(anchor="w")
 
-        ttk.Label(f_v_assets, text=self.app.t("video_output_mode_label"), pady=(10,0)).pack(anchor="w")
-        self.var_video_output_mode = tk.StringVar(value=config.get("video_output_mode", "profile"))
+        ttk.Label(f_v_assets, text=self.app.t("video_output_mode_label")).pack(anchor="w", pady=(10,0))
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_same_label"), variable=self.var_video_output_mode, value="profile").pack(anchor="w")
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_custom_label"), variable=self.var_video_output_mode, value="custom").pack(anchor="w")
-
-        f_v_quality.columnconfigure(1, weight=1)
-
-        ttk.Label(f_human, text=self.app.t("human_level_label")).grid(row=3, column=0, sticky="w", pady=5)
-        self.combo_human_level = ttk.Combobox(f_human, values=[self.app.t("level_low"), self.app.t("level_medium"), self.app.t("level_high")], state="readonly")
-        self.combo_human_level.set(config.get("humanizer_level", self.app.t("level_medium")))
-        self.combo_human_level.grid(row=3, column=1, sticky="w", pady=5)
         
-        # 4. Typing Speed Multiplier
-        ttk.Label(f_human, text=self.app.t("typing_speed_label")).grid(row=4, column=0, sticky="w", pady=5)
-        self.scale_speed = tk.Scale(f_human, from_=0.05, to_=2.5, resolution=0.05, orient="horizontal")
-        self.scale_speed.set(config.get("humanizer_speed", 1.0))
-        self.scale_speed.grid(row=4, column=1, sticky="ew", pady=5)
-        ttk.Label(f_human, text=self.app.t("speed_hint"), foreground="gray").grid(row=5, column=1, sticky="w")
-        
-        # 5. Max Retries
-        ttk.Label(f_human, text=self.app.t("max_retries_label")).grid(row=6, column=0, sticky="w", pady=5)
-        self.spin_retries = tk.Spinbox(f_human, from_=0, to_=3, width=5)
-        self.spin_retries.delete(0, tk.END)
-        self.spin_retries.insert(0, str(config.get("humanizer_retries", 1)))
-        self.spin_retries.grid(row=6, column=1, sticky="w", pady=5)
-        
-        # 6. Adaptive Delay
-        self.var_adaptive = tk.BooleanVar(value=config.get("humanizer_adaptive", True))
-        ttk.Checkbutton(f_human, text=self.app.t("enable_adaptive_label"), variable=self.var_adaptive).grid(row=7, column=0, columnspan=2, sticky="w", pady=5)
-        
-        f_human.columnconfigure(1, weight=1)
+        f_custom_path = ttk.Frame(f_v_assets)
+        f_custom_path.pack(fill="x", pady=2)
+        self.ent_video_custom_path = ttk.Entry(f_custom_path)
+        self.ent_video_custom_path.insert(0, config.get("video_custom_output_path", ""))
+        self.ent_video_custom_path.pack(side="left", fill="x", expand=True)
+        ttk.Button(f_custom_path, text="...", width=3, command=lambda: self.browse_folder(self.ent_video_custom_path)).pack(side="left", padx=2)
 
         # --- TAB 3: Prompts ---
         self.tab_prompts = ttk.Frame(self.notebook)
@@ -768,8 +860,6 @@ class SettingsDialog(tk.Toplevel):
         
         p_canvas.pack(side="left", fill="both", expand=True)
         p_scrollbar.pack(side="right", fill="y")
-        
-        self.prompts_path = os.path.join(os.path.dirname(config.get("metadata_path", "")), "prompts.json")
         
         # Lyrics
         ttk.Label(p_scroll_frame, text=self.app.t("lyrics_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
@@ -814,10 +904,14 @@ class SettingsDialog(tk.Toplevel):
             self.log_disp.configure(state='disabled')
             self.log_disp.yview(tk.END)
 
-        # Save Button
-        f_btn = ttk.Frame(self, padding=10)
-        f_btn.pack(fill="x", side="bottom")
-        ttk.Button(f_btn, text=self.app.t("save_all"), command=self.save_settings).pack(fill="x")
+        # Save Button (Locked at bottom via Grid Row 1)
+        # NOW PACKED AT TOP OF INIT
+        
+        # Initialize with current active profile (Ref 2)
+        initial_p = config.get("active_preset")
+        if initial_p and initial_p in self.presets:
+            self.combo_preset_select.set(initial_p)
+            self.load_preset()
         
         # Cleanup handler on close
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -827,52 +921,72 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
 
     # --- Preset Methods ---
-    def save_preset(self):
+    def save_preset(self, silent=False):
         alias = self.ent_preset_alias.get().strip()
         if not alias:
-            messagebox.showwarning(self.app.t("warning"), self.app.t("msg_enter_preset_alias"))
+            # If silent, we don't warn, we just skip saving preset
+            if not silent:
+                messagebox.showwarning(self.app.t("warning"), self.app.t("msg_enter_preset_alias"))
             return
         
         # Capture current prompts
         prompts = {
-            "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
-            "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip(),
-            "video_master_prompt": self.txt_video.get("1.0", tk.END).strip(),
-            "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
+            "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip() if self.txt_lyrics else "",
+            "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip() if self.txt_visual else "",
+            "video_master_prompt": self.txt_video.get("1.0", tk.END).strip() if self.txt_video else "",
+            "art_master_prompt": self.txt_art.get("1.0", tk.END).strip() if self.txt_art else ""
         }
         
         # Capture all configurable settings
-        settings_snapshot = {
-            "gemini_lyrics": self.var_lyrics.get(),
-            "gemini_style": self.var_style.get(),
-            "gemini_visual": self.var_visual.get(),
-            "gemini_video": self.var_video.get(),
-            "suno_delay": self.entry_delay.get(),
-            "startup_delay": self.entry_startup.get(),
-            "target_language": self.combo_lang.get(),
-            "artist_name": self.ent_artist_name.get(),
-            "artist_style": self.ent_artist_style.get(),
-            "vocal_gender": self.combo_gender.get(),
-            "vocal_gender_enabled": self.var_gender_enabled.get(),
-            "audio_influence": self.scale_audio.get(),
-            "audio_influence_enabled": self.var_audio_enabled.get(),
-            "weirdness": self.scale_weird.get(),
-            "weirdness_enabled": self.var_weird_enabled.get(),
-            "style_influence": self.scale_style.get(),
-            "style_influence_enabled": self.var_style_enabled.get(),
-            "lyrics_mode": self.combo_lyrics_mode.get(),
-            "lyrics_mode_enabled": self.var_lyrics_mode_enabled.get(),
-            "suno_persona_link_enabled": self.var_persona_link_enabled.get(),
-            "suno_active_persona": self.combo_persona_select.get(),
-            
-            # Video
-            "video_effects": [eff for eff, var in self.effect_vars.items() if var.get()],
-            "video_fps": int(self.spin_fps.get()),
-            "video_resolution": self.combo_res.get(),
-            "video_intensity": self.scale_intensity.get(),
-            "video_assets_path": self.ent_video_assets.get(),
-            "video_output_mode": self.var_video_output_mode.get()
-        }
+        settings_snapshot = {}
+        
+        if self.var_lyrics: settings_snapshot["gemini_lyrics"] = self.var_lyrics.get()
+        if self.var_style: settings_snapshot["gemini_style"] = self.var_style.get()
+        if self.var_visual: settings_snapshot["gemini_visual"] = self.var_visual.get()
+        if self.var_video: settings_snapshot["gemini_video"] = self.var_video.get()
+        if self.entry_delay: settings_snapshot["suno_delay"] = self.entry_delay.get()
+        if self.entry_startup: settings_snapshot["startup_delay"] = self.entry_startup.get()
+        if self.combo_lang: settings_snapshot["target_language"] = self.combo_lang.get()
+        if self.ent_artist_name: settings_snapshot["artist_name"] = self.ent_artist_name.get()
+        if self.ent_artist_style: settings_snapshot["artist_style"] = self.ent_artist_style.get()
+        if self.combo_gender: settings_snapshot["vocal_gender"] = self.combo_gender.get()
+        if self.var_gender_enabled: settings_snapshot["vocal_gender_enabled"] = self.var_gender_enabled.get()
+        if self.scale_audio: settings_snapshot["audio_influence"] = self.scale_audio.get()
+        if self.var_audio_enabled: settings_snapshot["audio_influence_enabled"] = self.var_audio_enabled.get()
+        if self.scale_weird: settings_snapshot["weirdness"] = self.scale_weird.get()
+        if self.var_weird_enabled: settings_snapshot["weirdness_enabled"] = self.var_weird_enabled.get()
+        if self.scale_style: settings_snapshot["style_influence"] = self.scale_style.get()
+        if self.var_style_enabled: settings_snapshot["style_influence_enabled"] = self.var_style_enabled.get()
+        if self.combo_lyrics_mode: settings_snapshot["lyrics_mode"] = self.combo_lyrics_mode.get()
+        if self.var_lyrics_mode_enabled: settings_snapshot["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
+        if self.var_persona_link_enabled: settings_snapshot["suno_persona_link_enabled"] = self.var_persona_link_enabled.get()
+        if self.combo_persona_select: settings_snapshot["suno_active_persona"] = self.combo_persona_select.get()
+        
+        # Defaults
+        if self.var_def_lyrics: settings_snapshot["default_run_lyrics"] = self.var_def_lyrics.get()
+        if self.var_def_music: settings_snapshot["default_run_music"] = self.var_def_music.get()
+        if self.var_def_art_p: settings_snapshot["default_run_art_prompt"] = self.var_def_art_p.get()
+        if self.var_def_art_i: settings_snapshot["default_run_art_image"] = self.var_def_art_i.get()
+        if self.var_def_video: settings_snapshot["default_run_video"] = self.var_def_video.get()
+
+        # Video
+        if self.effect_vars: settings_snapshot["video_effects"] = [eff for eff, var in self.effect_vars.items() if var and var.get()]
+        if self.spin_fps: settings_snapshot["video_fps"] = int(self.spin_fps.get())
+        if self.combo_res: settings_snapshot["video_resolution"] = self.combo_res.get()
+        if self.scale_intensity: settings_snapshot["video_intensity"] = self.scale_intensity.get()
+        if self.ent_video_assets: settings_snapshot["video_assets_path"] = self.ent_video_assets.get()
+        if self.var_video_output_mode: settings_snapshot["video_output_mode"] = self.var_video_output_mode.get()
+        if self.ent_video_custom_path: settings_snapshot["video_custom_output_path"] = self.ent_video_custom_path.get()
+        
+        # Humanizer
+        if self.var_humanizer_enabled: settings_snapshot["humanizer_enabled"] = self.var_humanizer_enabled.get()
+        if self.var_h_gemini: settings_snapshot["h_activate_gemini"] = self.var_h_gemini.get()
+        if self.var_h_suno: settings_snapshot["h_activate_suno"] = self.var_h_suno.get()
+        if self.var_h_video: settings_snapshot["h_activate_video"] = self.var_h_video.get()
+        if self.combo_human_level: settings_snapshot["humanizer_level"] = self.combo_human_level.get()
+        if self.scale_speed: settings_snapshot["humanizer_speed"] = self.scale_speed.get()
+        if self.spin_retries: settings_snapshot["humanizer_retries"] = int(self.spin_retries.get())
+        if self.var_adaptive: settings_snapshot["humanizer_adaptive"] = self.var_adaptive.get()
         
         self.presets[alias] = {
             "settings": settings_snapshot,
@@ -880,74 +994,126 @@ class SettingsDialog(tk.Toplevel):
         }
         self.update_preset_combo()
         self.combo_preset_select.set(alias)
-        messagebox.showinfo(self.app.t("success"), self.app.t("msg_preset_saved").format(alias=alias))
+        if not silent:
+            messagebox.showinfo(self.app.t("success"), self.app.t("msg_preset_saved").format(alias=alias))
 
-    def load_preset(self):
+    def load_preset(self, silent=True):
         alias = self.combo_preset_select.get()
         if not alias or alias not in self.presets:
             return
+        
+        # Mark as active immediately (User requirement)
+        self.config["active_preset"] = alias
         
         data = self.presets[alias]
         settings = data.get("settings", {})
         prompts = data.get("prompts", {})
         
         # Apply settings to UI
-        self.var_lyrics.set(settings.get("gemini_lyrics", True))
-        self.var_style.set(settings.get("gemini_style", True))
-        self.var_visual.set(settings.get("gemini_visual", True))
-        self.var_video.set(settings.get("gemini_video", False))
+        if self.var_lyrics: self.var_lyrics.set(settings.get("gemini_lyrics", True))
+        if self.var_style: self.var_style.set(settings.get("gemini_style", True))
+        if self.var_visual: self.var_visual.set(settings.get("gemini_visual", True))
+        if self.var_video: self.var_video.set(settings.get("gemini_video", False))
         
-        self.entry_delay.delete(0, tk.END)
-        self.entry_delay.insert(0, settings.get("suno_delay", "15"))
-        self.entry_startup.delete(0, tk.END)
-        self.entry_startup.insert(0, settings.get("startup_delay", "5"))
-        self.combo_lang.set(settings.get("target_language", "Turkish"))
+        if self.entry_delay:
+            self.entry_delay.delete(0, tk.END)
+            self.entry_delay.insert(0, settings.get("suno_delay", "15"))
+        if self.entry_startup:
+            self.entry_startup.delete(0, tk.END)
+            self.entry_startup.insert(0, settings.get("startup_delay", "5"))
+        if self.combo_lang: self.combo_lang.set(settings.get("target_language", "Turkish"))
         
-        self.ent_artist_name.delete(0, tk.END)
-        self.ent_artist_name.insert(0, settings.get("artist_name", ""))
-        self.ent_artist_style.delete(0, tk.END)
-        self.ent_artist_style.insert(0, settings.get("artist_style", ""))
+        if self.ent_artist_name:
+            self.ent_artist_name.delete(0, tk.END)
+            self.ent_artist_name.insert(0, settings.get("artist_name", ""))
+        if self.ent_artist_style:
+            self.ent_artist_style.delete(0, tk.END)
+            self.ent_artist_style.insert(0, settings.get("artist_style", ""))
         
-        self.combo_gender.set(settings.get("vocal_gender", "Default"))
-        self.var_gender_enabled.set(settings.get("vocal_gender_enabled", False))
-        self.scale_audio.set(settings.get("audio_influence", 25))
-        self.var_audio_enabled.set(settings.get("audio_influence_enabled", False))
-        self.scale_weird.set(settings.get("weirdness", 50))
-        self.var_weird_enabled.set(settings.get("weirdness_enabled", False))
-        self.scale_style.set(settings.get("style_influence", 50))
-        self.var_style_enabled.set(settings.get("style_influence_enabled", False))
-        self.combo_lyrics_mode.set(settings.get("lyrics_mode", "Default"))
-        self.var_lyrics_mode_enabled.set(settings.get("lyrics_mode_enabled", False))
+        if self.combo_gender: self.combo_gender.set(settings.get("vocal_gender", "Default"))
+        if self.var_gender_enabled: self.var_gender_enabled.set(settings.get("vocal_gender_enabled", False))
+        if self.scale_audio: self.scale_audio.set(int(settings.get("audio_influence", 25)))
+        if self.var_audio_enabled: self.var_audio_enabled.set(settings.get("audio_influence_enabled", False))
+        if self.scale_weird: self.scale_weird.set(int(settings.get("weirdness", 50)))
+        if self.var_weird_enabled: self.var_weird_enabled.set(settings.get("weirdness_enabled", False))
+        if self.scale_style: self.scale_style.set(int(settings.get("style_influence", 50)))
+        if self.var_style_enabled: self.var_style_enabled.set(settings.get("style_influence_enabled", False))
+        if self.combo_lyrics_mode: self.combo_lyrics_mode.set(settings.get("lyrics_mode", "Default"))
+        if self.var_lyrics_mode_enabled: self.var_lyrics_mode_enabled.set(settings.get("lyrics_mode_enabled", False))
         
-        self.combo_persona_select.set(settings.get("suno_active_persona", ""))
+        if self.combo_persona_select: self.combo_persona_select.set(settings.get("suno_active_persona", ""))
+
+        # Defaults
+        if self.var_def_lyrics: self.var_def_lyrics.set(settings.get("default_run_lyrics", True))
+        if self.var_def_music: self.var_def_music.set(settings.get("default_run_music", True))
+        if self.var_def_art_p: self.var_def_art_p.set(settings.get("default_run_art_prompt", True))
+        if self.var_def_art_i: self.var_def_art_i.set(settings.get("default_run_art_image", True))
+        if self.var_def_video: self.var_def_video.set(settings.get("default_run_video", False))
         
         # Apply Video Settings to UI
         target_effects = settings.get("video_effects", [settings.get("video_effect", "None")])
-        for eff, var in self.effect_vars.items():
-            var.set(eff in target_effects)
+        if self.effect_vars:
+            for eff, var in self.effect_vars.items():
+                if var: var.set(eff in target_effects)
             
-        self.spin_fps.delete(0, tk.END)
-        self.spin_fps.insert(0, str(settings.get("video_fps", 30)))
-        self.combo_res.set(settings.get("video_resolution", self.app.t("video_res_shorts")))
-        self.scale_intensity.set(settings.get("video_intensity", 1.0))
-        self.ent_video_assets.delete(0, tk.END)
-        self.ent_video_assets.insert(0, settings.get("video_assets_path", ""))
-        self.var_video_output_mode.set(settings.get("video_output_mode", "profile"))
+        if self.spin_fps:
+            self.spin_fps.delete(0, tk.END)
+            self.spin_fps.insert(0, str(settings.get("video_fps", 30)))
+        if self.combo_res: self.combo_res.set(settings.get("video_resolution", self.app.t("video_res_shorts")))
+        if self.scale_intensity: self.scale_intensity.set(float(settings.get("video_intensity", 1.0)))
+        if self.ent_video_assets:
+            self.ent_video_assets.delete(0, tk.END)
+            self.ent_video_assets.insert(0, settings.get("video_assets_path", ""))
+        if self.var_video_output_mode: self.var_video_output_mode.set(settings.get("video_output_mode", "profile"))
+        if self.ent_video_custom_path:
+            self.ent_video_custom_path.delete(0, tk.END)
+            self.ent_video_custom_path.insert(0, settings.get("video_custom_output_path", ""))
+        
+        # Humanizer
+        if self.var_humanizer_enabled: self.var_humanizer_enabled.set(settings.get("humanizer_enabled", True))
+        if self.var_h_gemini: self.var_h_gemini.set(settings.get("h_activate_gemini", True))
+        if self.var_h_suno: self.var_h_suno.set(settings.get("h_activate_suno", True))
+        if self.var_h_video: self.var_h_video.set(settings.get("h_activate_video", False))
+        if self.combo_human_level: self.combo_human_level.set(settings.get("humanizer_level", self.app.t("level_medium")))
+        if self.scale_speed: self.scale_speed.set(float(settings.get("humanizer_speed", 1.0)))
+        if self.spin_retries:
+            self.spin_retries.delete(0, tk.END)
+            self.spin_retries.insert(0, str(settings.get("humanizer_retries", 1)))
+        if self.var_adaptive: self.var_adaptive.set(settings.get("humanizer_adaptive", True))
         
         # Apply prompts to UI
-        self.txt_lyrics.delete("1.0", tk.END)
-        self.txt_lyrics.insert("1.0", prompts.get("lyrics_master_prompt", ""))
-        self.txt_visual.delete("1.0", tk.END)
-        self.txt_visual.insert("1.0", prompts.get("visual_master_prompt", ""))
-        self.txt_video.delete("1.0", tk.END)
-        self.txt_video.insert("1.0", prompts.get("video_master_prompt", ""))
-        self.txt_art.delete("1.0", tk.END)
-        self.txt_art.insert("1.0", prompts.get("art_master_prompt", ""))
+        if self.txt_lyrics:
+            self.txt_lyrics.delete("1.0", tk.END)
+            self.txt_lyrics.insert("1.0", prompts.get("lyrics_master_prompt", ""))
+        if self.txt_visual:
+            self.txt_visual.delete("1.0", tk.END)
+            self.txt_visual.insert("1.0", prompts.get("visual_master_prompt", ""))
+        if self.txt_video:
+            self.txt_video.delete("1.0", tk.END)
+            self.txt_video.insert("1.0", prompts.get("video_master_prompt", ""))
+        if self.txt_art:
+            self.txt_art.delete("1.0", tk.END)
+            self.txt_art.insert("1.0", prompts.get("art_master_prompt", ""))
         
+        # Apply Alias to Entry (Crucial for user feedback)
         self.ent_preset_alias.delete(0, tk.END)
-        self.ent_preset_alias.insert(0, alias)
+        self.ent_preset_alias.insert(0, str(alias))
         
-        messagebox.showinfo(self.app.t("success"), self.app.t("msg_preset_loaded").format(alias=alias))
+        # Select in combobox to stay in sync if called externally
+        if self.combo_preset_select.get() != alias:
+            self.combo_preset_select.set(alias)
+            
+        # Refresh UI state
+        self.update_idletasks()
+
+    def clear_preset_form(self):
+        """Clears the form to allow adding a new profile easily."""
+        self.combo_preset_select.set('')
+        self.ent_preset_alias.delete(0, tk.END)
+        self.ent_artist_name.delete(0, tk.END)
+        self.ent_artist_style.delete(0, tk.END)
+        # We don't clear master prompts to allow users to use current ones as base
+        messagebox.showinfo(self.app.t("info"), self.app.t("msg_enter_preset_alias"))
 
     def delete_preset(self):
         alias = self.combo_preset_select.get()
@@ -1032,68 +1198,77 @@ class SettingsDialog(tk.Toplevel):
 
     def save_settings(self):
         try:
+            # 0. Automatically update active profile first (Ref 7) - SILENTLY
+            self.save_preset(silent=True)
+            self.config["artist_presets"] = self.presets
+            
             # 1. Config Object Update
-            self.config["gemini_lyrics"] = self.var_lyrics.get()
-            self.config["gemini_style"] = self.var_style.get()
-            self.config["gemini_visual"] = self.var_visual.get()
-            self.config["gemini_video"] = self.var_video.get()
-            self.config["suno_delay"] = int(self.entry_delay.get())
-            self.config["startup_delay"] = int(self.entry_startup.get())
-            self.config["target_language"] = self.combo_lang.get()
-            self.config["ui_language"] = self.combo_ui_lang.get()
-            self.config["log_open_at_start"] = self.var_log_at_start.get()
-            self.config["artist_name"] = self.ent_artist_name.get()
-            self.config["artist_style"] = self.ent_artist_style.get()
+            if self.var_lyrics: self.config["gemini_lyrics"] = self.var_lyrics.get()
+            if self.var_style: self.config["gemini_style"] = self.var_style.get()
+            if self.var_visual: self.config["gemini_visual"] = self.var_visual.get()
+            if self.var_video: self.config["gemini_video"] = self.var_video.get()
+            
+            if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
+            if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
+            if self.combo_lang: self.config["target_language"] = self.combo_lang.get()
+            if self.combo_ui_lang: self.config["ui_language"] = self.combo_ui_lang.get()
+            if self.var_log_at_start: self.config["log_open_at_start"] = self.var_log_at_start.get()
+            
+            if self.ent_artist_name: self.config["artist_name"] = self.ent_artist_name.get()
+            if self.ent_artist_style: self.config["artist_style"] = self.ent_artist_style.get()
+            
             # Humanizer Configs
-            self.config["humanizer_enabled"] = self.var_humanizer_enabled.get()
-            self.config["h_activate_gemini"] = self.var_h_gemini.get()
-            self.config["h_activate_suno"] = self.var_h_suno.get()
-            self.config["humanizer_level"] = self.combo_human_level.get()
-            self.config["humanizer_speed"] = self.scale_speed.get()
-            self.config["humanizer_retries"] = int(self.spin_retries.get())
-            self.config["humanizer_adaptive"] = self.var_adaptive.get()
-
+            if self.var_humanizer_enabled: self.config["humanizer_enabled"] = self.var_humanizer_enabled.get()
+            if self.var_h_gemini: self.config["h_activate_gemini"] = self.var_h_gemini.get()
+            if self.var_h_suno: self.config["h_activate_suno"] = self.var_h_suno.get()
+            if self.var_h_video: self.config["h_activate_video"] = self.var_h_video.get()
+            if self.combo_human_level: self.config["humanizer_level"] = self.combo_human_level.get()
+            if self.scale_speed: self.config["humanizer_speed"] = self.scale_speed.get()
+            if self.spin_retries: self.config["humanizer_retries"] = int(self.spin_retries.get())
+            if self.var_adaptive: self.config["humanizer_adaptive"] = self.var_adaptive.get()
 
             # Defaults Config
-            self.config["default_run_lyrics"] = self.var_def_lyrics.get()
-            self.config["default_run_music"] = self.var_def_music.get()
-            self.config["default_run_art_prompt"] = self.var_def_art_p.get()
-            self.config["default_run_art_image"] = self.var_def_art_i.get()
+            if self.var_def_lyrics: self.config["default_run_lyrics"] = self.var_def_lyrics.get()
+            if self.var_def_music: self.config["default_run_music"] = self.var_def_music.get()
+            if self.var_def_art_p: self.config["default_run_art_prompt"] = self.var_def_art_p.get()
+            if self.var_def_art_i: self.config["default_run_art_image"] = self.var_def_art_i.get()
             
             # Suno Advanced
-            self.config["suno_persona_link_enabled"] = self.var_persona_link_enabled.get()
-            self.config["suno_personas"] = self.personas
-            self.config["suno_active_persona"] = self.combo_persona_select.get()
+            if self.var_persona_link_enabled: self.config["suno_persona_link_enabled"] = self.var_persona_link_enabled.get()
+            self.config["suno_personas"] = getattr(self, "personas", {})
+            if self.combo_persona_select: self.config["suno_active_persona"] = self.combo_persona_select.get()
             
-            self.config["vocal_gender"] = self.combo_gender.get()
-            self.config["vocal_gender_enabled"] = self.var_gender_enabled.get()
-            self.config["audio_influence"] = self.scale_audio.get()
-            self.config["audio_influence_enabled"] = self.var_audio_enabled.get()
-            self.config["weirdness"] = self.scale_weird.get()
-            self.config["weirdness_enabled"] = self.var_weird_enabled.get()
-            self.config["style_influence"] = self.scale_style.get()
-            self.config["style_influence_enabled"] = self.var_style_enabled.get()
-            self.config["lyrics_mode"] = self.combo_lyrics_mode.get()
-            self.config["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
+            if self.combo_gender: self.config["vocal_gender"] = self.combo_gender.get()
+            if self.var_gender_enabled: self.config["vocal_gender_enabled"] = self.var_gender_enabled.get()
+            if self.scale_audio: self.config["audio_influence"] = self.scale_audio.get()
+            if self.var_audio_enabled: self.config["audio_influence_enabled"] = self.var_audio_enabled.get()
+            if self.scale_weird: self.config["weirdness"] = self.scale_weird.get()
+            if self.var_weird_enabled: self.config["weirdness_enabled"] = self.var_weird_enabled.get()
+            if self.scale_style: self.config["style_influence"] = self.scale_style.get()
+            if self.var_style_enabled: self.config["style_influence_enabled"] = self.var_style_enabled.get()
+            if self.combo_lyrics_mode: self.config["lyrics_mode"] = self.combo_lyrics_mode.get()
+            if self.var_lyrics_mode_enabled: self.config["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
             
             # Video Configs
-            self.config["video_effects"] = [eff for eff, var in self.effect_vars.items() if var.get()]
-            self.config["video_fps"] = int(self.spin_fps.get())
-            self.config["video_resolution"] = self.combo_res.get()
-            self.config["video_intensity"] = self.scale_intensity.get()
-            self.config["video_assets_path"] = self.ent_video_assets.get()
-            self.config["video_output_mode"] = self.var_video_output_mode.get()
+            if self.effect_vars: self.config["video_effects"] = [eff for eff, var in self.effect_vars.items() if var and var.get()]
+            if self.spin_fps: self.config["video_fps"] = int(self.spin_fps.get())
+            if self.combo_res: self.config["video_resolution"] = self.combo_res.get()
+            if self.scale_intensity: self.config["video_intensity"] = self.scale_intensity.get()
+            if self.ent_video_assets: self.config["video_assets_path"] = self.ent_video_assets.get()
+            if self.var_video_output_mode: self.config["video_output_mode"] = self.var_video_output_mode.get()
+            if self.ent_video_custom_path: self.config["video_custom_output_path"] = self.ent_video_custom_path.get()
             
             # 2. Prompts Data Update
             import json
             prompt_data = {
-                "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip(),
-                "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip(),
-                "video_master_prompt": self.txt_video.get("1.0", tk.END).strip(),
-                "art_master_prompt": self.txt_art.get("1.0", tk.END).strip()
+                "lyrics_master_prompt": self.txt_lyrics.get("1.0", tk.END).strip() if self.txt_lyrics else "",
+                "visual_master_prompt": self.txt_visual.get("1.0", tk.END).strip() if self.txt_visual else "",
+                "video_master_prompt": self.txt_video.get("1.0", tk.END).strip() if self.txt_video else "",
+                "art_master_prompt": self.txt_art.get("1.0", tk.END).strip() if self.txt_art else ""
             }
-            with open(self.prompts_path, "w", encoding="utf-8") as f:
-                json.dump(prompt_data, f, indent=4, ensure_ascii=False)
+            if self.prompts_path:
+                with open(self.prompts_path, "w", encoding="utf-8") as f:
+                    json.dump(prompt_data, f, indent=4, ensure_ascii=False)
             
             # 3. Request App Level Save
             # Note: app_instance must have save_settings(config)
@@ -1101,7 +1276,7 @@ class SettingsDialog(tk.Toplevel):
                 self.app.save_settings(self.config)
             
             # Warn about language change
-            if self.combo_ui_lang.get() != self.app.config.get("ui_language"):
+            if self.combo_ui_lang and self.combo_ui_lang.get() != self.app.config.get("ui_language"):
                 messagebox.showinfo(self.app.t("ready"), self.app.t("msg_restart_lang"))
 
             messagebox.showinfo(self.app.t("success"), self.app.t("msg_settings_saved"))
@@ -1384,6 +1559,11 @@ class MusicBotGUI:
                         if isinstance(saved_config, dict):
                             self.config.update(saved_config)
                             logger.info(self.t("log_settings_loaded"))
+                            
+                            # Restore last profile
+                            last_p = self.config.get("last_active_profile")
+                            if last_p and last_p in self.config.get("artist_presets", {}):
+                                self.config["active_preset"] = last_p
             except Exception as e:
                 logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
                 # If settings are corrupted, we just continue with defaults
@@ -1398,6 +1578,10 @@ class MusicBotGUI:
         settings_path = os.path.join(workspace, "settings.json")
         
         try:
+            # Save last profile for persistence
+            if "active_preset" in self.config:
+                self.config["last_active_profile"] = self.config["active_preset"]
+                
             with open(settings_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
             logger.info("✅ Settings saved to settings.json")
@@ -1889,10 +2073,11 @@ class MusicBotGUI:
                     if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
                         force_update = True
 
-            # Unified Project Path
+            # Unified Project Path (Profile-based: output_media/[Profile_Name])
             project_file = self.project_path
-            output_media = os.path.join(os.path.dirname(project_file), "output_media")
-            if not os.path.exists(output_media): os.makedirs(output_media)
+            profile_name = self.config.get("active_preset", "Default")
+            output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
+            if not os.path.exists(output_media): os.makedirs(output_media, exist_ok=True)
             
             def progress_callback(rid, text):
                 if rid == "global":
@@ -1997,6 +2182,7 @@ class MusicBotGUI:
                         from gemini_prompter import GeminiPrompter
                         gemini_art = GeminiPrompter(
                             project_file=project_file, # Unified Path
+                            output_dir=output_media,
                             browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
                             startup_delay=self.config.get("startup_delay", 5),
                             language=self.config.get("target_language", "Turkish")
@@ -2024,32 +2210,57 @@ class MusicBotGUI:
                         if found_audio:
                             from video_generator import VideoGenerator
                             v_params = {
-                                "effects": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
-                                "fps": self.config.get("video_fps", 30),
-                                "resolution_label": self.config.get("video_resolution", "Vertical (Shorts - 1080x1920)"),
-                                "intensity_multiplier": self.config.get("video_intensity", 1.0)
+                                "effect_types": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
+                                "fps": int(self.config.get("video_fps", 30)),
+                                "resolution": self.config.get("video_resolution", self.t("video_res_shorts")),
+                                "intensity": int(self.config.get("video_intensity", 1.0) * 50) # Scale 1.0 to 50
                             }
                             
                             for aud_file in found_audio:
                                 if self.stop_requested: break
                                 aud_full_path = os.path.join(output_media, aud_file)
                                 aud_base = os.path.splitext(aud_file)[0]
-                                
-                                # Find matching image
+                                # Extract sequence for ID_Seq check (e.g. 1_Rockie_1 -> 1_1)
+                                parts = aud_base.split("_")
+                                seq_name = None
+                                if len(parts) >= 2:
+                                    last_part = parts[-1]
+                                    if last_part.isdigit():
+                                        seq_name = f"{song_id}_{last_part}"
+
+                                # Find matching image (Ref 3: Priority to video_assets_path)
                                 img_path = None
-                                # Specific or generic ID.ext
-                                for ext in [".png", ".jpg", ".jpeg"]:
-                                    if os.path.exists(os.path.join(output_media, f"{aud_base}{ext}")):
-                                        img_path = os.path.join(output_media, f"{aud_base}{ext}"); break
-                                    if os.path.exists(os.path.join(output_media, f"{song_id}{ext}")):
-                                        img_path = os.path.join(output_media, f"{song_id}{ext}"); break
+                                search_dirs = []
+                                assets_folder = self.config.get("video_assets_path")
+                                if assets_folder and os.path.exists(assets_folder):
+                                    search_dirs.append(assets_folder)
+                                search_dirs.append(output_media) # Fallback to profile folder
+                                
+                                for s_dir in search_dirs:
+                                    # Patterns: Full Name, ID_Seq (1_1), or Generic ID (1)
+                                    # Support all common image formats and casing
+                                    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
+                                        # 1. Try Full Filename (1_Rock_1.png)
+                                        if os.path.exists(os.path.join(s_dir, f"{aud_base}{ext}")):
+                                            img_path = os.path.join(s_dir, f"{aud_base}{ext}"); break
+                                        
+                                        # 2. Try ID_Sequence (1_1.png)
+                                        if seq_name and os.path.exists(os.path.join(s_dir, f"{seq_name}{ext}")):
+                                            img_path = os.path.join(s_dir, f"{seq_name}{ext}"); break
+                                            
+                                        # 3. Fallback to generic ID (1.png)
+                                        if os.path.exists(os.path.join(s_dir, f"{song_id}{ext}")):
+                                            img_path = os.path.join(s_dir, f"{song_id}{ext}"); break
+                                    if img_path: break
+                                    if img_path: break
                                 
                                 if img_path:
-                                    # Output Directory Logic
-                                    video_out_dir = output_media
+                                    # Output Directory Logic (Ref 5: Subfolder 'videos')
+                                    video_out_dir = os.path.join(output_media, "videos")
                                     if self.config.get("video_output_mode") == "custom":
-                                        video_out_dir = os.path.join(workspace, "Output_Videos")
-                                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir)
+                                        video_out_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
+                                    
+                                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
                                     
                                     vgen = VideoGenerator(output_dir=video_out_dir)
                                     vgen.generate_video(
@@ -2216,11 +2427,11 @@ class MusicBotGUI:
         self.btn_stop.config(state="normal")
 
     def enable_buttons(self):
-        self.master.after(0, lambda: self.btn_run.config(state="normal"))
-        self.master.after(0, lambda: self.btn_stop.config(state="disabled"))
-        self.master.after(0, lambda: self.status_var.set(self.t("ready")))
-        self.master.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
-        self.master.after(0, lambda: self.load_project_data()) # Auto refresh
+        self.root.after(0, lambda: self.btn_run.config(state="normal"))
+        self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
+        self.root.after(0, lambda: self.status_var.set(self.t("ready")))
+        self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
+        self.root.after(0, lambda: self.load_project_data()) # Auto refresh
 
     def load_data(self):
         # Dummy load_data for the finally block

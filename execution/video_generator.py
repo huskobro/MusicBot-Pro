@@ -27,8 +27,11 @@ class VideoGenerator:
             # Resolve Resolution
             res_map = {
                 "Vertical (Shorts - 1080x1920)": (1080, 1920),
+                "Dikey (Shorts - 1080x1920)": (1080, 1920),
                 "Horizontal (HD - 1920x1080)": (1920, 1080),
-                "Horizontal (SD - 1280x720)": (1280, 720)
+                "Yatay (HD - 1920x1080)": (1920, 1080),
+                "Horizontal (SD - 1280x720)": (1280, 720),
+                "Yatay (SD - 1280x720)": (1280, 720)
             }
             # Handle localized strings or fallback
             target_res = res_map.get(resolution, (1080, 1920))
@@ -46,9 +49,9 @@ class VideoGenerator:
                 logger.error(f"Image file not found: {image_path}")
                 return False
                 
-            base_clip = ImageClip(image_path).resize(height=target_res[1] if target_res[0] < target_res[1] else None, 
+            base_clip = ImageClip(image_path).resized(height=target_res[1] if target_res[0] < target_res[1] else None, 
                                                    width=target_res[0] if target_res[0] >= target_res[1] else None)
-            base_clip = base_clip.crop(x_center=base_clip.w/2, y_center=base_clip.h/2, 
+            base_clip = base_clip.cropped(x_center=base_clip.w/2, y_center=base_clip.h/2, 
                                       width=target_res[0], height=target_res[1]).with_duration(duration)
             
             # 3. Apply Effects
@@ -57,7 +60,7 @@ class VideoGenerator:
             # Custom Ken Burns Effect (Zoom) - Applies to the base content
             if any(eff in effect_types for eff in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"]):
                 zoom_speed = 0.05 * (intensity / 50)
-                current_clip = base_clip.resize(lambda t: 1 + zoom_speed * t)
+                current_clip = base_clip.resized(lambda t: 1 + zoom_speed * t)
             
             # Collect procedural overlay effects
             overlay_clips = []
@@ -106,7 +109,7 @@ class VideoGenerator:
         """Generates a procedural effect clip using numpy and moviepy."""
         w, h = resolution
         
-        if effect_type == "Snow":
+        if effect_type in ["Snow", "Kar Efekti"]:
             num_particles = int(2 * intensity)
             particles = np.zeros((num_particles, 4))
             particles[:, 0] = np.random.randint(0, w, num_particles)
@@ -128,7 +131,7 @@ class VideoGenerator:
                 return frame
             return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
 
-        elif effect_type == "Rain":
+        elif effect_type in ["Rain", "Yağmur Efekti"]:
             num_particles = int(4 * intensity)
             particles = np.zeros((num_particles, 4))
             particles[:, 0] = np.random.randint(0, w, num_particles)
@@ -151,7 +154,7 @@ class VideoGenerator:
                 return frame
             return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
             
-        elif effect_type == "Particles":
+        elif effect_type in ["Particles", "Parçacıklar"]:
             num_particles = int(1.5 * intensity)
             particles = np.zeros((num_particles, 5))
             particles[:, 0] = np.random.randint(0, w, num_particles)

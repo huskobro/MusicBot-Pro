@@ -11,10 +11,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class GeminiPrompter:
-    def __init__(self, project_file, headless=False, 
+    def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
                  language="Turkish", browser=None):
         self.project_file = project_file
+        self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
         # Backward compatibility for internal methods
         self.output_path = project_file
         self.metadata_path = project_file
@@ -611,7 +612,7 @@ Main title: “{title}”
                 time.sleep(5)
             
             if found_img:
-                img_dir = os.path.join(os.path.dirname(self.output_path), "images")
+                img_dir = self.output_dir
                 os.makedirs(img_dir, exist_ok=True)
                 save_path = os.path.join(img_dir, f"{rid}.png")
                 logger.info(f"Found image. Saving with screenshot to: {save_path}")
