@@ -139,11 +139,8 @@ class SunoGenerator:
             self.browser.goto(self.persona_link, page=self.tab)
             time.sleep(5)
 
-            # Click "Create with Persona" with retries
-            clicked = False
-            logger.info("Waiting for 'Create with Persona' button to become active...")
-            for attempt in range(15): # 15 attempts * 2s = 30s max wait
-                status = self.tab.evaluate("""() => {
+            def find_and_click():
+                return self.tab.evaluate("""() => {
                     const btns = Array.from(document.querySelectorAll('button'));
                     const btn = btns.find(b => {
                         const txt = (b.innerText || "").toLowerCase();
@@ -151,14 +148,11 @@ class SunoGenerator:
                     });
                     
                     if (btn) {
-                        // Check if it's actually clickable (not disabled, visible)
                         const style = window.getComputedStyle(btn);
                         const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0 && style.visibility !== 'hidden' && style.display !== 'none';
                         const isEnabled = !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
                         
                         if (isVisible && isEnabled) {
-                            const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-                            btn.dispatchEvent(evt);
                             btn.click();
                             return "clicked";
                         }
@@ -166,14 +160,36 @@ class SunoGenerator:
                     }
                     return "not_found";
                 }""")
-                
+
+            # Click "Create with Persona" with retries
+            clicked = False
+            logger.info("Waiting for 'Create with Persona' button...")
+            
+            # First attempt loop (Wait up to ~15s)
+            for attempt in range(5): 
+                status = find_and_click()
                 if status == "clicked":
                     clicked = True
                     break
                 elif status == "found_but_inactive":
-                    logger.info(f"Button found but not ready yet (Attempt {attempt+1}/15)...")
-                
+                    logger.info(f"Button found but not ready yet (Attempt {attempt+1}/5)...")
                 time.sleep(3)
+
+            # If not found, try refresh (User request for soft 404/slow load)
+            if not clicked:
+                logger.warning("'Create with Persona' button not found or inactive. Refreshing page in 3s...")
+                time.sleep(3)
+                self.browser.goto(self.persona_link, page=self.tab)
+                time.sleep(5) # Wait for reload
+                
+                # Second attempt loop (Wait up to ~30s)
+                logger.info("Searching for button again after refresh...")
+                for attempt in range(10):
+                    status = find_and_click()
+                    if status == "clicked":
+                        clicked = True
+                        break
+                    time.sleep(3)
 
             if clicked:
                 logger.info("Clicked 'Create with Persona'. Waiting for /create page...")
@@ -182,7 +198,7 @@ class SunoGenerator:
                 self._handle_v5_switch_modal()
                 return True
             else:
-                logger.warning("'Create with Persona' button not found.")
+                logger.warning("'Create with Persona' button not found after refresh and retries.")
                 return False
         except Exception as e:
             logger.error(f"Persona workflow failed: {e}")

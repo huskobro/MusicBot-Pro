@@ -191,7 +191,13 @@ TRANSLATIONS = {
         "video_assets_hint": "💡 If empty, 'output_media/[Profile_Name]' will be searched for images first.",
         "last_profile_label": "Last Profile:",
         "save_to_profile_note": "Note: 'Save All' also updates the active preset.",
-        "add_new_profile_btn": "✨ Add New Profile"
+        "add_new_profile_btn": "✨ Add New Profile",
+        "compilation": "Compilation (Step 6)",
+        "phase4_label": "Phase 4: Compilation",
+        "log_merge_start": "🎬 Starting Video Merger (Phase 6)...",
+        "log_merge_success": "✅ Compilation video created: {path}",
+        "log_merge_fail": "❌ Failed to create compilation video: {error}",
+        "log_merge_no_files": "⚠️ No videos found to merge in {path}."
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -363,7 +369,13 @@ TRANSLATIONS = {
         "video_assets_hint": "💡 Boş bırakılırsa, resimler için önce 'output_media/[Profil_Adı]' klasörüne bakılır.",
         "last_profile_label": "Son Profil:",
         "save_to_profile_note": "💡 İpucu: Yeni bir profil oluşturmak için 'Profil İsmi'ni değiştirip '+'ya basın. Mevcutu silmek için '-'ye, formu temizlemek için '✨'ye basın.",
-        "add_new_profile_btn": "✨ Yeni Profil Ekle"
+        "add_new_profile_btn": "✨ Yeni Profil Ekle",
+        "compilation": "Birleştirme (6. Aşama)",
+        "phase4_label": "Aşama 4: Birleştirme",
+        "log_merge_start": "🎬 Video Birleştirme Başlatılıyor (6. Aşama)...",
+        "log_merge_success": "✅ Uzun video başarıyla oluşturuldu: {path}",
+        "log_merge_fail": "❌ Uzun video oluşturulamadı: {error}",
+        "log_merge_no_files": "⚠️ {path} klasöründe birleştirilecek video bulunamadı."
     }
 }
 
@@ -471,6 +483,7 @@ class SettingsDialog(tk.Toplevel):
         self.var_def_art_p = None
         self.var_def_art_i = None
         self.var_def_video = None
+        self.var_def_compilation = None
         self.var_persona_link_enabled = None
         self.combo_persona_select = None
         self.var_gender_enabled = None
@@ -580,6 +593,9 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_defaults, text="4. " + self.app.t("art_image"), variable=self.var_def_art_i).pack(anchor="w")
         self.var_def_video = tk.BooleanVar(value=config.get("default_run_video", False))
         ttk.Checkbutton(f_defaults, text="5. " + self.app.t("video"), variable=self.var_def_video).pack(anchor="w")
+        
+        self.var_def_compilation = tk.BooleanVar(value=config.get("default_run_compilation", True))
+        ttk.Checkbutton(f_defaults, text="6. " + self.app.t("compilation"), variable=self.var_def_compilation).pack(anchor="w")
 
         # --- TAB 1.2: Active Workflow ---
         self.tab_workflow = ttk.Frame(self.notebook)
@@ -593,6 +609,8 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_active, text="3. " + self.app.t("art_prompt"), variable=self.app.var_run_art_prompt).pack(anchor="w", pady=5)
         ttk.Checkbutton(f_active, text="4. " + self.app.t("art_image"), variable=self.app.var_run_art_image).pack(anchor="w", pady=5)
         ttk.Checkbutton(f_active, text="5. " + self.app.t("video"), variable=self.app.var_run_video).pack(anchor="w", pady=5)
+        
+        ttk.Checkbutton(f_active, text="6. " + self.app.t("compilation"), variable=self.app.var_run_compilation).pack(anchor="w", pady=5)
         
         ttk.Label(f_active, text=self.app.t("note_changes"), font=("Helvetica", 9, "italic"), foreground="gray").pack(pady=20)
 
@@ -968,6 +986,7 @@ class SettingsDialog(tk.Toplevel):
         if self.var_def_art_p: settings_snapshot["default_run_art_prompt"] = self.var_def_art_p.get()
         if self.var_def_art_i: settings_snapshot["default_run_art_image"] = self.var_def_art_i.get()
         if self.var_def_video: settings_snapshot["default_run_video"] = self.var_def_video.get()
+        if self.var_def_compilation: settings_snapshot["default_run_compilation"] = self.var_def_compilation.get()
 
         # Video
         if self.effect_vars: settings_snapshot["video_effects"] = [eff for eff, var in self.effect_vars.items() if var and var.get()]
@@ -1049,6 +1068,7 @@ class SettingsDialog(tk.Toplevel):
         if self.var_def_art_p: self.var_def_art_p.set(settings.get("default_run_art_prompt", True))
         if self.var_def_art_i: self.var_def_art_i.set(settings.get("default_run_art_image", True))
         if self.var_def_video: self.var_def_video.set(settings.get("default_run_video", False))
+        if self.var_def_compilation: self.var_def_compilation.set(settings.get("default_run_compilation", True))
         
         # Apply Video Settings to UI
         target_effects = settings.get("video_effects", [settings.get("video_effect", "None")])
@@ -1232,6 +1252,7 @@ class SettingsDialog(tk.Toplevel):
             if self.var_def_music: self.config["default_run_music"] = self.var_def_music.get()
             if self.var_def_art_p: self.config["default_run_art_prompt"] = self.var_def_art_p.get()
             if self.var_def_art_i: self.config["default_run_art_image"] = self.var_def_art_i.get()
+            if self.var_def_compilation: self.config["default_run_compilation"] = self.var_def_compilation.get()
             
             # Suno Advanced
             if self.var_persona_link_enabled: self.config["suno_persona_link_enabled"] = self.var_persona_link_enabled.get()
@@ -1341,7 +1362,7 @@ class MusicBotGUI:
         self.var_run_art_prompt = tk.BooleanVar(value=self.config.get("default_run_art_prompt", True))
         self.var_run_art_image = tk.BooleanVar(value=self.config.get("default_run_art_image", True))
         self.var_run_video = tk.BooleanVar(value=self.config.get("default_run_video", False))
-        self.var_run_video = tk.BooleanVar(value=self.config.get("default_run_video", False))
+        self.var_run_compilation = tk.BooleanVar(value=self.config.get("default_run_compilation", True))
 
         # Keyboard Bindings
         self.root.bind("<Return>", lambda e: self.start_process())
@@ -1433,6 +1454,7 @@ class MusicBotGUI:
         ttk.Checkbutton(self.f_run_ops, text=self.t("art_prompt"), variable=self.var_run_art_prompt, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("compilation"), variable=self.var_run_compilation, command=self.apply_filter).pack(side="left", padx=10)
 
         # Main Table
         self.f_tree = ttk.Frame(self.root)
@@ -1955,7 +1977,7 @@ class MusicBotGUI:
              return
 
         # Check if at least one step is selected
-        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]):
+        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get(), self.var_run_compilation.get()]):
             logger.error(self.t("msg_no_steps"))
             messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
             return
@@ -2076,6 +2098,7 @@ class MusicBotGUI:
             # Unified Project Path (Profile-based: output_media/[Profile_Name])
             project_file = self.project_path
             profile_name = self.config.get("active_preset", "Default")
+            workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
             output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
             if not os.path.exists(output_media): os.makedirs(output_media, exist_ok=True)
             
@@ -2252,7 +2275,6 @@ class MusicBotGUI:
                                         if os.path.exists(os.path.join(s_dir, f"{song_id}{ext}")):
                                             img_path = os.path.join(s_dir, f"{song_id}{ext}"); break
                                     if img_path: break
-                                    if img_path: break
                                 
                                 if img_path:
                                     # Output Directory Logic (Ref 5: Subfolder 'videos')
@@ -2271,9 +2293,7 @@ class MusicBotGUI:
                                     )
                                 else:
                                     logger.warning(f"Skipping video for {aud_file}: No matching image found.")
-                        else:
-                            logger.warning(f"Skipping video for {song_id}: No audio files found.")
-
+                    self.active_browser = None
                 except Exception as e:
                     logger.error(f"Error processing {song_id}: {e}")
                     progress_callback(song_id, "Error in flow ❌")
@@ -2285,6 +2305,35 @@ class MusicBotGUI:
                             song_browser.stop()
                     except: pass
                     self.active_browser = None
+
+            # --- Step 6: Video Merger (Compilation) ---
+            if self.var_run_compilation.get() and not self.stop_requested:
+                try:
+                    logger.info(self.t("log_merge_start"))
+                    self.root.after(0, lambda: self.status_var.set(self.t("compilation")))
+                    
+                    video_dir = os.path.join(output_media, "videos")
+                    if self.config.get("video_output_mode") == "custom":
+                        video_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
+                    
+                    if os.path.exists(video_dir):
+                        # Get all .mp4 files in the video dir, excluding existing compilations
+                        all_vids = [os.path.join(video_dir, f) for f in os.listdir(video_dir) if f.endswith(".mp4") and not f.startswith("Compilation_")]
+                        all_vids.sort() # Sort by name (ids usually)
+                        
+                        if all_vids:
+                            from video_merger import VideoMerger
+                            merger = VideoMerger(output_dir=video_dir)
+                            compilation_name = f"Compilation_{profile_name}_{int(time.time())}.mp4"
+                            success = merger.merge_videos(all_vids, compilation_name)
+                            if success:
+                                logger.info(self.t("log_merge_success").format(path=compilation_name))
+                            else:
+                                logger.error(self.t("log_merge_fail").format(error="Process Interrupted or Failed"))
+                        else:
+                            logger.warning(self.t("log_merge_no_files").format(path=video_dir))
+                except Exception as e:
+                    logger.error(self.t("log_merge_fail").format(error=str(e)))
 
             self.root.after(0, lambda: self.current_song_var.set(""))
             self.play_chime()
