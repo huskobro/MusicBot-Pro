@@ -118,10 +118,15 @@ class BrowserController:
                 channel="chrome",
                 args=[
                     "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox"
+                    "--no-sandbox",
+                    "--disable-infobars"
                 ],
+                ignore_default_args=["--enable-automation"],
                 viewport={"width": 1280, "height": 800} 
             )
+
+            # Apply Stealth to the entire CONTEXT (affects all current and future pages)
+            Stealth().apply_stealth_sync(self.context)
             
             # Default page
             if self.context.pages:
@@ -129,10 +134,7 @@ class BrowserController:
             else:
                 self.pages["default"] = self.context.new_page()
             
-            # Apply Stealth to default page
-            Stealth().apply_stealth_sync(self.pages["default"])
-            
-            logger.info("Browser started successfully (Stealth Mode enabled).")
+            logger.info("Browser started successfully (Stealth Mode enabled for Context).")
             
         except Exception as e:
             logger.error(f"Failed to launch browser: {e}")
@@ -147,7 +149,7 @@ class BrowserController:
         if name not in self.pages:
             logger.info(f"Creating new tab: {name}")
             page = self.context.new_page()
-            Stealth().apply_stealth_sync(page) # Apply Stealth to new tabs
+            # Stealth is already applied to the context
             self.pages[name] = page
             
         return self.pages[name]

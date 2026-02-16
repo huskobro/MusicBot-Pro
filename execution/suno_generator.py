@@ -510,7 +510,8 @@ class SunoGenerator:
                 download = download_info.value
                 clean_title = re.sub(r'[^\w\s-]', '', title).strip()
                 clean_title = re.sub(r'[-\s]+', '_', clean_title)
-                filename = f"{rid}_{clean_title}_{suffix}.{ext}"
+                # 'title' already contains the ID
+                filename = f"{clean_title}_{suffix}.{ext}"
                 save_path = os.path.join(self.output_dir, filename)
                 download.save_as(save_path)
                 return True
