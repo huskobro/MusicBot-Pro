@@ -1,9 +1,9 @@
-
 import time
 import os
 import logging
 import openpyxl
 import re
+import json
 from browser_controller import BrowserController
 
 # Configure logging
@@ -42,7 +42,7 @@ class SunoGenerator:
                 self.browser.start()
             
             if self.startup_delay > 0:
-                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
+                if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
                 time.sleep(self.startup_delay)
             
             # --- Persona Workflow (Before reaching /create) ---
@@ -136,7 +136,7 @@ class SunoGenerator:
         """Navigates to persona page, clicks 'Create with Persona', and handles v5 modal."""
         try:
             logger.info(f"Navigating to Persona Link: {self.persona_link}")
-            if progress_callback: progress_callback("global", "Navigating to Persona... 👤")
+            if progress_callback: progress_callback("global", "Persona Profili Seçiliyor... 👤")
             self.browser.goto(self.persona_link, page=self.tab)
             time.sleep(5)
 
@@ -385,7 +385,7 @@ class SunoGenerator:
                     # 2. Check for CAPTCHA / Challenge
                     if self._detect_captcha():
                         logger.warning("⚠️ CAPTCHA/Challenge detected on Suno!")
-                        if progress_callback: progress_callback(rid, "⚠️ CAPTCHA DETECTED! Use Chrome... 🕒")
+                        if progress_callback: progress_callback(rid, "⚠️ CAPTCHA ALGILANDI! Lütfen tarayıcıda çözün... 🕒")
                         self._play_alert()
                         # Pause until cleared
                         while self._detect_captcha() and not self.stop_requested:
@@ -395,8 +395,7 @@ class SunoGenerator:
                     time.sleep(2)
                 
                 if not new_clip_appeared:
-                    logger.error("❌ No new song appeared in Suno после clicking Create. Generation likely failed or blocked by CAPTCHA.")
-                    if progress_callback: progress_callback(rid, "Suno Generation Failed (Possible CAPTCHA) ❌")
+                    if progress_callback: progress_callback(rid, "Suno Üretimi Başarısız (CAPTCHA olabilir) ❌")
                     return False
 
                 # Trigger dual download
@@ -415,32 +414,37 @@ class SunoGenerator:
     def _wait_and_download(self, title, rid, progress_callback=None, index=0, suffix="1"):
         try:
             logger.info(f"Waiting for {title} (ID: {rid}, Suffix: {suffix}) to finish generating...")
-            if progress_callback: progress_callback(rid, f"Polling Suno for {suffix}... ⏳")
+            if progress_callback: progress_callback(rid, f"Suno Bekleniyor ({suffix})... ⏳")
             
             found_ready = False
             best_index = index # Fallback
             
             for attempt in range(120):
                 try:
-                    # Check top 3 rows instead of just one, to find the right title match
+                    # Check top rows to find the right occurrence match
                     rows = self.tab.locator("div.clip-row")
                     count = rows.count()
                     
                     match_found = False
-                    for i in range(min(3, count)):
+                    occurrence_count = 0
+                    for i in range(min(5, count)):
                         row = rows.nth(i)
                         row_text = row.inner_text().lower()
                         
                         # Check if this row is OUR song (rid or title match)
                         if str(rid).lower() in row_text or str(title).lower() in row_text:
-                            # Found our row! Now check if it's ready
-                            if not row.locator("text='Generating'").is_visible(timeout=500):
-                                duration_loc = row.locator("text=/\\d{1,2}:\\d{2}/")
-                                if duration_loc.count() > 0 and duration_loc.first.is_visible():
-                                    best_index = i
-                                    found_ready = True
-                                    match_found = True
-                                    break
+                            if occurrence_count == index:
+                                # This is the occurrence we want (0 for 1st song, 1 for 2nd song)
+                                if not row.locator("text='Generating'").is_visible(timeout=500):
+                                    duration_loc = row.locator("text=/\\d{1,2}:\\d{2}/")
+                                    if duration_loc.count() > 0 and duration_loc.first.is_visible():
+                                        best_index = i
+                                        found_ready = True
+                                        match_found = True
+                                        break
+                                # If we found our occurrence but it's still generating, keep waiting
+                                break
+                            occurrence_count += 1
                     
                     if match_found: break
                 except: pass
@@ -450,7 +454,7 @@ class SunoGenerator:
                 logger.warning(f"Timeout waiting for {title} (suffix {suffix})")
                 return False
 
-            if progress_callback: progress_callback(rid, f"Downloading Audio {suffix}... ⬇️")
+            if progress_callback: progress_callback(rid, f"Ses İndiriliyor ({suffix})... ⬇️")
             self.tab.keyboard.press("Escape")
             time.sleep(1)
 
@@ -510,14 +514,19 @@ class SunoGenerator:
                 download = download_info.value
                 clean_title = re.sub(r'[^\w\s-]', '', title).strip()
                 clean_title = re.sub(r'[-\s]+', '_', clean_title)
-                filename = f"{rid}_{clean_title}_{suffix}.{ext}"
+                # 'title' already contains the ID
+                filename = f"{clean_title}_{suffix}.{ext}"
                 save_path = os.path.join(self.output_dir, filename)
                 download.save_as(save_path)
                 return True
                 
-            except: return True 
+            except Exception as e:
+                logger.error(f"Error during Suno download: {e}")
+                return False
                 
-        except: return True
+        except Exception as e:
+            logger.error(f"Critical error in _wait_and_download: {e}")
+            return False
 
     def close(self): pass
 

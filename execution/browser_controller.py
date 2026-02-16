@@ -3,6 +3,7 @@ import sys
 import time
 import functools
 import logging
+from urllib.robotparser import RobotFileParser
 from playwright.sync_api import sync_playwright, Page, BrowserContext, ElementHandle
 from humanizer import Humanizer
 
@@ -82,6 +83,44 @@ class BrowserController:
         self.humanizer_enabled = True # Global toggle for this instance
         logger.info(f"Humanizer initialized: {h_conf}")
 
+        # --- High Quality User Agent ---
+        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        
+        # --- robots.txt Cache ---
+        self.robot_parsers = {}
+        self.last_action_time = 0
+
+    def get_crawl_delay(self, url):
+        """Fetches the crawl delay from the site's robots.txt if available."""
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            robots_url = f"{base_url}/robots.txt"
+
+            if base_url not in self.robot_parsers:
+                parser = RobotFileParser()
+                parser.set_url(robots_url)
+                parser.read()
+                self.robot_parsers[base_url] = parser
+            
+            parser = self.robot_parsers[base_url]
+            delay = parser.get_crawl_delay(self.user_agent)
+            return delay if delay else 0
+        except Exception as e:
+            logger.debug(f"Could not fetch robots.txt for {url}: {e}")
+            return 0
+
+    def _apply_robots_delay(self, url):
+        """Ensures we wait long enough between actions to respect robots.txt crawl-delay."""
+        delay = self.get_crawl_delay(url)
+        if delay > 0:
+            elapsed = time.time() - self.last_action_time
+            if elapsed < delay:
+                wait_time = delay - elapsed
+                logger.info(f"Respecting robots.txt: Waiting {wait_time:.2f}s (Crawl-delay={delay}s)")
+                time.sleep(wait_time)
+        self.last_action_time = time.time()
 
     def _cleanup_locks(self):
         """Removes Chrome's Singleton lock files that prevent multi-instance launch."""
@@ -108,17 +147,18 @@ class BrowserController:
         self.playwright = sync_playwright().start()
         
         try:
-            # Launch persistent context
-            # Adding channel="chrome" back - it's REQUIRED for the bundled app to find the system Chrome.
-            # The SIGTRAP/Lock issues are now handled by _cleanup_locks().
+            # Launch persistent context (This automatically handles Visitor Cookies)
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,
                 channel="chrome",
+                user_agent=self.user_agent, # --- Custom User Agent ---
                 args=[
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
                     "--no-sandbox"
                 ],
+                ignore_default_args=["--enable-automation"],
                 viewport={"width": 1280, "height": 800} 
             )
             
@@ -128,7 +168,7 @@ class BrowserController:
             else:
                 self.pages["default"] = self.context.new_page()
             
-            logger.info("Browser started successfully.")
+            logger.info("Browser started successfully (UA/Cookies/Robots enabled).")
             
         except Exception as e:
             logger.error(f"Failed to launch browser: {e}")
@@ -163,6 +203,10 @@ class BrowserController:
     def goto(self, url, page=None):
         """Navigates to a URL with retry logic."""
         p = page if page else self.page
+        
+        # --- robots.txt delay ---
+        self._apply_robots_delay(url)
+        
         logger.info(f"Navigating to {url}")
         
         # Humanizer wait before navigation
@@ -181,6 +225,10 @@ class BrowserController:
     def click(self, selector, page=None):
         """Clicks an element specified by the selector."""
         p = page if page else self.page
+        
+        # --- robots.txt delay ---
+        self._apply_robots_delay(p.url)
+        
         logger.info(f"Clicking element: {selector}")
         if self.humanizer_enabled:
             self.humanizer.check_captcha(p)
@@ -193,6 +241,10 @@ class BrowserController:
     def fill(self, selector, text, page=None):
         """Fills an input field specified by the selector."""
         p = page if page else self.page
+        
+        # --- robots.txt delay ---
+        self._apply_robots_delay(p.url)
+        
         logger.info(f"Filling element {selector} with text length {len(text)}")
         if self.humanizer_enabled:
             self.humanizer.check_captcha(p)
