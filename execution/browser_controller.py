@@ -112,14 +112,24 @@ class BrowserController:
             return 0
 
     def _apply_robots_delay(self, url):
-        """Ensures we wait long enough between actions to respect robots.txt crawl-delay."""
-        delay = self.get_crawl_delay(url)
-        if delay > 0:
-            elapsed = time.time() - self.last_action_time
-            if elapsed < delay:
-                wait_time = delay - elapsed
-                logger.info(f"Respecting robots.txt: Waiting {wait_time:.2f}s (Crawl-delay={delay}s)")
-                time.sleep(wait_time)
+        """Ensures we wait long enough between actions to respect robots.txt crawl-delay or human fallback."""
+        site_delay = self.get_crawl_delay(url)
+        
+        # Fallback: Even if site says 0, use a small human-like minimum (e.g. 1.2s)
+        # to ensure we never click inhumanly fast.
+        min_delay = max(site_delay, 1.2) 
+        
+        elapsed = time.time() - self.last_action_time
+        if elapsed < min_delay:
+            wait_time = min_delay - elapsed
+            if site_delay > 0:
+                logger.info(f"Respecting robots.txt: Waiting {wait_time:.2f}s (Site-delay={site_delay}s)")
+            else:
+                # This log will show the user that the logic IS active even if site is silent
+                logger.debug(f"Humanizing interval: Waiting {wait_time:.2f}s...")
+            
+            time.sleep(wait_time)
+            
         self.last_action_time = time.time()
 
     def _cleanup_locks(self):
