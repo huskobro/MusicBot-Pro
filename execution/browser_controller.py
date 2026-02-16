@@ -41,30 +41,15 @@ class BrowserController:
     """
 
     def __init__(self, headless=False, profile_path=None, humanizer_config=None):
-
         """
-        Initializes the BrowserController.
-        
-        Args:
-            headless (bool): Whether to run the browser in headless mode.
-            profile_path (str): Path to the Chrome user data directory. 
-                                Defaults to the standard macOS Chrome profile location if not provided.
+        Initializes the BrowserController with native Playwright defaults.
         """
         self.headless = headless
         
         if profile_path:
             self.user_data_dir = profile_path
         else:
-            # Use a local profile directory in the project/app support folder
-            # This ensures we don't conflict with the user's main open Chrome instance
-            # and allows us to save the login state portably.
-            if getattr(sys, 'frozen', False):
-                # If packaged, keep profile near the app or in Documents to persist
-                base_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
-            else:
-                # If script, keep in Documents to match packaged app behavior (Unified Workspace)
-                base_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
-            
+            base_path = os.path.expanduser("~/Documents/MusicBot_Workspace")
             self.user_data_dir = os.path.join(base_path, "chrome_profile")
             os.makedirs(self.user_data_dir, exist_ok=True)
 
@@ -80,60 +65,15 @@ class BrowserController:
             retry_attempts=h_conf.get("retries", 1),
             adaptive_delay=h_conf.get("adaptive", True)
         )
-        self.humanizer_enabled = True # Global toggle for this instance
+        self.humanizer_enabled = True 
         logger.info(f"Humanizer initialized: {h_conf}")
 
-        # --- High Quality User Agent ---
+        # --- Mandatory Google Login Compatibility ---
         self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-        
-        # --- robots.txt Cache ---
-        self.robot_parsers = {}
         self.last_action_time = 0
 
-    def get_crawl_delay(self, url):
-        """Fetches the crawl delay from the site's robots.txt if available."""
-        try:
-            from urllib.parse import urlparse
-            parsed_url = urlparse(url)
-            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-            robots_url = f"{base_url}/robots.txt"
-
-            if base_url not in self.robot_parsers:
-                parser = RobotFileParser()
-                parser.set_url(robots_url)
-                parser.read()
-                self.robot_parsers[base_url] = parser
-            
-            parser = self.robot_parsers[base_url]
-            delay = parser.get_crawl_delay(self.user_agent)
-            return delay if delay else 0
-        except Exception as e:
-            logger.debug(f"Could not fetch robots.txt for {url}: {e}")
-            return 0
-
-    def _apply_robots_delay(self, url):
-        """Ensures we wait long enough between actions to respect robots.txt crawl-delay or human fallback."""
-        site_delay = self.get_crawl_delay(url)
-        
-        # Fallback: Even if site says 0, use a small human-like minimum (e.g. 1.2s)
-        # to ensure we never click inhumanly fast.
-        min_delay = max(site_delay, 1.2) 
-        
-        elapsed = time.time() - self.last_action_time
-        if elapsed < min_delay:
-            wait_time = min_delay - elapsed
-            if site_delay > 0:
-                logger.info(f"Respecting robots.txt: Waiting {wait_time:.2f}s (Site-delay={site_delay}s)")
-            else:
-                # This log will show the user that the logic IS active even if site is silent
-                logger.debug(f"Humanizing interval: Waiting {wait_time:.2f}s...")
-            
-            time.sleep(wait_time)
-            
-        self.last_action_time = time.time()
-
     def _cleanup_locks(self):
-        """Removes Chrome's Singleton lock files that prevent multi-instance launch."""
+        """Removes Chrome's Singleton lock files."""
         lock_files = ["SingletonLock", "SingletonCookie", "SingletonSocket"]
         for lock in lock_files:
             path = os.path.join(self.user_data_dir, lock)
@@ -145,24 +85,23 @@ class BrowserController:
                     logger.warning(f"Failed to remove lock file {path}: {e}")
 
     def start(self):
-        """Starts the Playwright persistent context."""
+        """Starts the Playwright persistent context with mandatory compatibility flags."""
         if self.playwright and self.context:
             logger.info("Browser already running.")
             return
 
-        # Always try to clear locks before starting
         self._cleanup_locks()
 
         logger.info(f"Starting browser with persistent profile at: {self.user_data_dir}")
         self.playwright = sync_playwright().start()
         
         try:
-            # Launch persistent context (This automatically handles Visitor Cookies)
+            # Mandatory flags for Google Login compatibility
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,
                 channel="chrome",
-                user_agent=self.user_agent, # --- Custom User Agent ---
+                user_agent=self.user_agent,
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--disable-infobars",
@@ -172,13 +111,12 @@ class BrowserController:
                 viewport={"width": 1280, "height": 800} 
             )
             
-            # Default page
             if self.context.pages:
                 self.pages["default"] = self.context.pages[0]
             else:
                 self.pages["default"] = self.context.new_page()
             
-            logger.info("Browser started successfully (UA/Cookies/Robots enabled).")
+            logger.info("Browser started successfully (Compatibility Mode).")
             
         except Exception as e:
             logger.error(f"Failed to launch browser: {e}")
@@ -213,10 +151,6 @@ class BrowserController:
     def goto(self, url, page=None):
         """Navigates to a URL with retry logic."""
         p = page if page else self.page
-        
-        # --- robots.txt delay ---
-        self._apply_robots_delay(url)
-        
         logger.info(f"Navigating to {url}")
         
         # Humanizer wait before navigation
@@ -236,9 +170,6 @@ class BrowserController:
         """Clicks an element specified by the selector."""
         p = page if page else self.page
         
-        # --- robots.txt delay ---
-        self._apply_robots_delay(p.url)
-        
         logger.info(f"Clicking element: {selector}")
         if self.humanizer_enabled:
             self.humanizer.check_captcha(p)
@@ -251,9 +182,6 @@ class BrowserController:
     def fill(self, selector, text, page=None):
         """Fills an input field specified by the selector."""
         p = page if page else self.page
-        
-        # --- robots.txt delay ---
-        self._apply_robots_delay(p.url)
         
         logger.info(f"Filling element {selector} with text length {len(text)}")
         if self.humanizer_enabled:

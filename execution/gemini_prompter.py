@@ -164,69 +164,88 @@ Main title: “{title}”
             if max_count: pending_rows = pending_rows[:max_count]
 
             processed_count = 0
-            for i, rowdata in enumerate(pending_rows):
-                row_id = rowdata['id']
-                theme = rowdata['theme']
-                style_init = rowdata['style']
+            def process_pending(rows, pass_num=1):
+                nonlocal processed_count
+                failed_ids = []
                 
-                logger.info(f"Processing Song {i+1}/{len(pending_rows)} ID: {row_id}")
+                for i, rowdata in enumerate(rows):
+                    row_id = rowdata['id']
+                    theme = rowdata['theme']
+                    style_init = rowdata['style']
+                    
+                    logger.info(f"[Pass {pass_num}] Processing Song {i+1}/{len(rows)} ID: {row_id}")
+                    
+                    # --- Step 1: Lyrics ---
+                    final_title = ""
+                    final_style = style_init
+                    if (self.use_gemini_lyrics and not rowdata.get('existing_lyrics')) or force_update:
+                        if progress_callback: progress_callback(row_id, f"Step 1: Lyrics (Deneme {pass_num})... ✍️")
+                        lyrics_res = self.generate_content(theme, style=style_init)
+                        
+                        if lyrics_res:
+                            output_payload = lyrics_res.copy()
+                            if "style" in lyrics_res:
+                                output_payload["suno_style"] = lyrics_res["style"]
+                            self.update_output_data(row_id, output_payload)
+                            final_title = lyrics_res.get("title", "")
+                            final_style = lyrics_res.get("style", style_init)
+                            if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
+                        else:
+                            if progress_callback: progress_callback(row_id, "Lyrics Failed ❌ (Oturum Yenileniyor)")
+                            logger.warning(f"Lyrics failed for {row_id}. Refreshing Gemini tab for next attempt.")
+                            failed_ids.append(rowdata)
+                            
+                            # Session Refresh Logic: Close and reopen tab to clear any UI hangs
+                            try:
+                                self.tab.close()
+                                time.sleep(2)
+                                self.tab = self.browser.get_page("gemini")
+                                self.browser.goto(self.base_url, page=self.tab)
+                                time.sleep(5)
+                            except Exception as e:
+                                logger.error(f"Failed to refresh Gemini tab: {e}")
+                            
+                            continue
+                    else:
+                        logger.info(f"   -> Lyrics already exist for {row_id}, skipping to prompt design.")
+                        final_title = theme # Fallback
+
+                    # --- Step 2: Visual Prompt ---
+                    if self.generate_visual and self.visual_master_prompt and (not rowdata.get('existing_visual') or force_update):
+                        if progress_callback: progress_callback(row_id, "Step 2: Visual Design... 🎨")
+                        vis_res = self.generate_focused_prompt("visual", final_title, final_style)
+                        if vis_res:
+                            vis_res = vis_res.replace("**", "").replace("__", "").strip()
+                            self.update_output_data(row_id, {"visual_prompt": vis_res})
+                            if progress_callback: progress_callback(row_id, "Visual Ready! ✅")
+                        else:
+                            if progress_callback: progress_callback(row_id, "Visual Failed ❌")
+
+                    # --- Step 3: Video Prompt ---
+                    if self.generate_video and self.video_master_prompt and (not rowdata.get('existing_video') or force_update):
+                        if progress_callback: progress_callback(row_id, "Step 3: Video Design... 🎬")
+                        vid_res = self.generate_focused_prompt("video", final_title, final_style)
+                        if vid_res:
+                            vid_res = vid_res.replace("**", "").replace("__", "").strip()
+                            self.update_output_data(row_id, {"video_prompt": vid_res})
+                            if progress_callback: progress_callback(row_id, "Video Ready! ✅")
+                        else:
+                            if progress_callback: progress_callback(row_id, "Video Failed ❌")
+
+                    processed_count += 1
+                    if i < len(rows) - 1:
+                        time.sleep(5)
                 
-                # --- Step 1: Lyrics ---
-                final_title = ""
-                final_style = style_init
-                if (self.use_gemini_lyrics and not rowdata.get('existing_lyrics')) or force_update:
-                    if progress_callback: progress_callback(row_id, "Step 1: Lyrics... ✍️")
-                    lyrics_res = self.generate_content(theme, style=style_init)
-                    if lyrics_res:
-                        # Map Gemini's style to suno_style
-                        output_payload = lyrics_res.copy()
-                        if "style" in lyrics_res:
-                            output_payload["suno_style"] = lyrics_res["style"]
-                            # Don't overwrite the original 'style' column if it exists in data
-                            # Actually, update_output_data handles this by only updating if empty,
-                            # but we explicitly want Gemini style in 'suno_style'.
-                        self.update_output_data(row_id, output_payload)
-                        final_title = lyrics_res.get("title", "")
-                        final_style = lyrics_res.get("style", style_init)
-                        if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
-                    else:
-                        if progress_callback: progress_callback(row_id, "Lyrics Failed ❌")
-                        continue
-                else:
-                    # Skip or Load existing for next steps
-                    logger.info(f"   -> Lyrics already exist for {row_id}, skipping to prompt design.")
-                    # We might need to extract title/style from excel if lyrics exist
-                    # For now, we'll try to generate prompts if they are missing
-                    # We'll use the theme as a fallback for prompt generation if Title isn't parsed
-                    final_title = theme # Fallback
+                return failed_ids
 
-                # --- Step 2: Visual Prompt ---
-                if self.generate_visual and self.visual_master_prompt and (not rowdata.get('existing_visual') or force_update):
-                    if progress_callback: progress_callback(row_id, "Step 2: Visual Design... 🎨")
-                    vis_res = self.generate_focused_prompt("visual", final_title, final_style)
-                    if vis_res:
-                        # Clean markdown bolding if any
-                        vis_res = vis_res.replace("**", "").replace("__", "").strip()
-                        self.update_output_data(row_id, {"visual_prompt": vis_res})
-                        if progress_callback: progress_callback(row_id, "Visual Ready! ✅")
-                    else:
-                        if progress_callback: progress_callback(row_id, "Visual Failed ❌")
-
-                # --- Step 3: Video Prompt ---
-                if self.generate_video and self.video_master_prompt and (not rowdata.get('existing_video') or force_update):
-                    if progress_callback: progress_callback(row_id, "Step 3: Video Design... 🎬")
-                    vid_res = self.generate_focused_prompt("video", final_title, final_style)
-                    if vid_res:
-                        vid_res = vid_res.replace("**", "").replace("__", "").strip()
-                        self.update_output_data(row_id, {"video_prompt": vid_res})
-                        if progress_callback: progress_callback(row_id, "Video Ready! ✅")
-                    else:
-                        if progress_callback: progress_callback(row_id, "Video Failed ❌")
-
-                processed_count += 1
-                
-                if i < len(pending_rows) - 1:
-                    time.sleep(5)
+            processed_count = 0
+            # PASS 1
+            failed_in_pass1 = process_pending(pending_rows, pass_num=1)
+            
+            # PASS 2 (Retry failed ones)
+            if failed_in_pass1:
+                logger.info(f"Retrying {len(failed_in_pass1)} failed songs in Pass 2...")
+                process_pending(failed_in_pass1, pass_num=2)
             
             return processed_count
 
@@ -372,9 +391,9 @@ Main title: “{title}”
             logger.error(f"Gemini {ptype} Step Error: {e}")
             return None
 
-    def _wait_for_response(self, timeout=120):
+    def _wait_for_response(self, timeout=90):
         """Helper to wait for Gemini response to appear and stabilize."""
-        logger.info("Waiting for Gemini response to appear and stabilize...")
+        logger.info(f"Waiting for Gemini response (Global Timeout: {timeout}s)...")
         start_time = time.time()
         
         # Capture initial state
@@ -384,10 +403,17 @@ Main title: “{title}”
         
         last_text = ""
         stable_count = 0
+        has_started = False
         
         while time.time() - start_time < timeout:
-            # 1. Check for 'Stop generating' button (Turkish: 'Yanıtı durdur' or similar)
-            # If this button is visible, Gemini is still 'typing'
+            elapsed = time.time() - start_time
+            
+            # 1. Stuck Detection: If after 25 seconds we still have no new message content, fail early
+            if not has_started and elapsed > 25:
+                logger.error(f"Gemini stuck detection: No response started after {elapsed:.1f}s. Failing early.")
+                return None
+
+            # 2. Check for 'Stop generating' button
             stop_btn_visible = False
             try:
                 stop_btn = self.tab.locator("button[aria-label*='Stop' i], button[aria-label*='Durdur' i]").first
@@ -398,7 +424,7 @@ Main title: “{title}”
             candidates = self.tab.locator("message-content").all() 
             if not candidates: candidates = self.tab.locator(".model-response-text").all()
             
-            if len(candidates) > initial_count or (len(candidates) == initial_count and initial_count > 0):
+            if len(candidates) > initial_count or (len(candidates) == initial_count and initial_count > 1):
                 # Use the last candidate as our potential response
                 current_text = candidates[-1].inner_text().strip()
                 
@@ -407,8 +433,11 @@ Main title: “{title}”
                     time.sleep(2)
                     continue
 
+                if not has_started:
+                    logger.info(f"Gemini started responding after {elapsed:.1f}s.")
+                    has_started = True
+
                 if current_text == last_text:
-                    # If text is stable AND 'Stop' button is gone, we are likely done
                     if not stop_btn_visible:
                         stable_count += 1
                         if stable_count >= 2: # 4 seconds of stability
@@ -423,7 +452,7 @@ Main title: “{title}”
             
             time.sleep(2)
         
-        logger.error("Gemini response timed out or returned no content.")
+        logger.error(f"Gemini response timed out after {timeout}s.")
         return None
 
     

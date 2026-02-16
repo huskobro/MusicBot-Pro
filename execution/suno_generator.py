@@ -419,36 +419,47 @@ class SunoGenerator:
             found_ready = False
             best_index = index # Fallback
             
-            for attempt in range(120):
+            for attempt in range(120): # 120 * 3s = 360s (6 minutes for longer generations)
                 try:
-                    # Check top rows to find the right occurrence match
+                    # Check top 10 rows for matches
                     rows = self.tab.locator("div.clip-row")
                     count = rows.count()
                     
                     match_found = False
                     occurrence_count = 0
-                    for i in range(min(5, count)):
+                    
+                    for i in range(min(10, count)):
                         row = rows.nth(i)
                         row_text = row.inner_text().lower()
                         
                         # Check if this row is OUR song (rid or title match)
                         if str(rid).lower() in row_text or str(title).lower() in row_text:
                             if occurrence_count == index:
-                                # This is the occurrence we want (0 for 1st song, 1 for 2nd song)
-                                if not row.locator("text='Generating'").is_visible(timeout=500):
+                                # This is the occurrence we want
+                                is_gen = row.locator("text='Generating'").is_visible(timeout=300)
+                                if not is_gen:
+                                    # Double check readiness by looking for More button or duration
+                                    more_btn = row.locator("button[aria-label*='More' i], button.context-menu-button").first
                                     duration_loc = row.locator("text=/\\d{1,2}:\\d{2}/")
-                                    if duration_loc.count() > 0 and duration_loc.first.is_visible():
+                                    
+                                    if more_btn.is_visible(timeout=300) or (duration_loc.count() > 0 and duration_loc.first.is_visible(timeout=300)):
+                                        logger.info(f"Occurrence {index} for {rid} is READY at row {i}.")
                                         best_index = i
                                         found_ready = True
                                         match_found = True
                                         break
-                                # If we found our occurrence but it's still generating, keep waiting
+                                
+                                # If we found our occurrence but it's still generating, log and break search
+                                if attempt % 5 == 0:
+                                    logger.info(f"Found occurrence {index} for {rid} but it's still generating...")
                                 break
                             occurrence_count += 1
                     
                     if match_found: break
-                except: pass
-                time.sleep(5)
+                except Exception as e:
+                    logger.debug(f"Search attempt error: {e}")
+                
+                time.sleep(3) # Faster polling
             
             if not found_ready:
                 logger.warning(f"Timeout waiting for {title} (suffix {suffix})")

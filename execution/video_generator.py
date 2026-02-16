@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import numpy as np
 from moviepy.video.VideoClip import VideoClip, ImageClip
@@ -22,22 +23,32 @@ class VideoGenerator:
             effect_types = ["None"]
 
         try:
-            # Custom Logger for MoviePy
+            # Custom Logger for MoviePy 2.x (Compatible with proglog)
             class MoviePyProgressLogger:
                 def __init__(self, callback, rid):
                     self.callback = callback
                     self.rid = rid
+                    self.state = {}
                 def __call__(self, **kwargs): pass
+                def callback(self, **kwargs): pass
+                def message(self, *args, **kwargs): pass
                 def bars_callback(self, bar, attr, value, total):
                     if self.callback and total > 0:
-                        percent = int((value / total) * 100)
+                        percent = min(100, int((value / total) * 100))
                         self.callback(self.rid, f"Rendering Video... {percent}% 🎬")
-                def callback(self, **kwargs): pass
+                def iter_bar(self, **kwargs):
+                    # Return the iterable for the loop to function
+                    for name, iterable in kwargs.items():
+                        if name == 'bar': continue
+                        return iterable
+                    return []
+                def update_bar(self, bar, index): pass
 
             # Extract rid from filename if possible
             rid = output_filename.split("_")[0] if "_" in output_filename else "video"
+            rid = re.sub(r'[^\w\-_]', '', rid) # Clean special chars for temp files
 
-            logger.info(f"Generating video for {audio_path} with effects {effect_types}, intensity {intensity}")
+            logger.info(f"Generating video for {audio_path} with effects {effect_types}. Output: {output_filename}")
             
             # Resolve Resolution
             res_map = {
@@ -48,7 +59,6 @@ class VideoGenerator:
                 "Horizontal (SD - 1280x720)": (1280, 720),
                 "Yatay (SD - 1280x720)": (1280, 720)
             }
-            # Handle localized strings or fallback
             target_res = res_map.get(resolution, (1080, 1920))
             
             # 1. Load Audio
@@ -58,6 +68,9 @@ class VideoGenerator:
             
             audio = AudioFileClip(audio_path)
             duration = audio.duration
+            if not duration or duration <= 0:
+                logger.error("Audio duration is 0 or invalid.")
+                return False
             
             # 2. Load Image and Resize
             if not os.path.exists(image_path):
@@ -72,7 +85,7 @@ class VideoGenerator:
             # 3. Apply Effects
             current_clip = base_clip
             
-            # Custom Ken Burns Effect (Zoom) - Applies to the base content
+            # Custom Ken Burns Effect (Zoom)
             if any(eff in effect_types for eff in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"]):
                 zoom_speed = 0.05 * (intensity / 50)
                 current_clip = base_clip.resized(lambda t: 1 + zoom_speed * t)
@@ -94,9 +107,11 @@ class VideoGenerator:
             final_clip = final_clip.with_audio(audio)
             
             output_path = os.path.join(self.output_dir, output_filename)
-            temp_audio_path = os.path.join(self.output_dir, f"temp_{output_filename}.m4a")
+            temp_audio_path = os.path.join(self.output_dir, f"temp_{rid}.m4a")
             
-            # Pass our custom logger to write_videofile
+            logger.info(f"Targeting: {output_path}")
+            
+            # Final Write
             final_clip.write_videofile(
                 output_path, 
                 fps=fps, 
@@ -112,16 +127,12 @@ class VideoGenerator:
                 try: os.remove(temp_audio_path)
                 except: pass
                 
-            logger.info(f"Video generated successfully: {output_path}")
-            return True
-            
-            # Cleanup temp audio
-            if os.path.exists(temp_audio_path):
-                try: os.remove(temp_audio_path)
-                except: pass
-                
-            logger.info(f"Video generated successfully: {output_path}")
-            return True
+            if os.path.exists(output_path):
+                logger.info(f"Video generated successfully: {output_path}")
+                return True
+            else:
+                logger.error(f"Video file NOT found after render: {output_path}")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to generate video: {e}")
