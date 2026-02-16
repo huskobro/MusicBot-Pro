@@ -4,6 +4,7 @@ import time
 import functools
 import logging
 from playwright.sync_api import sync_playwright, Page, BrowserContext, ElementHandle
+from playwright_stealth import stealth_sync
 from humanizer import Humanizer
 
 
@@ -128,7 +129,10 @@ class BrowserController:
             else:
                 self.pages["default"] = self.context.new_page()
             
-            logger.info("Browser started successfully.")
+            # Apply Stealth to default page
+            stealth_sync(self.pages["default"])
+            
+            logger.info("Browser started successfully (Stealth Mode enabled).")
             
         except Exception as e:
             logger.error(f"Failed to launch browser: {e}")
@@ -142,7 +146,9 @@ class BrowserController:
         
         if name not in self.pages:
             logger.info(f"Creating new tab: {name}")
-            self.pages[name] = self.context.new_page()
+            page = self.context.new_page()
+            stealth_sync(page) # Apply Stealth to new tabs
+            self.pages[name] = page
             
         return self.pages[name]
 
