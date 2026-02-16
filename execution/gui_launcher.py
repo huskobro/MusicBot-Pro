@@ -197,7 +197,23 @@ TRANSLATIONS = {
         "log_merge_start": "🎬 Starting Video Merger (Phase 6)...",
         "log_merge_success": "✅ Compilation video created: {path}",
         "log_merge_fail": "❌ Failed to create compilation video: {error}",
-        "log_merge_no_files": "⚠️ No videos found to merge in {path}."
+        "log_merge_no_files": "⚠️ No videos found to merge in {path}.",
+        "reset_chrome_btn": "🧹 Reset Chrome Profile (Fresh Install)",
+        "msg_confirm_reset_chrome": "Are you sure you want to RESET Chrome?\n\nThis will CLOSE the browser, backup your current login sessions, and start with a completely FRESH profile.\n\nYou will need to login again to Suno/Gemini.",
+        "log_chrome_reset_success": "✅ Chrome profile reset successfully. New profile will be created on next launch.",
+        "log_chrome_reset_fail": "❌ Failed to reset Chrome profile: {error}",
+        "select_all": "Select All",
+        "deselect_all": "Deselect All",
+        "active_only": "⚡ Show Active/Selected Only",
+        "eta_label": "ETA: {time}",
+        "filter_status": "Filter Status:",
+        "f_all": "All",
+        "f_done": "Completed",
+        "f_pending": "Pending/Incomplete",
+        "f_no_lyrics": "Missing Lyrics",
+        "f_no_music": "Missing Music",
+        "f_no_art": "Missing Art",
+        "f_no_video": "Missing Video"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -375,7 +391,23 @@ TRANSLATIONS = {
         "log_merge_start": "🎬 Video Birleştirme Başlatılıyor (6. Aşama)...",
         "log_merge_success": "✅ Uzun video başarıyla oluşturuldu: {path}",
         "log_merge_fail": "❌ Uzun video oluşturulamadı: {error}",
-        "log_merge_no_files": "⚠️ {path} klasöründe birleştirilecek video bulunamadı."
+        "log_merge_no_files": "⚠️ {path} klasöründe birleştirilecek video bulunamadı.",
+        "reset_chrome_btn": "🧹 Chrome Profilini Sıfırla (Sıfırdan Kur)",
+        "msg_confirm_reset_chrome": "Chrome'u SIFIRLAMAK istediğinize emin misiniz?\n\nBu işlem tarayıcıyı KAPATACAK, mevcut girişlerinizi yedekleyecek ve tamamen TEMİZ bir profil ile başlayacaktır.\n\nSuno/Gemini girişlerini tekrar yapmanız gerekecektir.",
+        "log_chrome_reset_success": "✅ Chrome profili başarıyla sıfırlandı. Bir sonraki açılışta yeni profil oluşturulacak.",
+        "log_chrome_reset_fail": "❌ Chrome profili sıfırlanamadı: {error}",
+        "select_all": "Hepsini Seç",
+        "deselect_all": "Seçimi Kaldır",
+        "active_only": "⚡ Sadece Aktif/Seçili Olanları Göster",
+        "eta_label": "Tahmini Bitiş: {time}",
+        "filter_status": "Durum Filtresi:",
+        "f_all": "Hepsi",
+        "f_done": "Tamamlananlar",
+        "f_pending": "Eksik/Bekleyenler",
+        "f_no_lyrics": "Sözü Olmayanlar",
+        "f_no_music": "Müziği Olmayanlar",
+        "f_no_art": "Kapağı Olmayanlar",
+        "f_no_video": "Videosu Olmayanlar"
     }
 }
 
@@ -663,7 +695,15 @@ class SettingsDialog(tk.Toplevel):
         self.var_log_at_start = tk.BooleanVar(value=config.get("log_open_at_start", False))
         ttk.Checkbutton(f_startup_opts, text=self.app.t("log_startup"), variable=self.var_log_at_start).pack(anchor="w")
 
-        # 4. Language
+        # 5. Browser Operations
+        f_browser = ttk.LabelFrame(scroll_frame, text=self.app.t("browser_action_label"), padding=10)
+        f_browser.pack(fill="x", padx=10, pady=5)
+        
+        btn_grid = ttk.Frame(f_browser)
+        btn_grid.pack(fill="x")
+        
+        ttk.Button(btn_grid, text=self.app.t("open_chrome_btn"), command=self.open_chrome, style="Action.TButton").pack(side="left", fill="x", expand=True, padx=2, pady=5)
+        ttk.Button(btn_grid, text=self.app.t("reset_chrome_btn"), command=self.reset_chrome).pack(side="left", fill="x", expand=True, padx=2, pady=5)
 
         # --- TAB 1.5: Suno Adv ---
         self.tab_adv_suno = ttk.Frame(self.notebook)
@@ -1207,8 +1247,11 @@ class SettingsDialog(tk.Toplevel):
         self.combo_persona_select['values'] = list(self.personas.keys())
 
     def open_chrome(self):
-        self.destroy() 
         self.app.open_chrome_profile()
+
+    def reset_chrome(self):
+        if messagebox.askyesno(self.app.t("confirm"), self.app.t("msg_confirm_reset_chrome")):
+            self.app.reset_chrome_profile()
 
     def browse_folder(self, target_entry):
         folder = filedialog.askdirectory(title=self.app.t("msg_select_folder"))
@@ -1445,6 +1488,30 @@ class MusicBotGUI:
         self.ent_filter = ttk.Entry(self.f_filter, textvariable=self.filter_var)
         self.ent_filter.pack(side="left", fill="x", expand=True, padx=5)
 
+        # Select All / Deselect All / Active Only
+        self.f_sel_controls = ttk.Frame(self.f_filter)
+        self.f_sel_controls.pack(side="right")
+        
+        ttk.Button(self.f_sel_controls, text=self.t("select_all"), command=self.select_all, width=12).pack(side="left", padx=2)
+        ttk.Button(self.f_sel_controls, text=self.t("deselect_all"), command=self.deselect_all, width=12).pack(side="left", padx=2)
+        
+        self.var_active_only = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.f_sel_controls, text=self.t("active_only"), variable=self.var_active_only, command=self.apply_filter).pack(side="left", padx=5)
+
+        # Status Filter Dropdown
+        ttk.Label(self.f_sel_controls, text=self.t("filter_status")).pack(side="left", padx=(10, 2))
+        self.status_filter_var = tk.StringVar(value="All")
+        self.cmb_status = ttk.Combobox(self.f_sel_controls, textvariable=self.status_filter_var, 
+                                       state="readonly", width=18)
+        # Update values with new options
+        self.cmb_status['values'] = [
+            self.t("f_all"), self.t("f_done"), self.t("f_pending"),
+            self.t("f_no_lyrics"), self.t("f_no_music"), self.t("f_no_art"), self.t("f_no_video")
+        ]
+        self.cmb_status.current(0)
+        self.cmb_status.bind("<<ComboboxSelected>>", self.apply_filter)
+        self.cmb_status.pack(side="left", padx=2)
+
         # Active Run Controls (MODERNIZED & INTEGRATED TO DASHBOARD)
         self.f_run_ops = ttk.LabelFrame(self.root, text=self.t("global_settings"), padding=5)
         self.f_run_ops.pack(fill="x", padx=10, pady=(0, 5))
@@ -1461,7 +1528,7 @@ class MusicBotGUI:
         self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "run_l", "run_m", "run_ap", "run_ai", "run_v")
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "video_status", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
         self.tree.bind("<Motion>", self.on_tree_hover)
@@ -1481,9 +1548,10 @@ class MusicBotGUI:
         self.tree.heading("title", text=self.t("column_title"), command=lambda: self.sort_tree("title", False))
         self.tree.heading("style", text=self.t("column_style"))
         self.tree.heading("progress", text=self.t("column_progress"))
-        self.tree.heading("lyrics", text="📝")
-        self.tree.heading("music", text="🎵")
-        self.tree.heading("art", text="🎨")
+        self.tree.heading("lyrics", text="📝", command=lambda: self.sort_tree("lyrics", False))
+        self.tree.heading("music", text="🎵", command=lambda: self.sort_tree("music", False))
+        self.tree.heading("art", text="🎨", command=lambda: self.sort_tree("art", False))
+        self.tree.heading("video_status", text="🎬", command=lambda: self.sort_tree("video_status", False))
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
         self.tree.heading("run_ap", text="AP")
@@ -1499,6 +1567,7 @@ class MusicBotGUI:
         self.tree.column("lyrics", width=30, anchor="center")
         self.tree.column("music", width=30, anchor="center")
         self.tree.column("art", width=30, anchor="center")
+        self.tree.column("video_status", width=30, anchor="center")
         self.tree.column("run_l", width=30, anchor="center")
         self.tree.column("run_m", width=30, anchor="center")
         self.tree.column("run_ap", width=30, anchor="center")
@@ -1731,12 +1800,13 @@ class MusicBotGUI:
                 has_lyrics = True if 'lyrics' in headers and row[headers['lyrics']] else False
                 has_music = True if 'status' in headers and str(row[headers['status']]).lower() in ["completed", "generated"] else False
                 has_art = True if 'cover_art_path' in headers and row[headers['cover_art_path']] else False
+                has_video = True if 'video_path' in headers and row[headers['video_path']] else False
                 
                 if rid or prompt:
-                    if not rid: rid = f"PENDING_{len(self.all_songs) + 1}" # Generate a temporary ID if missing
+                    if not rid: rid = f"PENDING_{len(self.all_songs) + 1}"
                     self.all_songs[rid] = {
                         "id": rid, "title": prompt, "style": style,
-                        "lyrics": has_lyrics, "music": has_music, "art": has_art
+                        "lyrics": has_lyrics, "music": has_music, "art": has_art, "video": has_video
                     }
             
             self.apply_filter()
@@ -1794,6 +1864,7 @@ class MusicBotGUI:
 
     def _do_filter(self):
         query = self.filter_var.get().lower()
+        active_only = self.var_active_only.get()
         
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -1801,23 +1872,50 @@ class MusicBotGUI:
         self.filtered_ids = []
         
         for rid, s in self.all_songs.items():
+            # 1. Text Query
             if query and query not in s["title"].lower() and query not in rid.lower():
                 continue
-                
+            
+            # 2. Active Only Filter
+            if active_only and rid not in self.selected_songs:
+                # Also check if it's currently processing
+                is_active = False
+                if hasattr(self, "processing_ids") and rid in self.processing_ids:
+                    is_active = True
+                if not is_active:
+                    continue
+
+            # 3. Status Filter (Done/Pending/Specifics)
+            s_filter = self.status_filter_var.get()
+            done_cnt = sum([1 for k in ["lyrics", "music", "art"] if s.get(k)])
+            
+            if s_filter == self.t("f_done") and done_cnt < 3:
+                continue
+            elif s_filter == self.t("f_pending") and done_cnt == 3:
+                continue
+            elif s_filter == self.t("f_no_lyrics") and s.get("lyrics"):
+                continue
+            elif s_filter == self.t("f_no_music") and s.get("music"):
+                continue
+            elif s_filter == self.t("f_no_art") and s.get("art"):
+                continue
+            elif s_filter == self.t("f_no_video") and s.get("video"):
+                continue
+
             self.filtered_ids.append(rid)
             
             # Symbols
             s_lyrics = "✅" if s["lyrics"] else "⚪"
             s_music = "✅" if s["music"] else "⚪"
             s_art = "✅" if s["art"] else "⚪"
+            s_v = "✅" if s.get("video") else "⚪"
             s_sel = "☑️" if rid in self.selected_songs else "☐"
             
             # Progress Logic
-            done_cnt = sum([s["lyrics"], s["music"], s["art"]])
-            prog_bar = self.get_progress_bar(done_cnt, 3)
+            done_cnt_v = sum([1 for k in ["lyrics", "music", "art", "video"] if s.get(k)])
+            prog_bar = self.get_progress_bar(done_cnt_v, 4)
             
             # Step Toggles (Per-song Phase Selection)
-            # Default to global var state if not previously customized
             steps = self.song_steps.get(rid)
             if steps is None:
                 steps = [
@@ -1827,21 +1925,50 @@ class MusicBotGUI:
                     self.var_run_art_image.get(),
                     self.var_run_video.get()
                 ]
-            # --- REMOVED self.song_steps[rid] = steps to allow global defaults to flow through ---
             
-            # UNIQUE COLORS per step as requested
-            # L: Purple, M: Blue, AP: Yellow, AI: Green, V: Orange
+            # UNIQUE COLORS per step
             s_rl = "🟣" if steps[0] else "☐"
             s_rm = "🔵" if steps[1] else "☐"
             s_rap = "🟡" if steps[2] else "☐"
             s_rai = "🟢" if steps[3] else "☐"
-            # Handle migration for existing steps that might lack index 4
             s_rv = "🟠" if (len(steps) > 4 and steps[4]) else "☐"
 
             self.tree.insert("", "end", iid=rid, values=(
-                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art,
+                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v,
                 s_rl, s_rm, s_rap, s_rai, s_rv
             ))
+
+    def select_all(self):
+        """Selects all songs currently visible in the filtered list."""
+        for rid in self.filtered_ids:
+            if rid not in self.selected_songs:
+                self.selected_songs.add(rid)
+        self.apply_filter()
+
+    def deselect_all(self):
+        """Deselects all songs currently visible in the filtered list."""
+        for rid in self.filtered_ids:
+            if rid in self.selected_songs:
+                self.selected_songs.remove(rid)
+        self.apply_filter()
+
+    def sort_tree(self, col, reverse):
+        """Sorts the treeview by column."""
+        # Get data from tree
+        l = [(self.tree.set(k, col), k) for k in self.tree.get_children("")]
+        
+        # Try to sort numerically if possible
+        try:
+            l.sort(key=lambda x: float(re.sub(r'[^\d.]', '', x[0])), reverse=reverse)
+        except:
+            l.sort(reverse=reverse)
+
+        # Rearrange items in tree
+        for index, (val, k) in enumerate(l):
+            self.tree.move(k, "", index)
+
+        # Reverse sort next time
+        self.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
             
     def set_badge(self, text, bg, fg="white"):
         self.lbl_badge.config(text=f" ● {text} ", bg=bg, fg=fg)
@@ -1903,7 +2030,7 @@ class MusicBotGUI:
             item_id = self.tree.identify_row(event.y)
             if not item_id: return
 
-            if column not in ["#9", "#10", "#11", "#12", "#13"]: # Any column EXCEPT the phase toggles
+            if column not in ["#10", "#11", "#12", "#13", "#14"]: # Any column EXCEPT the phase toggles
                 if item_id in self.selected_songs:
                     self.selected_songs.remove(item_id)
                     self.tree.set(item_id, "sel", "☐")
@@ -1915,8 +2042,8 @@ class MusicBotGUI:
                 self.tree.selection_set(item_id)
                 self.tree.focus(item_id)
             
-            elif column in ["#9", "#10", "#11", "#12", "#13"]: # L, M, AP, AI, V
-                idx = int(column[1:]) - 9 # 0, 1, 2, 3, 4
+            elif column in ["#10", "#11", "#12", "#13", "#14"]: # L, M, AP, AI, V
+                idx = int(column[1:]) - 10 # 0, 1, 2, 3, 4
                 
                 # Get current setting or defaults
                 current_defaults = [
@@ -1944,7 +2071,7 @@ class MusicBotGUI:
                     elif idx == 3: char = "🟢"
                     elif idx == 4: char = "🟠"
 
-                col_name = self.tree.cget("columns")[idx + 8] # column name index 8 is run_l
+                col_name = self.tree.cget("columns")[idx + 9] # column name index 9 is run_l
                 self.tree.set(item_id, col_name, char)
             
             return "break" # Prevent selection change if clicking checkbox
@@ -1997,6 +2124,12 @@ class MusicBotGUI:
         
         if not target_ids:
             return
+
+        # [Requirement 6] Strict Sequential Processing by ID
+        try:
+            target_ids.sort(key=lambda x: (float(re.sub(r'[^\d.]', '', x)) if re.search(r'\d', x) else 0, x))
+        except:
+            target_ids.sort()
 
         self.stop_requested = False
         self.disable_buttons()
@@ -2067,6 +2200,9 @@ class MusicBotGUI:
             return False
 
     def run_process(self, target_ids):
+        start_time = time.time()
+        total_songs = len(target_ids)
+        
         try:
             # Check for existing data if we are running Gemini steps
             force_update = False
@@ -2121,7 +2257,21 @@ class MusicBotGUI:
                 title = song_data.get("title", "Unknown")
                 title_short = title[:50] + ".." if len(title) > 50 else title
                 self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
-                self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{len(target_ids)})"))
+                
+                # Calculate ETA
+                elapsed = time.time() - start_time
+                avg_time = elapsed / idx if idx > 0 else 0
+                remaining = total_songs - idx
+                eta_val = ""
+                if idx > 0:
+                    eta_seconds = int(avg_time * remaining)
+                    hrs = eta_seconds // 3600
+                    mins = (eta_seconds % 3600) // 60
+                    secs = eta_seconds % 60
+                    time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                    eta_val = f" | {self.t('eta_label').format(time=time_str)}"
+
+                self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{total_songs}){eta_val}"))
                 self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
                 
                 # Start browser ONLY IF NEEDED
@@ -2289,7 +2439,8 @@ class MusicBotGUI:
                                         audio_path=aud_full_path,
                                         image_path=img_path, 
                                         output_filename=f"{aud_base}.mp4",
-                                        **v_params
+                                        **v_params,
+                                        progress_callback=progress_callback
                                     )
                                 else:
                                     logger.warning(f"Skipping video for {aud_file}: No matching image found.")
@@ -2470,6 +2621,44 @@ class MusicBotGUI:
 
         # Threads
         threading.Thread(target=_launch, daemon=True).start()
+
+    def reset_chrome_profile(self):
+        """Total reset of the Chrome profile to clear all cookies, cache, and history."""
+        try:
+            # 1. Close active session if any
+            if hasattr(self, "chrome_session") and self.chrome_session:
+                try:
+                    logger.info("Stopping active browser session for reset...")
+                    self.chrome_session.stop()
+                    self.chrome_session = None
+                    time.sleep(2) # Wait for file handles to release
+                except: pass
+            
+            # 2. Delete profile folder
+            workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+            profile_path = os.path.join(workspace, "chrome_profile")
+            
+            if os.path.exists(profile_path):
+                import shutil
+                # Using rmtree for a truly fresh start (no remnants)
+                logger.info(f"Removing profile directory: {profile_path}")
+                shutil.rmtree(profile_path, ignore_errors=True)
+                
+                # Double check - if still exists (locked), try renaming it as fallback
+                if os.path.exists(profile_path):
+                    timestamp = int(time.time())
+                    backup_path = os.path.join(workspace, f"chrome_profile_locked_{timestamp}")
+                    os.rename(profile_path, backup_path)
+                
+                logger.info(self.t("log_chrome_reset_success"))
+                messagebox.showinfo(self.t("success"), self.t("log_chrome_reset_success"))
+            else:
+                logger.info("No chrome profile found to reset.")
+                messagebox.showinfo(self.t("info"), "Zaten mevcut bir profil bulunamadı, tertemiz bir başlangıç için her şey hazır.")
+                
+        except Exception as e:
+            logger.error(self.t("log_chrome_reset_fail").format(error=str(e)))
+            messagebox.showerror(self.t("error_title"), self.t("log_chrome_reset_fail").format(error=str(e)))
 
     def disable_buttons(self):
         self.btn_run.config(state="disabled")

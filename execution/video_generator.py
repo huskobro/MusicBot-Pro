@@ -14,7 +14,7 @@ class VideoGenerator:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50):
+    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50, progress_callback=None):
         """
         Generates an MP4 video by combining audio and image with optional multiple effects.
         """
@@ -22,6 +22,21 @@ class VideoGenerator:
             effect_types = ["None"]
 
         try:
+            # Custom Logger for MoviePy
+            class MoviePyProgressLogger:
+                def __init__(self, callback, rid):
+                    self.callback = callback
+                    self.rid = rid
+                def __call__(self, **kwargs): pass
+                def bars_callback(self, bar, attr, value, total):
+                    if self.callback and total > 0:
+                        percent = int((value / total) * 100)
+                        self.callback(self.rid, f"Rendering Video... {percent}% 🎬")
+                def callback(self, **kwargs): pass
+
+            # Extract rid from filename if possible
+            rid = output_filename.split("_")[0] if "_" in output_filename else "video"
+
             logger.info(f"Generating video for {audio_path} with effects {effect_types}, intensity {intensity}")
             
             # Resolve Resolution
@@ -52,7 +67,7 @@ class VideoGenerator:
             base_clip = ImageClip(image_path).resized(height=target_res[1] if target_res[0] < target_res[1] else None, 
                                                    width=target_res[0] if target_res[0] >= target_res[1] else None)
             base_clip = base_clip.cropped(x_center=base_clip.w/2, y_center=base_clip.h/2, 
-                                      width=target_res[0], height=target_res[1]).with_duration(duration)
+                                       width=target_res[0], height=target_res[1]).with_duration(duration)
             
             # 3. Apply Effects
             current_clip = base_clip
@@ -81,6 +96,7 @@ class VideoGenerator:
             output_path = os.path.join(self.output_dir, output_filename)
             temp_audio_path = os.path.join(self.output_dir, f"temp_{output_filename}.m4a")
             
+            # Pass our custom logger to write_videofile
             final_clip.write_videofile(
                 output_path, 
                 fps=fps, 
@@ -88,8 +104,16 @@ class VideoGenerator:
                 audio_codec="aac",
                 temp_audiofile=temp_audio_path,
                 threads=4,
-                logger=None 
+                logger=MoviePyProgressLogger(progress_callback, rid) if progress_callback else None
             )
+            
+            # Cleanup temp audio
+            if os.path.exists(temp_audio_path):
+                try: os.remove(temp_audio_path)
+                except: pass
+                
+            logger.info(f"Video generated successfully: {output_path}")
+            return True
             
             # Cleanup temp audio
             if os.path.exists(temp_audio_path):

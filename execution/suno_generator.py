@@ -248,8 +248,11 @@ class SunoGenerator:
         if not str(style).strip():
             style = row.get("style", "")
         
-        title = row.get("title", "Song")
+        # [Requirement 7] Title Format: ID_Title
         rid = str(row.get("id", "song"))
+        title = row.get("title", "Song")
+        suno_title = f"{rid}_{title}"
+        
         content = lyrics if str(lyrics).strip() else prompt
         
         try:
@@ -261,6 +264,10 @@ class SunoGenerator:
                     custom_btn.click()
                     time.sleep(3)
             
+            # Record current clip count to prevent stale downloads
+            initial_count = self.tab.locator("div.clip-row").count()
+            logger.info(f"Current clip count before creation: {initial_count}")
+
             # Ensure we are indeed in custom mode
             textareas = [t for t in self.tab.locator("textarea").all() if t.is_visible()]
             if not textareas: 
@@ -286,11 +293,9 @@ class SunoGenerator:
                 if not el or val is None: return
                 try:
                     logger.info(f"Filling field with: {str(val)[:20]}...")
-                    # Use humanizer 
                     self.browser.humanizer.type_text(self.tab, el, val)
                 except Exception as fe:
                     logger.warning(f"Humanizer failed: {fe}")
-                    # Atomic fallback only if absolutely necessary
                     try:
                         el.scroll_into_view_if_needed()
                         el.fill(str(val))
@@ -298,13 +303,11 @@ class SunoGenerator:
 
             fill_field(textareas[0], content)
             
-            # Style: try placeholder match first, then section-based lookup, then fallback
+            # Style: try placeholder match first, then section-based lookup
             style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
             if style_textarea.is_visible():
                 fill_field(style_textarea, style)
             else:
-                # In persona mode the style placeholder is dynamic (e.g. "euro pop, ...").
-                # Find it via the "Styles" collapsible section header.
                 style_found = self.tab.evaluate(r"""() => {
                     const headers = document.querySelectorAll('div[role="button"]');
                     for (const h of headers) {
@@ -322,57 +325,32 @@ class SunoGenerator:
                     }
                     return false;
                 }""")
-                if style_found:
-                    time.sleep(0.5)
-                    # Find the textarea that belongs to "Styles" section
-                    style_in_section = self.tab.evaluate(r"""() => {
-                        const headers = document.querySelectorAll('div[role="button"]');
-                        for (const h of headers) {
-                            if (h.textContent.trim() === 'Styles') {
-                                let container = h.parentElement;
-                                for (let d = 0; d < 5 && container; d++) {
-                                    const ta = container.querySelector('textarea');
-                                    if (ta && ta.offsetParent !== null) return true;
-                                    container = container.parentElement;
-                                }
-                            }
-                        }
-                        return false;
-                    }""")
-                    if style_in_section and len(textareas) > 1:
-                        fill_field(textareas[1], style)
-                    else:
-                        logger.warning("Style textarea not found via section lookup")
+                if style_found and len(textareas) > 1:
+                    fill_field(textareas[1], style)
                 elif len(textareas) > 1:
                     fill_field(textareas[1], style)
             
-            # Title: scroll Song Title input into view first, then fill via JS
-            # In persona mode, the first title input may be behind an overlay,
-            # so we use JS to scroll it into view and set value directly.
+            # Title fill
             if input_title:
                 try:
-                    fill_field(input_title, title)
+                    fill_field(input_title, suno_title)
                 except Exception:
                     pass
-                # Verify it was filled, if not use JS fallback
                 actual = input_title.input_value() if input_title.is_visible() else ""
-                if str(title) not in actual:
-                    logger.info("Title fill via locator may have failed, using JS fallback...")
-                    self.tab.evaluate("""(title) => {
+                if str(suno_title) not in actual:
+                    self.tab.evaluate("""(t) => {
                         const inputs = document.querySelectorAll('input[placeholder*="Song Title" i]');
                         for (const inp of inputs) {
                             if (inp.offsetParent !== null) {
                                 inp.scrollIntoView({ block: 'center' });
-                                // Use React's value setter to trigger change handlers
-                                const nativeSetter = Object.getOwnPropertyDescriptor(
-                                    window.HTMLInputElement.prototype, 'value').set;
-                                nativeSetter.call(inp, title);
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                                nativeSetter.call(inp, t);
                                 inp.dispatchEvent(new Event('input', { bubbles: true }));
                                 inp.dispatchEvent(new Event('change', { bubbles: true }));
                                 return;
                             }
                         }
-                    }""", str(title))
+                    }""", str(suno_title))
                     time.sleep(1)
 
             # --- Persona & Advanced Options Setup ---
@@ -385,13 +363,33 @@ class SunoGenerator:
                 create_btn = self.tab.get_by_role("button", name="Create").last
 
             if create_btn.is_enabled():
-                logger.info(f"Clicking Create for: {title}")
+                logger.info(f"Clicking Create for: {suno_title}")
                 create_btn.click()
-                time.sleep(10) # Wait for generation to start
+                time.sleep(5) 
+
+                # [Stale Song Detection] Wait for clip count to increase
+                new_clip_appeared = False
+                for _ in range(15): # 30s wait for generation start
+                    current_count = self.tab.locator("div.clip-row").count()
+                    if current_count > initial_count:
+                        new_clip_appeared = True
+                        logger.info(f"New clip detected! Count: {current_count}")
+                        break
+                    # Check for "Generating" text in first row
+                    if self.tab.locator("div.clip-row").first.locator("text='Generating'").is_visible(timeout=500):
+                        new_clip_appeared = True
+                        break
+                    time.sleep(2)
                 
+                if not new_clip_appeared:
+                    logger.error("❌ No new song appeared in Suno после clicking Create. Generation likely failed or blocked by CAPTCHA.")
+                    if progress_callback: progress_callback(rid, "Suno Generation Failed (Possible CAPTCHA) ❌")
+                    return False
+
+                # Trigger dual download
                 logger.info(f"Triggering dual download for {rid}...")
-                s1 = self._wait_and_download(title, rid, progress_callback, index=0, suffix="1")
-                s2 = self._wait_and_download(title, rid, progress_callback, index=1, suffix="2")
+                s1 = self._wait_and_download(suno_title, rid, progress_callback, index=0, suffix="1")
+                s2 = self._wait_and_download(suno_title, rid, progress_callback, index=1, suffix="2")
                 
                 return s1 or s2
             
@@ -403,35 +401,50 @@ class SunoGenerator:
 
     def _wait_and_download(self, title, rid, progress_callback=None, index=0, suffix="1"):
         try:
-            logger.info(f"Waiting for {title} (ID: {rid}) to finish generating (Row Index: {index})...")
-            if progress_callback: progress_callback(rid, "Generating Music... (Polling) ⏳")
+            logger.info(f"Waiting for {title} (ID: {rid}, Suffix: {suffix}) to finish generating...")
+            if progress_callback: progress_callback(rid, f"Polling Suno for {suffix}... ⏳")
             
             found_ready = False
+            best_index = index # Fallback
+            
             for attempt in range(120):
                 try:
+                    # Check top 3 rows instead of just one, to find the right title match
                     rows = self.tab.locator("div.clip-row")
-                    if rows.count() > index:
-                        target_row = rows.nth(index)
-                        if target_row.is_visible():
-                            if not target_row.locator("text='Generating'").is_visible():
-                                duration_loc = target_row.locator("text=/\\d{1,2}:\\d{2}/")
+                    count = rows.count()
+                    
+                    match_found = False
+                    for i in range(min(3, count)):
+                        row = rows.nth(i)
+                        row_text = row.inner_text().lower()
+                        
+                        # Check if this row is OUR song (rid or title match)
+                        if str(rid).lower() in row_text or str(title).lower() in row_text:
+                            # Found our row! Now check if it's ready
+                            if not row.locator("text='Generating'").is_visible(timeout=500):
+                                duration_loc = row.locator("text=/\\d{1,2}:\\d{2}/")
                                 if duration_loc.count() > 0 and duration_loc.first.is_visible():
+                                    best_index = i
                                     found_ready = True
+                                    match_found = True
                                     break
+                    
+                    if match_found: break
                 except: pass
                 time.sleep(5)
             
             if not found_ready:
+                logger.warning(f"Timeout waiting for {title} (suffix {suffix})")
                 return False
 
-            if progress_callback: progress_callback(rid, "Downloading Audio... ⬇️")
+            if progress_callback: progress_callback(rid, f"Downloading Audio {suffix}... ⬇️")
             self.tab.keyboard.press("Escape")
             time.sleep(1)
 
             try:
                 rows = self.tab.locator("div.clip-row")
-                if rows.count() <= index: return True
-                target_row = rows.nth(index)
+                if rows.count() <= best_index: return True
+                target_row = rows.nth(best_index)
                 target_row.click()
                 time.sleep(1)
 
