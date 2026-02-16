@@ -36,6 +36,7 @@ pyinstaller --noconfirm --clean \
     --paths "execution" \
     --collect-all moviepy \
     --collect-all imageio \
+    --collect-all playwright_stealth \
     execution/gui_launcher.py
 
 # Remove strict quarantine attribute which causes "Damaged" or permission loops
