@@ -258,9 +258,23 @@ Main title: “{title}”
             time.sleep(1)
             self.browser.fill(input_box, full_prompt, page=self.tab)
             time.sleep(2)
-            self.tab.keyboard.press("Enter")
+            
+            # Click Send button as it's more reliable than just Enter
+            send_btn = self.tab.locator("button[aria-label*='Gönder' i], button[aria-label*='Send' i], .send-button").last
+            if send_btn.is_visible(timeout=2000):
+                send_btn.click()
+            else:
+                self.tab.keyboard.press("Enter")
             
             response_text = self._wait_for_response()
+            if not response_text:
+                # Backup: Try to find any message that looks like a response if count logic failed
+                candidates = self.tab.locator("message-content").all()
+                if not candidates: candidates = self.tab.locator(".model-response-text").all()
+                if candidates:
+                    logger.info("Count logic failed, but candidates found. Attempting to use last candidate.")
+                    response_text = candidates[-1].inner_text().strip()
+            
             if not response_text:
                 return None
             
@@ -338,52 +352,54 @@ Main title: “{title}”
             return None
 
     def _wait_for_response(self, timeout=120):
-        """Helper to wait for Gemini response to stabilize."""
+        """Helper to wait for Gemini response to appear and stabilize."""
         logger.info("Waiting for Gemini response to appear and stabilize...")
         start_time = time.time()
         
-        # 1. First, wait for a NEW message to appear
-        # We assume the last message currently exists (it's either our prompt or a previous response)
+        # Capture initial state
         initial_candidates = self.tab.locator("message-content").all()
         if not initial_candidates: initial_candidates = self.tab.locator(".model-response-text").all()
         initial_count = len(initial_candidates)
-        logger.info(f"Initial message count: {initial_count}")
-
+        
         last_text = ""
         stable_count = 0
-        new_message_detected = False
         
         while time.time() - start_time < timeout:
+            # 1. Check for 'Stop generating' button (Turkish: 'Yanıtı durdur' or similar)
+            # If this button is visible, Gemini is still 'typing'
+            stop_btn_visible = False
+            try:
+                stop_btn = self.tab.locator("button[aria-label*='Stop' i], button[aria-label*='Durdur' i]").first
+                if stop_btn.is_visible(timeout=500):
+                    stop_btn_visible = True
+            except: pass
+
             candidates = self.tab.locator("message-content").all() 
             if not candidates: candidates = self.tab.locator(".model-response-text").all()
             
-            current_count = len(candidates)
-            
-            if current_count > initial_count:
-                if not new_message_detected:
-                    logger.info("New message detected, waiting for content...")
-                    new_message_detected = True
-                
+            if len(candidates) > initial_count or (len(candidates) == initial_count and initial_count > 0):
+                # Use the last candidate as our potential response
                 current_text = candidates[-1].inner_text().strip()
                 
-                # If message is still empty, keep waiting
-                if not current_text:
-                    time.sleep(1)
+                # If message is still empty or just has a loading pulse, keep waiting
+                if not current_text or len(current_text) < 10:
+                    time.sleep(2)
                     continue
 
                 if current_text == last_text:
-                    stable_count += 1
-                    # Reduced to 2 checks (4s) for snappiness, but ensure it's not just "typing..."
-                    if stable_count >= 2: 
-                        logger.info(f"Response stabilized. Length: {len(current_text)}")
-                        return current_text
+                    # If text is stable AND 'Stop' button is gone, we are likely done
+                    if not stop_btn_visible:
+                        stable_count += 1
+                        if stable_count >= 2: # 4 seconds of stability
+                            logger.info(f"Response finished and stabilized. Length: {len(current_text)}")
+                            return current_text
+                    else:
+                        logger.info("Text is stable but 'Stop' button is still visible. Gemini might be thinking...")
+                        stable_count = 0 
                 else:
                     last_text = current_text
                     stable_count = 0
-            else:
-                # Still waiting for the new message to appear
-                pass
-
+            
             time.sleep(2)
         
         logger.error("Gemini response timed out or returned no content.")
