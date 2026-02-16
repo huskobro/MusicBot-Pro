@@ -239,13 +239,16 @@ Main title: “{title}”
     def generate_content(self, theme, style=None):
         try:
             input_box = None
-            possible_selectors = ["div[contenteditable='true']", "textarea[aria-label*='prompt']", "textarea"]
+            # Gemini uses Quill editor (ql-editor) which is a div contenteditable
+            possible_selectors = ["div.ql-editor", "div[contenteditable='true']", "textarea[aria-label*='prompt']", "textarea"]
             for selector in possible_selectors:
                 if self.browser.is_visible(selector, page=self.tab):
                     input_box = selector
                     break
             
-            if not input_box: return None
+            if not input_box: 
+                logger.error("Could not find Gemini input box.")
+                return None
 
             # Using .replace() instead of .format() for better robustness against unknown braces in template
             full_prompt = self.master_prompt_template.replace("{theme}", str(theme)).replace("{language}", str(self.language))
@@ -254,16 +257,34 @@ Main title: “{title}”
             if style:
                 full_prompt += f"\n\n[IMPORTANT] Target Music Style: {style}\nPlease ensure all outputs (lyrics, art, video, style) follow this style precisely."
 
+            logger.info("Injecting prompt into Gemini (Instant Block Mode)...")
             self.tab.click(input_box)
             time.sleep(1)
-            self.browser.fill(input_box, full_prompt, page=self.tab)
+            
+            # BYPASS HUMANIZER: Use self.tab.fill for instant injection as requested by user.
+            # This ensures Gemini sees the entire prompt as a single unit.
+            self.tab.fill(input_box, full_prompt)
+            
+            # Dispatch events to ensure Quill editor internal state updates correctly
+            self.tab.evaluate(f"""(sel) => {{
+                const el = document.querySelector(sel);
+                if (el) {{
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    // Specific to some versions of Quill/Gemini
+                    if (el.innerText === "") el.innerText = " "; 
+                }}
+            }}""", input_box)
+            
             time.sleep(2)
             
-            # Click Send button as it's more reliable than just Enter
-            send_btn = self.tab.locator("button[aria-label*='Gönder' i], button[aria-label*='Send' i], .send-button").last
-            if send_btn.is_visible(timeout=2000):
-                send_btn.click()
+            # Click Send button
+            send_btn_selector = "button.send-button:not(.stop)"
+            if self.tab.locator(send_btn_selector).is_visible(timeout=3000):
+                logger.info("Clicking Send button...")
+                self.tab.click(send_btn_selector)
             else:
+                logger.warning("Send button not active/visible, trying Enter key fallback.")
                 self.tab.keyboard.press("Enter")
             
             response_text = self._wait_for_response()
