@@ -34,6 +34,7 @@ class SunoGenerator:
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+        self.stop_requested = False
 
     def run(self, max_count=None, target_ids=None, progress_callback=None, force_update=False):
         try:
@@ -365,11 +366,12 @@ class SunoGenerator:
             if create_btn.is_enabled():
                 logger.info(f"Clicking Create for: {suno_title}")
                 create_btn.click()
-                time.sleep(5) 
+                time.sleep(2) 
 
-                # [Stale Song Detection] Wait for clip count to increase
+                # [Requirement 7 + CAPTCHA Alert]
                 new_clip_appeared = False
-                for _ in range(15): # 30s wait for generation start
+                for i in range(25): # ~40-50s maximum wait
+                    # 1. Check for success indicators
                     current_count = self.tab.locator("div.clip-row").count()
                     if current_count > initial_count:
                         new_clip_appeared = True
@@ -379,6 +381,17 @@ class SunoGenerator:
                     if self.tab.locator("div.clip-row").first.locator("text='Generating'").is_visible(timeout=500):
                         new_clip_appeared = True
                         break
+                    
+                    # 2. Check for CAPTCHA / Challenge
+                    if self._detect_captcha():
+                        logger.warning("⚠️ CAPTCHA/Challenge detected on Suno!")
+                        if progress_callback: progress_callback(rid, "⚠️ CAPTCHA DETECTED! Use Chrome... 🕒")
+                        self._play_alert()
+                        # Pause until cleared
+                        while self._detect_captcha() and not self.stop_requested:
+                            time.sleep(3)
+                        logger.info("Captcha cleared or disappeared. Resuming wait...")
+
                     time.sleep(2)
                 
                 if not new_clip_appeared:
@@ -769,6 +782,34 @@ class SunoGenerator:
             wb.save(self.metadata_path)
         except: pass
 
+    def _detect_captcha(self):
+        """Checks for known Cloudflare / hCaptcha elements."""
+        captcha_selectors = [
+            "iframe[title*='challenge']",
+            "div#turnstile-wrapper",
+            "iframe[src*='cloudflare-static']",
+            "iframe[src*='hcaptcha']",
+            "iframe[src*='recaptcha']",
+            "#cf-turnstile-wrapper",
+            ".cf-turnstile-wrapper",
+            "div:has-text('Verify you are human')"
+        ]
+        for sel in captcha_selectors:
+            try:
+                if self.tab.locator(sel).is_visible(timeout=300):
+                    return True
+            except: pass
+        return False
+
+    def _play_alert(self):
+        """Plays a prominent alert sound on macOS."""
+        import sys
+        try:
+            if sys.platform == "darwin":
+                # Play 'Glass' or 'Basso' for attention
+                os.system("afplay /System/Library/Sounds/Glass.aiff &")
+        except: pass
+
 if __name__ == "__main__":
-    suno = SunoGenerator()
+    suno = SunoGenerator(project_file="test.xlsx")
     suno.run()
