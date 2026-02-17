@@ -102,6 +102,10 @@ TRANSLATIONS = {
         "enable_weirdness_label": "Enable Weirdness:",
         "enable_style_influence_label": "Enable Style Influence:",
         "enable_lyrics_mode_label": "Enable Lyrics Mode:",
+        "suno_batch_label": "Enable Batch Mode (Generate All -> Download All)",
+        "batch_op_full": "Full Cycle (Gen + DL)",
+        "batch_op_gen": "Generate Only",
+        "batch_op_dl": "Download Only",
         "human_settings_label": "Human-like Interaction Settings",
         "enable_humanizer_label": "ENABLE HUMANIZER (Global)",
         "activate_humanizer_label": "Activate Humanizer in:",
@@ -302,6 +306,10 @@ TRANSLATIONS = {
         "enable_weirdness_label": "Tuhaflığı Etkinleştir:",
         "enable_style_influence_label": "Stil Etkisini Etkinleştir:",
         "enable_lyrics_mode_label": "Şarkı Sözü Modunu Etkinleştir:",
+        "suno_batch_label": "Toplu Modu Etkinleştir (Hepsini Üret -> Hepsini İndir)",
+        "batch_op_full": "Tam Döngü (Üret + İndir)",
+        "batch_op_gen": "Sadece Üret",
+        "batch_op_dl": "Sadece İndir",
         "human_settings_label": "İnsan Benzeri Etkileşim Ayarları",
         "enable_humanizer_label": "İNSANLAŞTIRICIYI ETKİNLEŞTİR (Global)",
         "activate_humanizer_label": "İnsanlaştırıcıyı Şurada Aktifleştir:",
@@ -562,6 +570,8 @@ class SettingsDialog(tk.Toplevel):
         self.combo_parallel_render = None
         self.combo_video_selection = None
         self.effect_vars = {}
+        self.var_suno_batch = None
+        self.var_batch_op = None
 
         # --- TAB 0: Profiles ---
         self.tab_presets = ttk.Frame(self.notebook)
@@ -740,11 +750,11 @@ class SettingsDialog(tk.Toplevel):
 
         # Persona Profile Section
         self.var_persona_link_enabled = tk.BooleanVar(value=config.get("suno_persona_link_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_persona_label"), variable=self.var_persona_link_enabled).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_persona_label"), variable=self.var_persona_link_enabled).grid(row=0, column=0, sticky="w", pady=2)
         
         # Frame for Persona Manager
         f_persona_mgr = ttk.Frame(f_adv_suno)
-        f_persona_mgr.grid(row=1, column=1, sticky="ew", pady=2)
+        f_persona_mgr.grid(row=0, column=1, sticky="ew", pady=2)
         
         # Load Personas
         self.personas = config.get("suno_personas", {}) # Dict: {Alias: Link}
@@ -775,38 +785,38 @@ class SettingsDialog(tk.Toplevel):
 
         # 2. Vocal Gender
         self.var_gender_enabled = tk.BooleanVar(value=config.get("vocal_gender_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_vocal_gender_label"), variable=self.var_gender_enabled).grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_vocal_gender_label"), variable=self.var_gender_enabled).grid(row=1, column=0, sticky="w", pady=2)
         self.combo_gender = ttk.Combobox(f_adv_suno, values=[self.app.t("vocal_default"), self.app.t("vocal_none"), self.app.t("vocal_male"), self.app.t("vocal_female")], state="readonly")
         self.combo_gender.set(config.get("vocal_gender", self.app.t("vocal_default")))
-        self.combo_gender.grid(row=2, column=1, sticky="ew", pady=2)
+        self.combo_gender.grid(row=1, column=1, sticky="ew", pady=2)
 
         # 3. Audio Influence (%)
         self.var_audio_enabled = tk.BooleanVar(value=config.get("audio_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_audio_influence_label"), variable=self.var_audio_enabled).grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_audio_influence_label"), variable=self.var_audio_enabled).grid(row=2, column=0, sticky="w", pady=2)
         self.scale_audio = tk.Scale(f_adv_suno, from_=10, to_=90, orient="horizontal")
         self.scale_audio.set(config.get("audio_influence", 25))
-        self.scale_audio.grid(row=3, column=1, sticky="ew", pady=2)
+        self.scale_audio.grid(row=2, column=1, sticky="ew", pady=2)
 
         # 4. Weirdness
         self.var_weird_enabled = tk.BooleanVar(value=config.get("weirdness_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_weirdness_label"), variable=self.var_weird_enabled).grid(row=4, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_weirdness_label"), variable=self.var_weird_enabled).grid(row=3, column=0, sticky="w", pady=2)
         self.scale_weird = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_weird.set(50 if config.get("weirdness") == "Default" else int(config.get("weirdness", 50)))
-        self.scale_weird.grid(row=4, column=1, sticky="ew", pady=2)
+        self.scale_weird.grid(row=3, column=1, sticky="ew", pady=2)
 
         # 5. Style Influence
         self.var_style_enabled = tk.BooleanVar(value=config.get("style_influence_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_style_influence_label"), variable=self.var_style_enabled).grid(row=5, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_style_influence_label"), variable=self.var_style_enabled).grid(row=4, column=0, sticky="w", pady=2)
         self.scale_style = tk.Scale(f_adv_suno, from_=1, to_=100, orient="horizontal")
         self.scale_style.set(50 if config.get("style_influence") == "Default" else int(config.get("style_influence", 50)))
-        self.scale_style.grid(row=5, column=1, sticky="ew", pady=2)
+        self.scale_style.grid(row=4, column=1, sticky="ew", pady=2)
 
         # 6. Lyrics Mode
         self.var_lyrics_mode_enabled = tk.BooleanVar(value=config.get("lyrics_mode_enabled", False))
-        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_lyrics_mode_label"), variable=self.var_lyrics_mode_enabled).grid(row=6, column=0, sticky="w", pady=2)
+        ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_lyrics_mode_label"), variable=self.var_lyrics_mode_enabled).grid(row=5, column=0, sticky="w", pady=2)
         self.combo_lyrics_mode = ttk.Combobox(f_adv_suno, values=[self.app.t("vocal_default"), self.app.t("mode_manual"), self.app.t("mode_auto")], state="readonly")
         self.combo_lyrics_mode.set(config.get("lyrics_mode", self.app.t("vocal_default")))
-        self.combo_lyrics_mode.grid(row=6, column=1, sticky="ew", pady=2)
+        self.combo_lyrics_mode.grid(row=5, column=1, sticky="ew", pady=2)
 
         f_adv_suno.columnconfigure(1, weight=1)
 
@@ -1143,6 +1153,9 @@ class SettingsDialog(tk.Toplevel):
         if self.var_lyrics_mode_enabled: self.var_lyrics_mode_enabled.set(settings.get("lyrics_mode_enabled", False))
         
         if self.combo_persona_select: self.combo_persona_select.set(settings.get("suno_active_persona", ""))
+        
+        if self.var_suno_batch: self.var_suno_batch.set(settings.get("suno_batch_mode", False))
+        if self.var_batch_op: self.var_batch_op.set(settings.get("suno_batch_op_mode", "full"))
 
         # Defaults
         if self.var_def_lyrics: self.var_def_lyrics.set(settings.get("default_run_lyrics", True))
@@ -1435,7 +1448,9 @@ class MusicBotGUI:
             "vocal_gender_enabled": False,
             "audio_influence_enabled": False,
             "video_parallel_count": 1,
-            "video_selection_mode": "Both (_1 & _2)"
+            "video_selection_mode": "Both (_1 & _2)",
+            "suno_batch_mode": False,
+            "suno_batch_op_mode": "full"
         }
         
         # 3. Load Saved Settings
@@ -1525,7 +1540,7 @@ class MusicBotGUI:
         self.lbl_project = ttk.Label(self.f_top, textvariable=self.lbl_project_text, font=("Helvetica", 10, "italic"), foreground="gray")
         self.lbl_project.pack(side="left", padx=10)
         
-        ttk.Button(self.f_top, text=self.t("images"), command=self.open_image_folder).pack(side="left", padx=2)
+        ttk.Button(self.f_top, text=self.t("open_project_btn"), command=self.open_xlsx).pack(side="left", padx=2)
 
         # Filter (Enhanced)
         self.f_filter = ttk.Frame(self.root, padding="5 0 5 10")
@@ -1571,6 +1586,17 @@ class MusicBotGUI:
         ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("compilation"), variable=self.var_run_compilation, command=self.apply_filter).pack(side="left", padx=10)
+
+        # Batch Mode Section (Moved to Main)
+        ttk.Separator(self.f_run_ops, orient="vertical").pack(side="left", fill="y", padx=10)
+        
+        self.var_suno_batch = tk.BooleanVar(value=self.config.get("suno_batch_mode", False))
+        ttk.Checkbutton(self.f_run_ops, text="Batch", variable=self.var_suno_batch).pack(side="left", padx=5)
+        
+        self.var_batch_op = tk.StringVar(value=self.config.get("suno_batch_op_mode", "full"))
+        ttk.Radiobutton(self.f_run_ops, text="Full", variable=self.var_batch_op, value="full").pack(side="left", padx=2)
+        ttk.Radiobutton(self.f_run_ops, text="Gen", variable=self.var_batch_op, value="gen_only").pack(side="left", padx=2)
+        ttk.Radiobutton(self.f_run_ops, text="DL", variable=self.var_batch_op, value="dl_only").pack(side="left", padx=2)
 
         # Main Table
         self.f_tree = ttk.Frame(self.root)
@@ -1714,7 +1740,13 @@ class MusicBotGUI:
         """Saves current config to settings.json in workspace."""
         if new_config:
             self.config.update(new_config)
-            
+        
+        # Sync dashboard variables to config
+        if hasattr(self, "var_suno_batch"):
+            self.config["suno_batch_mode"] = self.var_suno_batch.get()
+        if hasattr(self, "var_batch_op"):
+            self.config["suno_batch_op_mode"] = self.var_batch_op.get()
+
         workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
         os.makedirs(workspace, exist_ok=True)
         settings_path = os.path.join(workspace, "settings.json")
@@ -2325,6 +2357,7 @@ class MusicBotGUI:
     def run_process(self, target_ids):
         start_time = time.time()
         total_songs = len(target_ids)
+        self.video_render_queue = [] # Fixed: Always initialize at start
         
         try:
             # Check for existing data if we are running Gemini steps
@@ -2367,254 +2400,28 @@ class MusicBotGUI:
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
 
-            # Process EACH song ID individually
-            video_render_queue = [] # Queue for parallel rendering (Pass 2)
+                    self.active_browser = None
+                
             
-            for idx, song_id in enumerate(target_ids):
-                if self.stop_requested:
-                    logger.info(self.t("log_halted"))
-                    break
-                    
-                # Update status
-                song_data = self.all_songs.get(song_id, {})
-                title = song_data.get("title", "Unknown")
-                title_short = title[:50] + ".." if len(title) > 50 else title
-                self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
-                
-                # Calculate ETA
-                elapsed = time.time() - start_time
-                avg_time = elapsed / idx if idx > 0 else 0
-                remaining = total_songs - idx
-                eta_val = ""
-                if idx > 0:
-                    eta_seconds = int(avg_time * remaining)
-                    hrs = eta_seconds // 3600
-                    mins = (eta_seconds % 3600) // 60
-                    secs = eta_seconds % 60
-                    time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
-                    eta_val = f" | {self.t('eta_label').format(time=time_str)}"
+            # =================================================================================================
+            # DECISION POINT: Batch Mode vs Sequential Mode
+            # =================================================================================================
+            is_batch_mode = self.var_suno_batch.get() if hasattr(self, "var_suno_batch") else self.config.get("suno_batch_mode", False)
+            # Sync op_mode to config for use inside batch methods
+            if hasattr(self, "var_batch_op"):
+                self.config["suno_batch_op_mode"] = self.var_batch_op.get()
 
-                self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{total_songs}){eta_val}"))
-                self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
-                
-                # Start browser ONLY IF NEEDED
-                song_browser = None
-                self.active_browser = None
-                
-                # Global Humanizer State
-                global_human = self.config.get("humanizer_enabled", True)
+            if is_batch_mode:
+                logger.info(f"🚀 STARTING ENGINE IN BATCH MODE (PHASED EXECUTION - {self.config.get('suno_batch_op_mode')})")
+                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update)
+            else:
+                logger.info("🚂 STARTING ENGINE IN SEQUENTIAL MODE")
+                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update)
 
-                try:
-                    # Get specific steps for THIS song
-                    s_steps = self.song_steps.get(song_id)
-                    if s_steps is None:
-                        s_steps = [
-                            self.var_run_lyrics.get(),
-                            self.var_run_music.get(),
-                            self.var_run_art_prompt.get(),
-                            self.var_run_art_image.get(),
-                            self.var_run_video.get()
-                        ]
-                    
-                    # Ensure length
-                    while len(s_steps) < 5: s_steps.append(False)
-
-                    # Determine if browser is actually needed
-                    browser_needed = s_steps[0] or s_steps[1] or s_steps[2] # Lyrics, Music, or Art Prompt
-                    
-                    if browser_needed:
-                        from browser_controller import BrowserController
-                        h_conf = {
-                            "level": self.config.get("humanizer_level", "MEDIUM"),
-                            "speed": self.config.get("humanizer_speed", 1.0),
-                            "retries": self.config.get("humanizer_retries", 1),
-                            "adaptive": self.config.get("humanizer_adaptive", True)
-                        }
-                        song_browser = BrowserController(headless=False, humanizer_config=h_conf)
-                        song_browser.start()
-                        self.active_browser = song_browser
-                    
-                    # --- Step 1: Lyrics ---
-                    if s_steps[0] and not self.stop_requested and song_browser:
-                        # Phase-based Humanizer Activation
-                        song_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
-                        
-                        from gemini_prompter import GeminiPrompter
-                        gemini = GeminiPrompter(
-                            project_file=project_file, 
-                            browser=song_browser,
-                            use_gemini_lyrics=self.config.get("gemini_lyrics", True),
-                            generate_visual=self.config.get("gemini_visual", True),
-                            generate_video=self.config.get("gemini_video", False),
-                            generate_style=self.config.get("gemini_style", False),
-                            startup_delay=self.config.get("startup_delay", 5),
-                            language=self.config.get("target_language", "Turkish")
-                        )
-                        gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
-                    
-                    # --- Step 2: Music ---
-                    if s_steps[1] and not self.stop_requested and song_browser:
-                        # Phase-based Humanizer Activation
-                        song_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
-                        
-                        from suno_generator import SunoGenerator
-                        suno = SunoGenerator(
-                            project_file=project_file, # Unified Path
-                            output_dir=output_media,
-                            delay=self.config.get("suno_delay", 15),
-                            startup_delay=self.config.get("startup_delay", 5),
-                            browser=song_browser,
-                            audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
-                            vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
-                            weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
-                            style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
-                            lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
-                            persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
-                        )
-                        suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
-                    
-                    # --- Step 3: Art (Prompts & Images) ---
-                    if (s_steps[2] or s_steps[3]) and not self.stop_requested:
-                        from gemini_prompter import GeminiPrompter
-                        gemini_art = GeminiPrompter(
-                            project_file=project_file, # Unified Path
-                            output_dir=output_media,
-                            browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
-                            startup_delay=self.config.get("startup_delay", 5),
-                            language=self.config.get("target_language", "Turkish")
-                        )
-                        
-                        if s_steps[2] and not self.stop_requested and song_browser:
-                            gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
-                        
-                        if s_steps[3] and not self.stop_requested:
-                            gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
-
-                    # --- Step 4: Video Generation (Consolidated) ---
-                    if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                        found_audio = []
-                        all_materials = [] # Track all found for not_used
-                        try:
-                            # Selection logic: _1, _2 or Both
-                            selection_mode = self.config.get("video_selection_mode", "Both")
-                            # Map localization to internal suffixes
-                            suffix_map = {
-                                self.t("v_mode_1"): "_1",
-                                self.t("v_mode_2"): "_2",
-                                "Only _1": "_1",
-                                "Only _2": "_2"
-                            }
-                            target_suffix = suffix_map.get(selection_mode)
-
-                            for f in os.listdir(output_media):
-                                if f.startswith(f"{song_id}_") or f.startswith(f"{song_id}."):
-                                    if f.lower().endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
-                                        all_materials.append(f)
-                                        
-                                if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
-                                    # Filter by selection mode if applicable
-                                    if not target_suffix or f.lower().endswith(f"{target_suffix.lower()}.mp3") or f.lower().endswith(f"{target_suffix.lower()}.wav"):
-                                        found_audio.append(f)
-                            if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
-                                if not target_suffix: # Generic file only if 'Both' or no specific suffix requested
-                                    found_audio.append(f"{song_id}.mp3")
-                        except: pass
-                        found_audio = sorted(list(set(found_audio)))
-                        used_in_tasks = []
-
-                        if found_audio:
-                            from video_generator import VideoGenerator
-                            v_params = {
-                                "effect_types": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
-                                "fps": int(self.config.get("video_fps", 30)),
-                                "resolution": self.config.get("video_resolution", self.t("video_res_shorts")),
-                                "intensity": int(self.config.get("video_intensity", 1.0) * 50) # Scale 1.0 to 50
-                            }
-                            
-                            for aud_file in found_audio:
-                                if self.stop_requested: break
-                                aud_full_path = os.path.join(output_media, aud_file)
-                                aud_base = os.path.splitext(aud_file)[0]
-                                # Extract sequence for ID_Seq check (e.g. 1_Rockie_1 -> 1_1)
-                                parts = aud_base.split("_")
-                                seq_name = None
-                                if len(parts) >= 2:
-                                    last_part = parts[-1]
-                                    if last_part.isdigit():
-                                        seq_name = f"{song_id}_{last_part}"
-
-                                # Find matching image (Ref 3: Priority to video_assets_path)
-                                img_path = None
-                                search_dirs = []
-                                assets_folder = self.config.get("video_assets_path")
-                                if assets_folder and os.path.exists(assets_folder):
-                                    search_dirs.append(assets_folder)
-                                search_dirs.append(output_media) # Fallback to profile folder
-                                
-                                for s_dir in search_dirs:
-                                    # Patterns: Full Name, ID_Seq (1_1), or Generic ID (1)
-                                    # Support all common image formats and casing
-                                    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
-                                        # 1. Try Full Filename (1_Rock_1.png)
-                                        if os.path.exists(os.path.join(s_dir, f"{aud_base}{ext}")):
-                                            img_path = os.path.join(s_dir, f"{aud_base}{ext}"); break
-                                        
-                                        # 2. Try ID_Sequence (1_1.png)
-                                        if seq_name and os.path.exists(os.path.join(s_dir, f"{seq_name}{ext}")):
-                                            img_path = os.path.join(s_dir, f"{seq_name}{ext}"); break
-                                            
-                                        # 3. Fallback to generic ID (1.png)
-                                        if os.path.exists(os.path.join(s_dir, f"{song_id}{ext}")):
-                                            img_path = os.path.join(s_dir, f"{song_id}{ext}"); break
-                                    if img_path: break
-                                
-                                if img_path:
-                                    # Output Directory Logic (Ref 5: Subfolder 'videos')
-                                    video_out_dir = os.path.join(output_media, "videos")
-                                    if self.config.get("video_output_mode") == "custom":
-                                        video_out_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
-                                    
-                                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
-                                    
-                                    video_render_queue.append({
-                                        "rid": song_id,
-                                        "audio_path": aud_full_path,
-                                        "image_path": img_path,
-                                        "output_dir": video_out_dir,
-                                        "profile_dir": output_media, # Root for moving files
-                                        "output_filename": f"{aud_base}.mp4",
-                                        "params": v_params
-                                    })
-                                    used_in_tasks.append(aud_file)
-                                    used_in_tasks.append(os.path.basename(img_path))
-                                else:
-                                    logger.warning(f"Skipping video for {aud_file}: No matching image found.")
-                        
-                        # Move Unused for THIS song (Ref: output_media/[profile]/not_used)
-                        try:
-                            not_used_dir = os.path.join(output_media, "not_used")
-                            for mat in all_materials:
-                                if mat not in used_in_tasks:
-                                    if not os.path.exists(not_used_dir): os.makedirs(not_used_dir, exist_ok=True)
-                                    shutil.move(os.path.join(output_media, mat), os.path.join(not_used_dir, mat))
-                        except Exception as ne:
-                            logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
-                    self.active_browser = None
-                except Exception as e:
-                    logger.error(f"Error processing {song_id}: {e}")
-                    progress_callback(song_id, "Error in flow ❌")
-                    self.active_browser = None
-                finally:
-                    # Safe Shutdown for Phase 1-3
-                    try:
-                        time.sleep(1)
-                        if song_browser:
-                            song_browser.stop()
-                    except: pass
-                    self.active_browser = None
+            # --- Phase 2: Parallel Video Rendering ---
                 
             # --- Phase 2: Parallel Video Rendering ---
-            if video_render_queue and not self.stop_requested:
+            if hasattr(self, "video_render_queue") and self.video_render_queue and not self.stop_requested:
                 parallel_count = int(self.config.get("video_parallel_count", 1))
                 logger.info(f"Starting Parallel Video Rendering: {len(video_render_queue)} tasks, pool size: {parallel_count}")
                 self.root.after(0, lambda: self.status_var.set(f"Rendering {len(video_render_queue)} Videos ({parallel_count} parallel)..."))
@@ -2651,7 +2458,7 @@ class MusicBotGUI:
 
                 # Run pool
                 with ThreadPoolExecutor(max_workers=parallel_count) as pool:
-                    pool.map(run_parallel_task, video_render_queue)
+                    pool.map(run_parallel_task, self.video_render_queue)
                 
                 logger.info("Parallel Video Rendering Phase Completed.")
                 self.scan_materials() # Refresh status icons
@@ -2691,8 +2498,9 @@ class MusicBotGUI:
             self.root.after(0, self.load_project_data) # Refresh UI
 
         except Exception as e:
-            logger.error(f"Critical Process Error: {e}")
-            self.root.after(0, lambda: messagebox.showerror(self.t("msg_critical_error"), str(e)))
+            err_msg = str(e)
+            logger.error(f"Critical Process Error: {err_msg}")
+            self.root.after(0, lambda m=err_msg: messagebox.showerror(self.t("msg_critical_error"), m))
         finally:
             self.root.after(0, self.enable_buttons)
             self.load_data()
@@ -2869,6 +2677,370 @@ class MusicBotGUI:
         self.root.after(0, lambda: self.status_var.set(self.t("ready")))
         self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
         self.root.after(0, lambda: self.load_project_data()) # Auto refresh
+
+    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update):
+        """Original flow: Process each song 1-by-1 through all selected steps."""
+        total_songs = len(target_ids)
+        self.video_render_queue = [] # Queue for parallel rendering (Pass 2) will be populated here
+        
+        for idx, song_id in enumerate(target_ids):
+            if self.stop_requested:
+                logger.info(self.t("log_halted"))
+                break
+                
+            # Update status
+            song_data = self.all_songs.get(song_id, {})
+            title = song_data.get("title", "Unknown")
+            title_short = title[:50] + ".." if len(title) > 50 else title
+            self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
+            
+            # Calculate ETA
+            elapsed = time.time() - start_time
+            avg_time = elapsed / idx if idx > 0 else 0
+            remaining = total_songs - idx
+            eta_val = ""
+            if idx > 0:
+                eta_seconds = int(avg_time * remaining)
+                hrs = eta_seconds // 3600
+                mins = (eta_seconds % 3600) // 60
+                secs = eta_seconds % 60
+                time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                eta_val = f" | {self.t('eta_label').format(time=time_str)}"
+
+            self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{total_songs}){eta_val}"))
+            self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
+            
+            # Start browser ONLY IF NEEDED
+            song_browser = None
+            self.active_browser = None
+            
+            # Global Humanizer State
+            global_human = self.config.get("humanizer_enabled", True)
+
+            try:
+                # Get specific steps for THIS song
+                s_steps = self.song_steps.get(song_id)
+                if s_steps is None:
+                    s_steps = [
+                        self.var_run_lyrics.get(),
+                        self.var_run_music.get(),
+                        self.var_run_art_prompt.get(),
+                        self.var_run_art_image.get(),
+                        self.var_run_video.get()
+                    ]
+                
+                # Ensure length
+                while len(s_steps) < 5: s_steps.append(False)
+
+                # Determine if browser is actually needed
+                browser_needed = s_steps[0] or s_steps[1] or s_steps[2] # Lyrics, Music, or Art Prompt
+                
+                if browser_needed:
+                    from browser_controller import BrowserController
+                    h_conf = {
+                        "level": self.config.get("humanizer_level", "MEDIUM"),
+                        "speed": self.config.get("humanizer_speed", 1.0),
+                        "retries": self.config.get("humanizer_retries", 1),
+                        "adaptive": self.config.get("humanizer_adaptive", True)
+                    }
+                    song_browser = BrowserController(headless=False, humanizer_config=h_conf)
+                    song_browser.start()
+                    self.active_browser = song_browser
+                
+                # --- Step 1: Lyrics ---
+                if s_steps[0] and not self.stop_requested and song_browser:
+                    # Phase-based Humanizer Activation
+                    song_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
+                    
+                    from gemini_prompter import GeminiPrompter
+                    gemini = GeminiPrompter(
+                        project_file=project_file, 
+                        browser=song_browser,
+                        use_gemini_lyrics=self.config.get("gemini_lyrics", True),
+                        generate_visual=self.config.get("gemini_visual", True),
+                        generate_video=self.config.get("gemini_video", False),
+                        generate_style=self.config.get("gemini_style", False),
+                        startup_delay=self.config.get("startup_delay", 5),
+                        language=self.config.get("target_language", "Turkish")
+                    )
+                    gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
+                
+                # --- Step 2: Music ---
+                if s_steps[1] and not self.stop_requested and song_browser:
+                    # Phase-based Humanizer Activation
+                    song_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
+                    
+                    from suno_generator import SunoGenerator
+                    suno = SunoGenerator(
+                        project_file=project_file, # Unified Path
+                        output_dir=output_media,
+                        delay=self.config.get("suno_delay", 15),
+                        startup_delay=self.config.get("startup_delay", 5),
+                        browser=song_browser,
+                        audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
+                        vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
+                        weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
+                        style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
+                        lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
+                        persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
+                    )
+                    suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
+                
+                # --- Step 3: Art (Prompts & Images) ---
+                if (s_steps[2] or s_steps[3]) and not self.stop_requested:
+                    from gemini_prompter import GeminiPrompter
+                    gemini_art = GeminiPrompter(
+                        project_file=project_file, # Unified Path
+                        output_dir=output_media,
+                        browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
+                        startup_delay=self.config.get("startup_delay", 5),
+                        language=self.config.get("target_language", "Turkish")
+                    )
+                    
+                    if s_steps[2] and not self.stop_requested and song_browser:
+                        gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
+                    
+                    if s_steps[3] and not self.stop_requested:
+                        gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
+
+                # --- Step 4: Video Generation (Consolidated) ---
+                if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
+                    self._prepare_video_task(song_id, output_media, workspace, progress_callback)
+                self.active_browser = None
+            except Exception as e:
+                logger.error(f"Error processing {song_id}: {e}")
+                progress_callback(song_id, "Error in flow ❌")
+                self.active_browser = None
+            finally:
+                # Safe Shutdown for Phase 1-3
+                try:
+                    time.sleep(1)
+                    if song_browser:
+                        song_browser.stop()
+                except: pass
+                self.active_browser = None
+
+    def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None):
+        """Helper to prepare a video task for a single song and add it to self.video_render_queue."""
+        found_audio = []
+        all_materials = [] # Track all found for not_used
+        try:
+            # Selection logic: _1, _2 or Both
+            selection_mode = self.config.get("video_selection_mode", "Both")
+            # Map localization to internal suffixes
+            suffix_map = {
+                self.t("v_mode_1"): "_1",
+                self.t("v_mode_2"): "_2",
+                "Only _1": "_1",
+                "Only _2": "_2"
+            }
+            target_suffix = suffix_map.get(selection_mode)
+
+            for f in os.listdir(output_media):
+                if f.startswith(f"{song_id}_") or f.startswith(f"{song_id}."):
+                    if f.lower().endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
+                        all_materials.append(f)
+                        
+                if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
+                    # Filter by selection mode if applicable
+                    if not target_suffix or f.lower().endswith(f"{target_suffix.lower()}.mp3") or f.lower().endswith(f"{target_suffix.lower()}.wav"):
+                        found_audio.append(f)
+            if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
+                if not target_suffix: # Generic file only if 'Both' or no specific suffix requested
+                    found_audio.append(f"{song_id}.mp3")
+        except: pass
+        found_audio = sorted(list(set(found_audio)))
+        used_in_tasks = []
+
+        if found_audio:
+            v_params = {
+                "effect_types": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
+                "fps": int(self.config.get("video_fps", 30)),
+                "resolution": self.config.get("video_resolution", self.t("video_res_shorts")),
+                "intensity": int(self.config.get("video_intensity", 1.0) * 50) # Scale 1.0 to 50
+            }
+            
+            for aud_file in found_audio:
+                if self.stop_requested: break
+                aud_full_path = os.path.join(output_media, aud_file)
+                aud_base = os.path.splitext(aud_file)[0]
+                parts = aud_base.split("_")
+                seq_name = None
+                if len(parts) >= 2:
+                    last_part = parts[-1]
+                    if last_part.isdigit():
+                        seq_name = f"{song_id}_{last_part}"
+
+                if not hasattr(self, "video_render_queue"): self.video_render_queue = []
+
+                # Find matching image logic duplicated from sequential... 
+                # To save space, we assume it's same logic.
+                img_path = None
+                search_dirs = []
+                assets_folder = self.config.get("video_assets_path")
+                if assets_folder and os.path.exists(assets_folder):
+                    search_dirs.append(assets_folder)
+                search_dirs.append(output_media) 
+                
+                for s_dir in search_dirs:
+                    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
+                        if os.path.exists(os.path.join(s_dir, f"{aud_base}{ext}")):
+                            img_path = os.path.join(s_dir, f"{aud_base}{ext}"); break
+                        if seq_name and os.path.exists(os.path.join(s_dir, f"{seq_name}{ext}")):
+                            img_path = os.path.join(s_dir, f"{seq_name}{ext}"); break
+                        if os.path.exists(os.path.join(s_dir, f"{song_id}{ext}")):
+                            img_path = os.path.join(s_dir, f"{song_id}{ext}"); break
+                    if img_path: break
+                
+                if img_path:
+                    video_out_dir = os.path.join(output_media, "videos")
+                    if self.config.get("video_output_mode") == "custom":
+                        video_out_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
+                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
+                    
+                    self.video_render_queue.append({
+                        "rid": song_id,
+                        "audio_path": aud_full_path,
+                        "image_path": img_path,
+                        "output_dir": video_out_dir,
+                        "profile_dir": output_media,
+                        "output_filename": f"{aud_base}.mp4",
+                        "params": v_params
+                    })
+                    used_in_tasks.append(aud_file)
+                    used_in_tasks.append(os.path.basename(img_path))
+        
+        # Move Unused
+        try:
+            not_used_dir = os.path.join(output_media, "not_used")
+            for mat in all_materials:
+                if mat not in used_in_tasks:
+                    if not os.path.exists(not_used_dir): os.makedirs(not_used_dir, exist_ok=True)
+                    shutil.move(os.path.join(output_media, mat), os.path.join(not_used_dir, mat))
+        except Exception as ne:
+             logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
+
+    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update):
+        """Batch executed flow: Lyrics(All) -> Suno_Batch(All) -> Art(All) -> Video(All)"""
+        
+        def get_song_steps(sid):
+            return self.song_steps.get(sid) or [
+                self.var_run_lyrics.get(),
+                self.var_run_music.get(),
+                self.var_run_art_prompt.get(),
+                self.var_run_art_image.get(),
+                self.var_run_video.get()
+            ]
+
+        try:
+            # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
+            # We use one browser session for everything to avoid startups/shutdowns
+            from browser_controller import BrowserController
+            h_conf = {
+                "level": self.config.get("humanizer_level", "MEDIUM"),
+                "speed": self.config.get("humanizer_speed", 1.0),
+                "retries": self.config.get("humanizer_retries", 1),
+                "adaptive": self.config.get("humanizer_adaptive", True)
+            }
+            batch_browser = BrowserController(headless=False, humanizer_config=h_conf)
+            batch_browser.start()
+            self.active_browser = batch_browser
+            global_human = self.config.get("humanizer_enabled", True)
+            
+            # --- PHASE 1: LYRICS & PREP (Gemini) ---
+            gemini_ids = [id for id in target_ids if get_song_steps(id)[0]] # Step 1 enabled
+            if gemini_ids:
+                logger.info(f"Batch Phase 1: Gemini Lyrics ({len(gemini_ids)} songs)")
+                batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
+                
+                from gemini_prompter import GeminiPrompter
+                gemini = GeminiPrompter(
+                    project_file=project_file, 
+                    browser=batch_browser,
+                    use_gemini_lyrics=self.config.get("gemini_lyrics", True),
+                    generate_visual=self.config.get("gemini_visual", True),
+                    generate_video=self.config.get("gemini_video", False),
+                    generate_style=self.config.get("gemini_style", False),
+                    startup_delay=self.config.get("startup_delay", 5),
+                    language=self.config.get("target_language", "Turkish")
+                )
+                # Gemini doesn't have internal batch support yet, so we loop but REUSE browser
+                for idx, song_id in enumerate(gemini_ids):
+                    if self.stop_requested: break
+                    progress_callback(song_id, "Gemini İşleniyor... ✍️")
+                    gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
+            
+            # --- PHASE 2: SUNO BATCH (Gen & Download) ---
+            suno_ids = [id for id in target_ids if get_song_steps(id)[1]] # Step 2 enabled
+            if suno_ids and not self.stop_requested:
+                logger.info(f"Batch Phase 2: Suno Batch ({len(suno_ids)} songs)")
+                batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
+                
+                from suno_generator import SunoGenerator
+                suno = SunoGenerator(
+                    project_file=project_file, 
+                    output_dir=output_media,
+                    delay=self.config.get("suno_delay", 15),
+                    startup_delay=self.config.get("startup_delay", 5),
+                    browser=batch_browser,
+                    audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
+                    vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
+                    weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
+                    style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
+                    lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
+                    persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
+                )
+                # Use the new Batch Method with OP MODE!
+                op_mode = self.config.get("suno_batch_op_mode", "full")
+                logger.info(f"Batch Suno Op Mode: {op_mode}")
+                suno.run_batch(target_ids=suno_ids, progress_callback=progress_callback, force_update=force_update, op_mode=op_mode)
+
+            # --- PHASE 3: ART (Prompts & Images) ---
+            art_p_ids = [id for id in target_ids if get_song_steps(id)[2]] # Step 3 enabled
+            art_i_ids = [id for id in target_ids if get_song_steps(id)[3]] # Step 4 enabled
+            
+            if (art_p_ids or art_i_ids) and not self.stop_requested:
+                logger.info("Batch Phase 3: Art Generation")
+                from gemini_prompter import GeminiPrompter
+                gemini_art = GeminiPrompter(
+                    project_file=project_file,
+                    output_dir=output_media,
+                    browser=batch_browser, 
+                    startup_delay=self.config.get("startup_delay", 5),
+                    language=self.config.get("target_language", "Turkish")
+                )
+                
+                # Prompts via Browser
+                if art_p_ids:
+                    for song_id in art_p_ids:
+                        if self.stop_requested: break
+                        gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
+                
+                # Images (Local, but using same logical flow)
+                if art_i_ids:
+                    for song_id in art_i_ids:
+                        if self.stop_requested: break
+                        gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
+
+            # Clean up browser
+            batch_browser.stop()
+            self.active_browser = None
+
+            # --- PHASE 4: VIDEO PREP & QUEUE ---
+            video_ids = [id for id in target_ids if get_song_steps(id)[4]] # Step 5 enabled
+            if video_ids and not self.stop_requested:
+                self.video_render_queue = []
+                for song_id in video_ids:
+                    self._prepare_video_task(song_id, output_media, workspace, progress_callback)
+
+        except Exception as e:
+            logger.error(f"Batch Mode Error: {e}")
+            messagebox.showerror(self.t("error"), str(e))
+        finally:
+            if self.active_browser:
+                try: self.active_browser.stop()
+                except: pass
+                self.active_browser = None
 
     def load_data(self):
         # Dummy load_data for the finally block

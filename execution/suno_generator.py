@@ -62,7 +62,12 @@ class SunoGenerator:
             if "login" in self.tab.url or self.browser.is_visible("text='Log In'", page=self.tab):
                 logger.warning("--- LOGIN REQUIRED ---")
                 if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
-                time.sleep(5)
+                
+                # Check repeatedly for login
+                for _ in range(60): # Wait up to 5 mins for user login
+                    if "create" in self.tab.url and "login" not in self.tab.url:
+                        break
+                    time.sleep(5)
             
             if "create" not in self.tab.url:
                 self.browser.goto(self.base_url, page=self.tab)
@@ -143,6 +148,486 @@ class SunoGenerator:
             raise e
         finally:
             logger.info("Suno finished.")
+
+    def run_batch(self, target_ids=None, progress_callback=None, force_update=False, op_mode="full"):
+        """
+        Orchestrates the BATCH workflow:
+        1. Generate ALL requested songs (Phase 1)
+        2. Wait for & Download ALL requested songs (Phase 2)
+        """
+        try:
+            if not self.browser.context:
+                self.browser.start()
+            
+            if self.startup_delay > 0:
+                if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
+                time.sleep(self.startup_delay)
+            
+            # --- Common Setup (Persona / Login / v5) ---
+            # Reuse logic from run(), or extract to common _init_session()
+            if self.persona_link:
+                success = self._setup_persona_workflow(progress_callback)
+                if not success:
+                    self.browser.goto(self.base_url, page=self.tab)
+            else:
+                self.browser.goto(self.base_url, page=self.tab)
+            
+            time.sleep(5)
+            self._ensure_v5_active()
+
+            if "login" in self.tab.url or self.browser.is_visible("text='Log In'", page=self.tab):
+                logger.warning("--- LOGIN REQUIRED ---")
+                if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
+                for _ in range(60): 
+                    if "create" in self.tab.url and "login" not in self.tab.url: break
+                    time.sleep(5)
+            
+            if "create" not in self.tab.url:
+                self.browser.goto(self.base_url, page=self.tab)
+                time.sleep(3)
+
+            # --- Prepare Data ---
+            if not os.path.exists(self.metadata_path): return 0
+            
+            wb = openpyxl.load_workbook(self.metadata_path)
+            ws = wb.active
+            headers = {str(cell.value).strip().lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            
+            rows_data = []
+            target_ids_set = set(str(t).strip().lower() for t in target_ids) if target_ids else None
+
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                rid_orig = row[headers.get('id', 0)] if 'id' in headers else ""
+                rid = str(rid_orig).strip().lower()
+                
+                if target_ids_set and rid not in target_ids_set: continue
+                
+                status = str(row[headers.get('status', 0)]).lower() if 'status' in headers else ""
+                is_done = "done" in status or "generated" in status
+                
+                # Check for existing MP3 files to double-verify (for Download phase skip)
+                # But here we mostly care about Generation Phase skip
+                
+                if not force_update and is_done:
+                    continue
+                
+                row_dict = {key: row[idx] for key, idx in headers.items() if idx < len(row)}
+                row_dict['_row_idx'] = i 
+                rows_data.append(row_dict)
+            
+            if not rows_data:
+                logger.info("Nothing to batch generate.")
+                return 0
+
+            generated_ids = []
+            
+            # --- PHASE 1: BATCH GENERATION ---
+            if op_mode in ["full", "gen_only"]:
+                logger.info("--- Starting Batch Generation Phase ---")
+                if progress_callback: progress_callback("global", "Toplu Üretim Başlatılıyor... 🚀")
+                
+                for i, row_dict in enumerate(rows_data):
+                    if self.stop_requested: break
+                    
+                    rid = str(row_dict.get('id', ''))
+                    
+                    # Ensure a fresh state for every song in batch mode by reloading
+                    if i >= 0: # Reload for every song to be absolutely sure
+                        if self.persona_link:
+                            logger.info(f"Batch: Re-activating Persona for song {rid}...")
+                            self._setup_persona_workflow(progress_callback)
+                        else:
+                            logger.info(f"Batch: Reloading /create for song {rid}...")
+                            self.browser.goto(self.base_url, page=self.tab)
+                        
+                        time.sleep(3)
+                        self._ensure_v5_active()
+                    
+                    if i > 0:
+                        time.sleep(self.delay)
+                    
+                    self.update_row_status(row_dict['_row_idx'], "Processing")
+                    if progress_callback: progress_callback(rid, "Sıraya Alınıyor... 🎵")
+                    
+                    success = self._generate_single_no_wait(row_dict, progress_callback)
+                    if success:
+                        generated_ids.append(rid)
+                        self.update_row_status(row_dict['_row_idx'], "Generating...") 
+                    else:
+                        self.update_row_status(row_dict['_row_idx'], "Failed")
+                
+                logger.info(f"Batch Generation Phase Complete. {len(generated_ids)} songs queued.")
+            
+            # --- PHASE 1.5: Identify Resume Items (For DL Only or Full Resume) ---
+            # If we skipped generation, or if we want to pick up items that are already "Generating..."
+            # Scan rows_data for items with status "Generating..." or "Processing"
+            if op_mode in ["full", "dl_only"]:
+                for row_dict in rows_data:
+                    rid = str(row_dict.get('id', ''))
+                    status = str(row_dict.get('status', '')).lower()
+                    
+                    # If it's a target ID, we definitely want it
+                    is_target = target_ids and (rid in target_ids)
+                    
+                    if rid not in generated_ids:
+                        if is_target or "generating" in status or "processing" in status or "suno bekleniyor" in status:
+                             logger.info(f"Adding {rid} to download queue (is_target: {is_target}, status: {status})")
+                             generated_ids.append(rid)
+
+            # --- PHASE 2: BATCH DOWNLOAD ---
+            if op_mode in ["full", "dl_only"] and generated_ids:
+                logger.info("--- Starting Batch Download Phase ---")
+                if progress_callback: progress_callback("global", "Toplu İndirme Bekleniyor... ⬇️")
+                
+                # PRE-DOWNLOAD PHASE: SMART WAIT ROOM
+                # We wait until ALL items are ready before we start downloading any
+                pending_ids = list(generated_ids)
+                start_wait = time.time()
+                total_timeout = max(600, len(pending_ids) * 180) 
+                
+                logger.info(f"Targeted Batch: Waiting for {len(pending_ids)} songs to complete before download...")
+                
+                while pending_ids and (time.time() - start_wait < total_timeout):
+                    if self.stop_requested: break
+                    still_generating = []
+                    
+                    for rid in pending_ids:
+                        r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                        if not r_data: continue
+                        
+                        title = r_data.get("title", "Song")
+                        suno_title = f"{rid}_{title}"
+                        
+                        # Just checking readiness, not downloading yet
+                        if not self._check_if_ready(suno_title, rid, suffix="1") or \
+                           not self._check_if_ready(suno_title, rid, suffix="2"):
+                            still_generating.append(rid)
+                        else:
+                            if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
+                    
+                    pending_ids = still_generating
+                    if not pending_ids: break
+                    
+                    if progress_callback: progress_callback("global", f"Üretim Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
+                    time.sleep(15)
+                    
+                    # Refresh page occasionally
+                    if (time.time() - start_wait) % 90 < 15:
+                        self.tab.reload()
+                        time.sleep(5)
+                        self._ensure_v5_active()
+
+                # ACTUAL DOWNLOAD PHASE
+                # Now that everything (or mostly everything) is ready, download them
+                download_queue = list(generated_ids)
+                completed_ids = []
+                
+                for rid in download_queue:
+                    if self.stop_requested: break
+                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                    if not r_data: continue
+                    
+                    title = r_data.get("title", "Song")
+                    suno_title = f"{rid}_{title}"
+                    
+                    if progress_callback: progress_callback(rid, "İndiriliyor... ⬇️")
+                    
+                    s1 = self._download_specific(suno_title, rid, suffix="1")
+                    s2 = self._download_specific(suno_title, rid, suffix="2")
+                    
+                    if s1 or s2:
+                        self.update_row_status(r_data['_row_idx'], "Generated")
+                        if progress_callback: progress_callback(rid, "İndirildi! ✅")
+                        completed_ids.append(rid)
+                    else:
+                        if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
+
+                return len(completed_ids)
+
+            return len(completed_ids)
+
+        except Exception as e:
+            logger.error(f"Batch Run Error: {e}")
+            raise e
+        finally:
+            logger.info("Batch Run Finished.")
+
+    def _generate_single_no_wait(self, row, progress_callback=None):
+        """
+        Fills the form and clicks Create, then verifies 'Generating' state appeared.
+        Does NOT wait for completion.
+        """
+        prompt = row.get("prompt", "")
+        lyrics = row.get("lyrics", "")
+        style = row.get("suno_style", "")
+        if not str(style).strip():
+            style = row.get("style", "")
+        
+        rid = str(row.get("id", "song"))
+        title = row.get("title", "Song")
+        suno_title = f"{rid}_{title}"
+        
+        content = lyrics if str(lyrics).strip() else prompt
+        
+        try:
+            # Custom Mode
+            if not self.tab.locator("text='Lyrics'").first.is_visible():
+                custom_btn = self.tab.locator("button:has-text('Custom')").first
+                if custom_btn.is_visible():
+                    custom_btn.click()
+                    time.sleep(3)
+            
+            initial_count = self.tab.locator("div.clip-row").count()
+
+            # Fills
+            textareas = [t for t in self.tab.locator("textarea").all() if t.is_visible()]
+            if not textareas: return False
+
+            # Title Logic
+            input_title = None
+            title_loc = self.tab.locator("input[placeholder*='title' i]")
+            for i in range(title_loc.count()):
+                if title_loc.nth(i).is_visible():
+                    input_title = title_loc.nth(i); break
+            
+            if not input_title:
+                title_loc_alt = self.tab.locator("input[aria-label*='title' i]")
+                for i in range(title_loc_alt.count()):
+                    if title_loc_alt.nth(i).is_visible():
+                        input_title = title_loc_alt.nth(i); break
+
+            def fill_field(el, val):
+                try:
+                    self.browser.humanizer.type_text(self.tab, el, val)
+                except:
+                    el.fill(str(val))
+
+            fill_field(textareas[0], content)
+            
+            style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
+            if style_textarea.is_visible():
+                fill_field(style_textarea, style)
+            else:
+                 if len(textareas) > 1: fill_field(textareas[1], style)
+            
+            if input_title:
+                try: fill_field(input_title, suno_title)
+                except: pass
+                
+            # Adv Options
+            self._setup_lyrics_mode()
+            self._setup_advanced_options()
+
+            # Click Create
+            create_btn = self.tab.locator("button:has-text('Create')").filter(has_not_text="Custom").last
+            if not create_btn.is_visible():
+                create_btn = self.tab.get_by_role("button", name="Create").last
+
+            if create_btn.is_enabled():
+                create_btn.click()
+                time.sleep(2) 
+
+                # Wait for clip count increase OR "Generating"
+                for i in range(15):
+                    if self._detect_captcha():
+                        logger.warning("CAPTCHA DETECTED DURING BATCH!")
+                        if progress_callback: progress_callback(rid, "⚠️ CAPTCHA! Çözün... 🕒")
+                        self._play_alert()
+                        while self._detect_captcha() and not self.stop_requested:
+                            time.sleep(3)
+                    
+                    current_count = self.tab.locator("div.clip-row").count()
+                    if current_count > initial_count:
+                        logger.info(f"Batch: Queued {rid}")
+                        return True
+                    
+                    time.sleep(2)
+                
+                return False
+            return False
+        except Exception as e:
+            logger.error(f"Generate Batch Error {rid}: {e}")
+            return False
+
+    def _check_if_ready(self, title, rid, suffix="1"):
+        """Checks if a song with title/rid is ready (not generating)."""
+        try:
+            rows = self.tab.locator("div.clip-row")
+            count = rows.count()
+            
+            occurrence = 0
+            target_occur = 0 if suffix == "1" else 1
+
+            for i in range(min(20, count)):
+                row = rows.nth(i)
+                row_text = row.inner_text().lower()
+                
+                if i < 3:
+                    logger.debug(f"[_check_if_ready] Row {i} Text Preview: {repr(row_text[:60])}...")
+                
+                if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                    logger.info(f"[_check_if_ready] Matched {rid} in row {i}. FULL TEXT: {repr(row_text)}")
+                    if occurrence == target_occur:
+                        # Hover to ensure buttons are visible
+                        try: row.hover(timeout=500)
+                        except: pass
+                        
+                        is_gen = row.locator("text='Generating'").is_visible(timeout=500)
+                        
+                        # Broader more button search - Use count() to be less strict than is_visible()
+                        more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
+                        is_more = more_btn.count() > 0
+                        
+                        logger.info(f"[_check_if_ready] Status: Generating={is_gen}, MoreBtnCount={more_btn.count()}")
+                        if not is_gen and is_more:
+                            return True
+                        return False 
+                    occurrence += 1
+            return False
+        except: return False
+
+    def _download_specific(self, title, rid, suffix="1"):
+        """Downloads a specific occurrence of a song title."""
+        try:
+            # Ensure safe start state
+            try: self.tab.keyboard.press("Escape")
+            except: pass
+            time.sleep(0.5)
+
+            rows = self.tab.locator("div.clip-row")
+            count = rows.count()
+            if count == 0:
+                logger.warning("[_download_specific] No rows found!")
+                return False
+
+            occurrence = 0
+            target_occur = 0 if suffix == "1" else 1
+            
+            target_row = None
+            
+            for i in range(min(30, count)): # Increased scan range
+                row = rows.nth(i)
+                row_text = row.inner_text().lower()
+                
+                if i < 3:
+                    logger.debug(f"[_download_specific] Row {i} Text Preview: {repr(row_text[:60])}...")
+                
+                if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                    logger.info(f"[_download_specific] Found Match: {rid}_{title} in row {i}")
+                    if occurrence == target_occur:
+                        target_row = row
+                        break
+                    occurrence += 1
+            
+            if not target_row: return False
+            
+            # --- EXACT LOGIC FROM _wait_and_download (Lines 998-1040) ---
+            target_row.scroll_into_view_if_needed()
+            target_row.click()
+            time.sleep(1)
+
+            # Match locator logic: first try aria-label 'More', then .context-menu-button
+            target_more = target_row.locator("button[aria-label*='More' i]").first
+            if not target_more.is_visible():
+                target_more = target_row.locator("button.context-menu-button").last # Matches _wait_and_download line 1007
+
+            if not target_more.is_visible():
+                logger.warning(f"[_download_specific] 'More' button not visible for {rid}")
+                return False
+
+            target_more.scroll_into_view_if_needed()
+            time.sleep(1)
+            target_more.click()
+            time.sleep(2)
+            
+            target_dl = self.tab.locator("button:has-text('Download')").first
+            if not target_dl.is_visible():
+                target_dl = self.tab.get_by_text("Download", exact=True).first
+            
+            if not target_dl.is_visible():
+                logger.warning(f"[_download_specific] 'Download' button NOT visible globally for {rid}")
+                return False
+
+            target_dl.hover()
+            time.sleep(1.5)
+            
+            target_audio = None
+            for _ in range(5):
+                loc = self.tab.locator("button[aria-label*='WAV' i]").first
+                if loc.is_visible():
+                    target_audio = loc
+                    break
+                time.sleep(1)
+            
+            if not target_audio or not target_audio.is_visible():
+                target_audio = self.tab.locator("button[aria-label*='MP3' i]").first
+            
+            if not target_audio or not target_audio.is_visible():
+                target_audio = self.tab.locator("button:has-text('Audio')").first
+
+            if not target_audio or not target_audio.is_visible():
+                logger.warning(f"[_download_specific] Format (WAV/MP3) not found for {rid}")
+                return False
+
+            # End of identical logic - Proceed to save
+            logger.info(f"[_download_specific] Selecting Format for {rid}")
+            ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
+            
+            # Click format button (WAV/MP3) -> Opens Popup
+            target_audio.click()
+            time.sleep(2)
+
+            # --- POPUP HANDLING ---
+            # User reported a popup opens with a "Download File" button
+            try:
+                # Wait for modal/dialog
+                popup = self.tab.locator("div[role='dialog'], div.chakra-modal__content").last
+                if popup.is_visible(timeout=5000):
+                    logger.info(f"[_download_specific] Popup detected for {rid}")
+                    
+                    # Find 'Download File' button inside popup
+                    # Common patterns: "Download File", "Download", or icon
+                    dl_confirm_btn = popup.locator("button").filter(has_text="Download").last
+                    
+                    # Be more specific if possible
+                    if not dl_confirm_btn.is_visible():
+                         dl_confirm_btn = popup.locator("button:has-text('Download File')").first
+                    
+                    if dl_confirm_btn.is_visible():
+                        logger.info(f"[_download_specific] Clicking 'Download File' confirmation for {rid}")
+                        with self.tab.expect_download(timeout=60000) as download_info:
+                            dl_confirm_btn.click()
+                        
+                        download = download_info.value
+                        clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+                        clean_title = re.sub(r'[-\s]+', '_', clean_title)
+                        filename = f"{clean_title}_{suffix}.{ext}"
+                        save_path = os.path.join(self.output_dir, filename)
+                        download.save_as(save_path)
+                        logger.info(f"[_download_specific] Saved {filename}")
+                        
+                        # Close popup if it didn't close automatically
+                        try: self.tab.keyboard.press("Escape")
+                        except: pass
+                        
+                        return True
+                    else:
+                        logger.warning(f"[_download_specific] Popup found but 'Download File' button NOT visible for {rid}")
+                        # Fallback: maybe the first click triggered download directly?
+            except Exception as e:
+                logger.warning(f"[_download_specific] Popup handling error: {e}")
+
+            # Fallback if no popup or direct download
+            # Check if download event happened on first click? (Unlikely given user report)
+            logger.error(f"[_download_specific] Download failed - Popup flow incomplete for {rid}")
+            return False
+            
+            return False
+        except Exception as e:
+            logger.error(f"Download Specific Error {rid}: {e}")
+            return False
+
+
 
     def _setup_persona_workflow(self, progress_callback=None):
         """Navigates to persona page, clicks 'Create with Persona', and handles v5 modal."""
@@ -305,6 +790,23 @@ class SunoGenerator:
             def fill_field(el, val):
                 if not el or val is None: return
                 try:
+                    # Robust JS-based clear to ensure reactive state is reset
+                    try:
+                        el.scroll_into_view_if_needed()
+                        self.tab.evaluate(r"""(el) => {
+                            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set || 
+                                               Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                            if (nativeSetter) {
+                                nativeSetter.call(el, '');
+                            } else {
+                                el.value = '';
+                            }
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                        }""", el)
+                        time.sleep(0.2)
+                    except: pass
+
                     logger.info(f"Filling field with: {str(val)[:20]}...")
                     self.browser.humanizer.type_text(self.tab, el, val)
                 except Exception as fe:
