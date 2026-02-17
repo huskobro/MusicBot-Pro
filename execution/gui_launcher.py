@@ -103,6 +103,7 @@ TRANSLATIONS = {
         "enable_style_influence_label": "Enable Style Influence:",
         "enable_lyrics_mode_label": "Enable Lyrics Mode:",
         "suno_batch_label": "Enable Batch Mode (Generate All -> Download All)",
+        "batch": "Batch",
         "batch_op_full": "Full Cycle (Gen + DL)",
         "batch_op_gen": "Generate Only",
         "batch_op_dl": "Download Only",
@@ -307,6 +308,7 @@ TRANSLATIONS = {
         "enable_style_influence_label": "Stil Etkisini Etkinleştir:",
         "enable_lyrics_mode_label": "Şarkı Sözü Modunu Etkinleştir:",
         "suno_batch_label": "Toplu Modu Etkinleştir (Hepsini Üret -> Hepsini İndir)",
+        "batch": "Toplu",
         "batch_op_full": "Tam Döngü (Üret + İndir)",
         "batch_op_gen": "Sadece Üret",
         "batch_op_dl": "Sadece İndir",
@@ -1591,7 +1593,7 @@ class MusicBotGUI:
         ttk.Separator(self.f_run_ops, orient="vertical").pack(side="left", fill="y", padx=10)
         
         self.var_suno_batch = tk.BooleanVar(value=self.config.get("suno_batch_mode", False))
-        ttk.Checkbutton(self.f_run_ops, text="Batch", variable=self.var_suno_batch).pack(side="left", padx=5)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("batch"), variable=self.var_suno_batch).pack(side="left", padx=5)
         
         self.var_batch_op = tk.StringVar(value=self.config.get("suno_batch_op_mode", "full"))
         ttk.Radiobutton(self.f_run_ops, text="Full", variable=self.var_batch_op, value="full").pack(side="left", padx=2)
@@ -2264,10 +2266,25 @@ class MusicBotGUI:
              return
 
         # Check if at least one step is selected
-        if not any([self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get(), self.var_run_compilation.get()]):
-            logger.error(self.t("msg_no_steps"))
-            messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
-            return
+        has_step = any([
+            self.var_run_lyrics.get(), 
+            self.var_run_music.get(), 
+            self.var_run_art_prompt.get(), 
+            self.var_run_art_image.get(), 
+            self.var_run_video.get(), 
+            self.var_run_compilation.get()
+        ])
+        
+        # If no main step is selected but "Batch Mode" is enabled, we implicitly enable "Music" (Step 2) 
+        # to fulfill the user's intent to run a Batch Suno operation.
+        if not has_step:
+            if hasattr(self, "var_suno_batch") and self.var_suno_batch.get():
+                logger.info("Batch mode active with no explicit phase selected. Auto-enabling Music phase.")
+                self.var_run_music.set(True)
+            else:
+                logger.error(self.t("msg_no_steps"))
+                messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
+                return
 
         # 1. Use manual checkboxes if any
         target_ids = list(self.selected_songs)
@@ -2423,8 +2440,8 @@ class MusicBotGUI:
             # --- Phase 2: Parallel Video Rendering ---
             if hasattr(self, "video_render_queue") and self.video_render_queue and not self.stop_requested:
                 parallel_count = int(self.config.get("video_parallel_count", 1))
-                logger.info(f"Starting Parallel Video Rendering: {len(video_render_queue)} tasks, pool size: {parallel_count}")
-                self.root.after(0, lambda: self.status_var.set(f"Rendering {len(video_render_queue)} Videos ({parallel_count} parallel)..."))
+                logger.info(f"Starting Parallel Video Rendering: {len(self.video_render_queue)} tasks, pool size: {parallel_count}")
+                self.root.after(0, lambda: self.status_var.set(f"Rendering {len(self.video_render_queue)} Videos ({parallel_count} parallel)..."))
                 
                 from video_generator import VideoGenerator
                 

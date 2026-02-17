@@ -452,6 +452,7 @@ class SunoGenerator:
     def _check_if_ready(self, title, rid, suffix="1"):
         """Checks if a song with title/rid is ready (not generating)."""
         try:
+            # 1. Initial Quick Scan (first 20 rows)
             rows = self.tab.locator("div.clip-row")
             count = rows.count()
             
@@ -462,27 +463,36 @@ class SunoGenerator:
                 row = rows.nth(i)
                 row_text = row.inner_text().lower()
                 
-                if i < 3:
-                    logger.debug(f"[_check_if_ready] Row {i} Text Preview: {repr(row_text[:60])}...")
-                
                 if str(title).lower() in row_text or (str(rid) + "_" in row_text):
-                    logger.info(f"[_check_if_ready] Matched {rid} in row {i}. FULL TEXT: {repr(row_text)}")
                     if occurrence == target_occur:
-                        # Hover to ensure buttons are visible
-                        try: row.hover(timeout=500)
-                        except: pass
-                        
+                        # Found it! Check status
                         is_gen = row.locator("text='Generating'").is_visible(timeout=500)
-                        
-                        # Broader more button search - Use count() to be less strict than is_visible()
                         more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
-                        is_more = more_btn.count() > 0
-                        
-                        logger.info(f"[_check_if_ready] Status: Generating={is_gen}, MoreBtnCount={more_btn.count()}")
-                        if not is_gen and is_more:
+                        if not is_gen and more_btn.count() > 0:
                             return True
                         return False 
                     occurrence += 1
+            
+            # 2. If not found, try scrolling once to trigger lazy load
+            if occurrence <= target_occur:
+                self.tab.mouse.wheel(0, 2000)
+                time.sleep(1)
+                # Re-scan up to 50 rows
+                rows = self.tab.locator("div.clip-row")
+                count = rows.count()
+                occurrence = 0
+                for i in range(min(50, count)):
+                    row = rows.nth(i)
+                    row_text = row.inner_text().lower()
+                    if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                        if occurrence == target_occur:
+                            is_gen = row.locator("text='Generating'").is_visible(timeout=500)
+                            more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
+                            if not is_gen and more_btn.count() > 0:
+                                return True
+                            return False
+                        occurrence += 1
+
             return False
         except: return False
 
@@ -494,32 +504,51 @@ class SunoGenerator:
             except: pass
             time.sleep(0.5)
 
-            rows = self.tab.locator("div.clip-row")
-            count = rows.count()
-            if count == 0:
-                logger.warning("[_download_specific] No rows found!")
-                return False
-
             occurrence = 0
             target_occur = 0 if suffix == "1" else 1
-            
             target_row = None
-            
-            for i in range(min(30, count)): # Increased scan range
-                row = rows.nth(i)
-                row_text = row.inner_text().lower()
+
+            # 1. Main scan (up to 50 rows, scrolling gradually)
+            for scroll_step in range(4): # Scroll 4 times max
+                rows = self.tab.locator("div.clip-row")
+                count = rows.count()
                 
-                if i < 3:
-                    logger.debug(f"[_download_specific] Row {i} Text Preview: {repr(row_text[:60])}...")
+                occurrence = 0 # Reset count for each scan
+                for i in range(min(50, count)):
+                    row = rows.nth(i)
+                    row_text = row.inner_text().lower()
+                    if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                        if occurrence == target_occur:
+                            target_row = row
+                            break
+                        occurrence += 1
                 
-                if str(title).lower() in row_text or (str(rid) + "_" in row_text):
-                    logger.info(f"[_download_specific] Found Match: {rid}_{title} in row {i}")
-                    if occurrence == target_occur:
-                        target_row = row
-                        break
-                    occurrence += 1
-            
-            if not target_row: return False
+                if target_row: break
+                
+                # Scroll down if not found
+                self.tab.mouse.wheel(0, 1500)
+                time.sleep(1.5)
+
+            # 2. Search Fallback (if still not found)
+            if not target_row:
+                logger.info(f"Target song {rid} not found after scrolling. Trying search fallback...")
+                if self._search_for_song(rid, title):
+                    # Re-scan search results
+                    rows = self.tab.locator("div.clip-row")
+                    count = rows.count()
+                    occurrence = 0
+                    for i in range(min(10, count)): # Search results should be near top
+                        row = rows.nth(i)
+                        row_text = row.inner_text().lower()
+                        if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                            if occurrence == target_occur:
+                                target_row = row
+                                break
+                            occurrence += 1
+
+            if not target_row:
+                logger.warning(f"[_download_specific] Song {rid} NOT found after scrolling and search.")
+                return False
             
             # --- EXACT LOGIC FROM _wait_and_download (Lines 998-1040) ---
             target_row.scroll_into_view_if_needed()
@@ -1315,6 +1344,53 @@ class SunoGenerator:
             ws.cell(row=row_idx, column=status_col, value=status)
             wb.save(self.metadata_path)
         except: pass
+
+    def _scroll_to_find_song(self, rid, title):
+        """Gradually scrolls the song list to find a song by ID or title."""
+        logger.info(f"Scrolling to find song: {rid}_{title}")
+        for _ in range(5): # Scroll 5 times maximum
+            # Check if it's already visible
+            rows = self.tab.locator("div.clip-row")
+            for i in range(rows.count()):
+                text = rows.nth(i).inner_text().lower()
+                if str(rid).lower() + "_" in text or str(title).lower() in text:
+                    logger.info(f"Found song {rid} after scrolling.")
+                    return True
+            
+            # Scroll down
+            self.tab.mouse.wheel(0, 1000)
+            time.sleep(1.5)
+        return False
+
+    def _search_for_song(self, rid, title):
+        """Uses the Suno search bar to find a specific song."""
+        logger.info(f"Searching for song: {rid}_{title}")
+        try:
+            # Try to find search input. Often it's near the top.
+            search_input = self.tab.locator("input[placeholder*='Search' i]").first
+            if not search_input.is_visible():
+                # Try clicking search button if there is one
+                search_btn = self.tab.locator("button:has([aria-label*='Search' i]), button:has-text('Search')").first
+                if search_btn.is_visible():
+                    search_btn.click()
+                    time.sleep(1)
+                    search_input = self.tab.locator("input[placeholder*='Search' i]").first
+
+            if search_input.is_visible():
+                search_input.click()
+                # Clear existing text
+                self.tab.keyboard.press("Control+A")
+                self.tab.keyboard.press("Backspace")
+                time.sleep(0.5)
+                # Search by ID_Title
+                query = f"{rid}_{title}"
+                search_input.fill(query)
+                self.tab.keyboard.press("Enter")
+                time.sleep(3) # Wait for search results
+                return True
+        except Exception as e:
+            logger.warning(f"Search fallback failed: {e}")
+        return False
 
     def _detect_captcha(self):
         """Checks for known Cloudflare / hCaptcha elements."""
