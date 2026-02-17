@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging IMMEDIATELY to catch all imports and initializations.
 def get_safe_workspace():
@@ -213,7 +214,17 @@ TRANSLATIONS = {
         "f_no_lyrics": "Missing Lyrics",
         "f_no_music": "Missing Music",
         "f_no_art": "Missing Art",
-        "f_no_video": "Missing Video"
+        "f_no_video": "Missing Video",
+        "video_parallel_label": "Parallel Render Count:",
+        "video_quality_label": "Video Quality & Performance",
+        "video_selection_label": "Video Selection Mode:",
+        "v_mode_1": "Only _1",
+        "v_mode_2": "Only _2",
+        "v_mode_both": "Both (_1 & _2)",
+        "column_materials": "Materials",
+        "f_missing_r": "Missing Images",
+        "f_missing_m1": "Missing Music 1",
+        "f_missing_m2": "Missing Music 2"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -386,9 +397,9 @@ TRANSLATIONS = {
         "last_profile_label": "Son Profil:",
         "save_to_profile_note": "💡 İpucu: Yeni bir profil oluşturmak için 'Profil İsmi'ni değiştirip '+'ya basın. Mevcutu silmek için '-'ye, formu temizlemek için '✨'ye basın.",
         "add_new_profile_btn": "✨ Yeni Profil Ekle",
-        "compilation": "Birleştirme (6. Aşama)",
+        "compilation": "Birleştirme",
         "phase4_label": "Aşama 4: Birleştirme",
-        "log_merge_start": "🎬 Video Birleştirme Başlatılıyor (6. Aşama)...",
+        "log_merge_start": "🎬 Video Birleştirme Başlatılıyor...",
         "log_merge_success": "✅ Uzun video başarıyla oluşturuldu: {path}",
         "log_merge_fail": "❌ Uzun video oluşturulamadı: {error}",
         "log_merge_no_files": "⚠️ {path} klasöründe birleştirilecek video bulunamadı.",
@@ -407,7 +418,17 @@ TRANSLATIONS = {
         "f_no_lyrics": "Sözü Olmayanlar",
         "f_no_music": "Müziği Olmayanlar",
         "f_no_art": "Kapağı Olmayanlar",
-        "f_no_video": "Videosu Olmayanlar"
+        "f_no_video": "Videosu Olmayanlar",
+        "video_parallel_label": "Paralel Render Sayısı:",
+        "video_quality_label": "Video Kalitesi ve Performans",
+        "video_selection_label": "Video Seçim Modu:",
+        "v_mode_1": "Sadece _1",
+        "v_mode_2": "Sadece _2",
+        "v_mode_both": "Her İkisi (_1 & _2)",
+        "column_materials": "Materyaller",
+        "f_missing_r": "Eksik Resimler",
+        "f_missing_m1": "Eksik Müzik 1",
+        "f_missing_m2": "Eksik Müzik 2"
     }
 }
 
@@ -536,6 +557,8 @@ class SettingsDialog(tk.Toplevel):
         self.scale_speed = None
         self.spin_retries = None
         self.var_adaptive = None
+        self.combo_parallel_render = None
+        self.combo_video_selection = None
         self.effect_vars = {}
 
         # --- TAB 0: Profiles ---
@@ -856,25 +879,37 @@ class SettingsDialog(tk.Toplevel):
             cb = ttk.Checkbutton(f_v_effects, text=self.app.t(eff.lower().replace(" ", "_")), variable=var)
             cb.grid(row=i//3, column=i%3, sticky="w", padx=10, pady=2)
 
-        # 2. Quality Settings
+        # 2. Quality & Performance Settings
         f_v_quality = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_quality_label"), padding=10)
         f_v_quality.pack(fill="x", padx=10, pady=5)
         
-        ttk.Label(f_v_quality, text=self.app.t("video_fps_label")).grid(row=0, column=0, sticky="w", pady=2)
+        # Parallel Render Count (NEW)
+        ttk.Label(f_v_quality, text=self.app.t("video_parallel_label")).grid(row=0, column=0, sticky="w", pady=2)
+        self.combo_parallel_render = ttk.Combobox(f_v_quality, values=["1", "2", "4", "6", "8"], state="readonly", width=5)
+        self.combo_parallel_render.set(str(config.get("video_parallel_count", 1)))
+        self.combo_parallel_render.grid(row=0, column=1, sticky="w", padx=5)
+
+        # Video Selection Mode (NEW)
+        ttk.Label(f_v_quality, text=self.app.t("video_selection_label")).grid(row=1, column=0, sticky="w", pady=2)
+        self.combo_video_selection = ttk.Combobox(f_v_quality, values=[self.app.t("v_mode_1"), self.app.t("v_mode_2"), self.app.t("v_mode_both")], state="readonly")
+        self.combo_video_selection.set(config.get("video_selection_mode", self.app.t("v_mode_both")))
+        self.combo_video_selection.grid(row=1, column=1, sticky="ew", padx=5)
+
+        ttk.Label(f_v_quality, text=self.app.t("video_fps_label")).grid(row=2, column=0, sticky="w", pady=2)
         self.spin_fps = tk.Spinbox(f_v_quality, from_=1, to_=60, width=5)
         self.spin_fps.delete(0, tk.END)
         self.spin_fps.insert(0, str(config.get("video_fps", 30)))
-        self.spin_fps.grid(row=0, column=1, sticky="w", padx=5)
+        self.spin_fps.grid(row=1, column=1, sticky="w", padx=5)
         
-        ttk.Label(f_v_quality, text=self.app.t("video_res_label")).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(f_v_quality, text=self.app.t("video_res_label")).grid(row=2, column=0, sticky="w", pady=2)
         self.combo_res = ttk.Combobox(f_v_quality, values=[self.app.t("video_res_shorts"), self.app.t("video_res_hd"), self.app.t("video_res_sd")], state="readonly")
         self.combo_res.set(config.get("video_resolution", self.app.t("video_res_shorts")))
-        self.combo_res.grid(row=1, column=1, sticky="ew", padx=5)
+        self.combo_res.grid(row=3, column=1, sticky="ew", padx=5)
         
-        ttk.Label(f_v_quality, text=self.app.t("video_intensity_label")).grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Label(f_v_quality, text=self.app.t("video_intensity_label")).grid(row=4, column=0, sticky="w", pady=2)
         self.scale_intensity = tk.Scale(f_v_quality, from_=0.1, to_=2.0, resolution=0.1, orient="horizontal")
         self.scale_intensity.set(config.get("video_intensity", 1.0))
-        self.scale_intensity.grid(row=2, column=1, sticky="ew", padx=5)
+        self.scale_intensity.grid(row=3, column=1, sticky="ew", padx=5)
 
         # 3. Assets & Output
         f_v_assets = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_assets_output_label"), padding=10)
@@ -1036,6 +1071,8 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_video_assets: settings_snapshot["video_assets_path"] = self.ent_video_assets.get()
         if self.var_video_output_mode: settings_snapshot["video_output_mode"] = self.var_video_output_mode.get()
         if self.ent_video_custom_path: settings_snapshot["video_custom_output_path"] = self.ent_video_custom_path.get()
+        if self.combo_parallel_render: settings_snapshot["video_parallel_count"] = int(self.combo_parallel_render.get())
+        if self.combo_video_selection: settings_snapshot["video_selection_mode"] = self.combo_video_selection.get()
         
         # Humanizer
         if self.var_humanizer_enabled: settings_snapshot["humanizer_enabled"] = self.var_humanizer_enabled.get()
@@ -1128,6 +1165,8 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_video_custom_path:
             self.ent_video_custom_path.delete(0, tk.END)
             self.ent_video_custom_path.insert(0, settings.get("video_custom_output_path", ""))
+        if self.combo_parallel_render: self.combo_parallel_render.set(str(settings.get("video_parallel_count", 1)))
+        if self.combo_video_selection: self.combo_video_selection.set(settings.get("video_selection_mode", self.app.t("v_mode_both")))
         
         # Humanizer
         if self.var_humanizer_enabled: self.var_humanizer_enabled.set(settings.get("humanizer_enabled", True))
@@ -1321,6 +1360,7 @@ class SettingsDialog(tk.Toplevel):
             if self.ent_video_assets: self.config["video_assets_path"] = self.ent_video_assets.get()
             if self.var_video_output_mode: self.config["video_output_mode"] = self.var_video_output_mode.get()
             if self.ent_video_custom_path: self.config["video_custom_output_path"] = self.ent_video_custom_path.get()
+            if self.combo_video_selection: self.config["video_selection_mode"] = self.combo_video_selection.get()
             
             # 2. Prompts Data Update
             import json
@@ -1387,7 +1427,9 @@ class MusicBotGUI:
             "weirdness_enabled": False,
             "style_influence_enabled": False,
             "vocal_gender_enabled": False,
-            "audio_influence_enabled": False
+            "audio_influence_enabled": False,
+            "video_parallel_count": 1,
+            "video_selection_mode": "Both (_1 & _2)"
         }
         
         # 3. Load Saved Settings
@@ -1506,7 +1548,8 @@ class MusicBotGUI:
         # Update values with new options
         self.cmb_status['values'] = [
             self.t("f_all"), self.t("f_done"), self.t("f_pending"),
-            self.t("f_no_lyrics"), self.t("f_no_music"), self.t("f_no_art"), self.t("f_no_video")
+            self.t("f_no_lyrics"), self.t("f_no_music"), self.t("f_no_art"), self.t("f_no_video"),
+            self.t("f_missing_r"), self.t("f_missing_m1"), self.t("f_missing_m2")
         ]
         self.cmb_status.current(0)
         self.cmb_status.bind("<<ComboboxSelected>>", self.apply_filter)
@@ -1528,7 +1571,7 @@ class MusicBotGUI:
         self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "video_status", "run_l", "run_m", "run_ap", "run_ai", "run_v")
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
         self.tree.bind("<Motion>", self.on_tree_hover)
@@ -1552,6 +1595,7 @@ class MusicBotGUI:
         self.tree.heading("music", text="🎵", command=lambda: self.sort_tree("music", False))
         self.tree.heading("art", text="🎨", command=lambda: self.sort_tree("art", False))
         self.tree.heading("video_status", text="🎬", command=lambda: self.sort_tree("video_status", False))
+        self.tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
         self.tree.heading("run_ap", text="AP")
@@ -1568,6 +1612,7 @@ class MusicBotGUI:
         self.tree.column("music", width=30, anchor="center")
         self.tree.column("art", width=30, anchor="center")
         self.tree.column("video_status", width=30, anchor="center")
+        self.tree.column("materials", width=80, anchor="center")
         self.tree.column("run_l", width=30, anchor="center")
         self.tree.column("run_m", width=30, anchor="center")
         self.tree.column("run_ap", width=30, anchor="center")
@@ -1806,15 +1851,83 @@ class MusicBotGUI:
                     if not rid: rid = f"PENDING_{len(self.all_songs) + 1}"
                     self.all_songs[rid] = {
                         "id": rid, "title": prompt, "style": style,
-                        "lyrics": has_lyrics, "music": has_music, "art": has_art, "video": has_video
+                        "lyrics": has_lyrics, "music": has_music, "art": has_art, "video": has_video,
+                        "video_exists": False, "material_status": ""
                     }
             
+            self.scan_materials()
             self.apply_filter()
             self.status_var.set(f"{self.t('msg_loaded_songs').format(count=len(self.all_songs))}")
             
         except Exception as e:
             logger.error(f"Error loading project: {e}")
             messagebox.showerror(self.t("error"), f"{self.t('msg_failed_to_load_project')}: {e}")
+
+    def scan_materials(self):
+        """Scans filesystem to detect material presence and existing videos."""
+        if not self.project_path: return
+        
+        profile_name = self.config.get("active_preset", "Default")
+        output_media = os.path.join(os.path.dirname(self.project_path), "output_media", profile_name)
+        if not os.path.exists(output_media): return
+
+        videos_dir = os.path.join(output_media, "videos")
+        done_dir = os.path.join(output_media, "done")
+        not_used_dir = os.path.join(output_media, "not_used")
+        
+        # Collect ONLY files in the root for material status (Ref: User request)
+        all_files = []
+        if os.path.exists(output_media):
+            all_files = [f.lower() for f in os.listdir(output_media)]
+        
+        video_files = []
+        if os.path.exists(videos_dir):
+            video_files = [f.lower() for f in os.listdir(videos_dir) if f.endswith(".mp4")]
+
+        for rid, s in self.all_songs.items():
+            rid_l = str(rid).lower()
+            
+            # 1. Check Video Status
+            has_v = False
+            for vf in video_files:
+                if vf.startswith(f"{rid_l}_") or vf == f"{rid_l}.mp4":
+                    has_v = True; break
+            s["video_exists"] = has_v
+
+            # If video already exists, we don't need to scan materials
+            if has_v:
+                s["material_status"] = "DONE"
+                continue
+            
+            # 2. Check Materials (R, M1, M2)
+            has_r = False
+            for rf in all_files:
+                if rf == f"{rid_l}.png" or rf == f"{rid_l}.jpg" or rf == f"{rid_l}.jpeg":
+                    has_r = True; break
+                # Also check sequence patterns or files starting with ID_
+                if rf.startswith(f"{rid_l}_") and rf.split(".")[-1] in ["png", "jpg", "jpeg"]:
+                    has_r = True; break
+
+            has_m1 = False
+            has_m2 = False
+            for af in all_files:
+                # Check exact matches or files starting with ID_ and ending with _1/_2
+                if af == f"{rid_l}.mp3" or af == f"{rid_l}.wav": 
+                    has_m1 = True
+                
+                if af.startswith(f"{rid_l}_") and af.lower().endswith((".mp3", ".wav")):
+                    name_no_ext = os.path.splitext(af)[0]
+                    if name_no_ext.endswith("_1") or name_no_ext == f"{rid_l}_1":
+                        has_m1 = True
+                    if name_no_ext.endswith("_2") or name_no_ext == f"{rid_l}_2":
+                        has_m2 = True
+            
+            status_parts = []
+            if not has_r: status_parts.append("R")
+            if not has_m1: status_parts.append("M1")
+            if not has_m2: status_parts.append("M2")
+            
+            s["material_status"] = "/".join(status_parts) if status_parts else "OK"
 
     def ensure_project_structure(self, path):
         """Adds missing columns to a raw input file to make it a Project File."""
@@ -1901,6 +2014,12 @@ class MusicBotGUI:
                 continue
             elif s_filter == self.t("f_no_video") and s.get("video"):
                 continue
+            elif s_filter == self.t("f_missing_r") and "R" not in s.get("material_status", ""):
+                continue
+            elif s_filter == self.t("f_missing_m1") and "M1" not in s.get("material_status", ""):
+                continue
+            elif s_filter == self.t("f_missing_m2") and "M2" not in s.get("material_status", ""):
+                continue
 
             self.filtered_ids.append(rid)
             
@@ -1908,7 +2027,8 @@ class MusicBotGUI:
             s_lyrics = "✅" if s["lyrics"] else "⚪"
             s_music = "✅" if s["music"] else "⚪"
             s_art = "✅" if s["art"] else "⚪"
-            s_v = "✅" if s.get("video") else "⚪"
+            s_v = "✅" if s.get("video") or s.get("video_exists") else "⚪"
+            s_mat = s.get("material_status", "")
             s_sel = "☑️" if rid in self.selected_songs else "☐"
             
             # Progress Logic
@@ -1934,7 +2054,7 @@ class MusicBotGUI:
             s_rv = "🟠" if (len(steps) > 4 and steps[4]) else "☐"
 
             self.tree.insert("", "end", iid=rid, values=(
-                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v,
+                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v, s_mat,
                 s_rl, s_rm, s_rap, s_rai, s_rv
             ))
 
@@ -2244,8 +2364,8 @@ class MusicBotGUI:
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
 
-            # Process EACH song ID individually with a fresh browser session if needed
-            # Or group them but isolate the high-risk steps
+            # Process EACH song ID individually
+            video_render_queue = [] # Queue for parallel rendering (Pass 2)
             
             for idx, song_id in enumerate(target_ids):
                 if self.stop_requested:
@@ -2369,16 +2489,35 @@ class MusicBotGUI:
 
                     # --- Step 4: Video Generation (Consolidated) ---
                     if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                        # Find all audio files
                         found_audio = []
+                        all_materials = [] # Track all found for not_used
                         try:
+                            # Selection logic: _1, _2 or Both
+                            selection_mode = self.config.get("video_selection_mode", "Both")
+                            # Map localization to internal suffixes
+                            suffix_map = {
+                                self.t("v_mode_1"): "_1",
+                                self.t("v_mode_2"): "_2",
+                                "Only _1": "_1",
+                                "Only _2": "_2"
+                            }
+                            target_suffix = suffix_map.get(selection_mode)
+
                             for f in os.listdir(output_media):
+                                if f.startswith(f"{song_id}_") or f.startswith(f"{song_id}."):
+                                    if f.lower().endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
+                                        all_materials.append(f)
+                                        
                                 if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
-                                    found_audio.append(f)
+                                    # Filter by selection mode if applicable
+                                    if not target_suffix or f.lower().endswith(f"{target_suffix.lower()}.mp3") or f.lower().endswith(f"{target_suffix.lower()}.wav"):
+                                        found_audio.append(f)
                             if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
-                                found_audio.append(f"{song_id}.mp3")
+                                if not target_suffix: # Generic file only if 'Both' or no specific suffix requested
+                                    found_audio.append(f"{song_id}.mp3")
                         except: pass
                         found_audio = sorted(list(set(found_audio)))
+                        used_in_tasks = []
 
                         if found_audio:
                             from video_generator import VideoGenerator
@@ -2434,28 +2573,85 @@ class MusicBotGUI:
                                     
                                     if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
                                     
-                                    vgen = VideoGenerator(output_dir=video_out_dir)
-                                    vgen.generate_video(
-                                        audio_path=aud_full_path,
-                                        image_path=img_path, 
-                                        output_filename=f"{aud_base}.mp4",
-                                        **v_params,
-                                        progress_callback=progress_callback
-                                    )
+                                    video_render_queue.append({
+                                        "rid": song_id,
+                                        "audio_path": aud_full_path,
+                                        "image_path": img_path,
+                                        "output_dir": video_out_dir,
+                                        "profile_dir": output_media, # Root for moving files
+                                        "output_filename": f"{aud_base}.mp4",
+                                        "params": v_params
+                                    })
+                                    used_in_tasks.append(aud_file)
+                                    used_in_tasks.append(os.path.basename(img_path))
                                 else:
                                     logger.warning(f"Skipping video for {aud_file}: No matching image found.")
+                        
+                        # Move Unused for THIS song (Ref: output_media/[profile]/not_used)
+                        try:
+                            not_used_dir = os.path.join(output_media, "not_used")
+                            for mat in all_materials:
+                                if mat not in used_in_tasks:
+                                    if not os.path.exists(not_used_dir): os.makedirs(not_used_dir, exist_ok=True)
+                                    shutil.move(os.path.join(output_media, mat), os.path.join(not_used_dir, mat))
+                        except Exception as ne:
+                            logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
                     self.active_browser = None
                 except Exception as e:
                     logger.error(f"Error processing {song_id}: {e}")
                     progress_callback(song_id, "Error in flow ❌")
+                    self.active_browser = None
                 finally:
-                    # Safe Shutdown
+                    # Safe Shutdown for Phase 1-3
                     try:
                         time.sleep(1)
                         if song_browser:
                             song_browser.stop()
                     except: pass
                     self.active_browser = None
+                
+            # --- Phase 2: Parallel Video Rendering ---
+            if video_render_queue and not self.stop_requested:
+                parallel_count = int(self.config.get("video_parallel_count", 1))
+                logger.info(f"Starting Parallel Video Rendering: {len(video_render_queue)} tasks, pool size: {parallel_count}")
+                self.root.after(0, lambda: self.status_var.set(f"Rendering {len(video_render_queue)} Videos ({parallel_count} parallel)..."))
+                
+                from video_generator import VideoGenerator
+                
+                def run_parallel_task(task):
+                    if self.stop_requested: return
+                    try:
+                        vgen = VideoGenerator(output_dir=task["output_dir"])
+                        success = vgen.generate_video(
+                            audio_path=task["audio_path"],
+                            image_path=task["image_path"],
+                            output_filename=task["output_filename"],
+                            **task["params"],
+                            progress_callback=progress_callback
+                        )
+                        if success:
+                            # Move used materials to 'done' (Ref: output_media/[profile]/done)
+                            try:
+                                done_dir = os.path.join(task["profile_dir"], "done")
+                                if not os.path.exists(done_dir): os.makedirs(done_dir, exist_ok=True)
+                                # Audio
+                                if os.path.exists(task["audio_path"]):
+                                    shutil.move(task["audio_path"], os.path.join(done_dir, os.path.basename(task["audio_path"])))
+                                # Image
+                                if os.path.exists(task["image_path"]):
+                                    shutil.move(task["image_path"], os.path.join(done_dir, os.path.basename(task["image_path"])))
+                            except Exception as me:
+                                logger.warning(f"Failed to move files to done/: {me}")
+                    except Exception as ve:
+                        logger.error(f"Parallel Render Error ({task['rid']}): {ve}")
+                        progress_callback(task["rid"], "Render Failed ❌")
+
+                # Run pool
+                with ThreadPoolExecutor(max_workers=parallel_count) as pool:
+                    pool.map(run_parallel_task, video_render_queue)
+                
+                logger.info("Parallel Video Rendering Phase Completed.")
+                self.scan_materials() # Refresh status icons
 
             # --- Step 6: Video Merger (Compilation) ---
             if self.var_run_compilation.get() and not self.stop_requested:
