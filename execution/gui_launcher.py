@@ -224,7 +224,8 @@ TRANSLATIONS = {
         "column_materials": "Materials",
         "f_missing_r": "Missing Images",
         "f_missing_m1": "Missing Music 1",
-        "f_missing_m2": "Missing Music 2"
+        "f_missing_m2": "Missing Music 2",
+        "video_assets_output_label": "Assets & Output Settings"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -428,7 +429,8 @@ TRANSLATIONS = {
         "column_materials": "Materyaller",
         "f_missing_r": "Eksik Resimler",
         "f_missing_m1": "Eksik Müzik 1",
-        "f_missing_m2": "Eksik Müzik 2"
+        "f_missing_m2": "Eksik Müzik 2",
+        "video_assets_output_label": "Klasör ve Çıktı Ayarları"
     }
 }
 
@@ -884,32 +886,35 @@ class SettingsDialog(tk.Toplevel):
         f_v_quality.pack(fill="x", padx=10, pady=5)
         
         # Parallel Render Count (NEW)
-        ttk.Label(f_v_quality, text=self.app.t("video_parallel_label")).grid(row=0, column=0, sticky="w", pady=2)
+        ttk.Label(f_v_quality, text=self.app.t("video_parallel_label")).grid(row=0, column=0, sticky="w", pady=5)
         self.combo_parallel_render = ttk.Combobox(f_v_quality, values=["1", "2", "4", "6", "8"], state="readonly", width=5)
         self.combo_parallel_render.set(str(config.get("video_parallel_count", 1)))
-        self.combo_parallel_render.grid(row=0, column=1, sticky="w", padx=5)
+        self.combo_parallel_render.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
         # Video Selection Mode (NEW)
-        ttk.Label(f_v_quality, text=self.app.t("video_selection_label")).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(f_v_quality, text=self.app.t("video_selection_label")).grid(row=1, column=0, sticky="w", pady=5)
         self.combo_video_selection = ttk.Combobox(f_v_quality, values=[self.app.t("v_mode_1"), self.app.t("v_mode_2"), self.app.t("v_mode_both")], state="readonly")
         self.combo_video_selection.set(config.get("video_selection_mode", self.app.t("v_mode_both")))
-        self.combo_video_selection.grid(row=1, column=1, sticky="ew", padx=5)
+        self.combo_video_selection.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
-        ttk.Label(f_v_quality, text=self.app.t("video_fps_label")).grid(row=2, column=0, sticky="w", pady=2)
+        # FPS
+        ttk.Label(f_v_quality, text=self.app.t("video_fps_label")).grid(row=2, column=0, sticky="w", pady=5)
         self.spin_fps = tk.Spinbox(f_v_quality, from_=1, to_=60, width=5)
         self.spin_fps.delete(0, tk.END)
         self.spin_fps.insert(0, str(config.get("video_fps", 30)))
-        self.spin_fps.grid(row=1, column=1, sticky="w", padx=5)
+        self.spin_fps.grid(row=2, column=1, sticky="w", padx=5, pady=5)
         
-        ttk.Label(f_v_quality, text=self.app.t("video_res_label")).grid(row=2, column=0, sticky="w", pady=2)
+        # Resolution
+        ttk.Label(f_v_quality, text=self.app.t("video_res_label")).grid(row=3, column=0, sticky="w", pady=5)
         self.combo_res = ttk.Combobox(f_v_quality, values=[self.app.t("video_res_shorts"), self.app.t("video_res_hd"), self.app.t("video_res_sd")], state="readonly")
         self.combo_res.set(config.get("video_resolution", self.app.t("video_res_shorts")))
-        self.combo_res.grid(row=3, column=1, sticky="ew", padx=5)
+        self.combo_res.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
         
-        ttk.Label(f_v_quality, text=self.app.t("video_intensity_label")).grid(row=4, column=0, sticky="w", pady=2)
+        # Intensity
+        ttk.Label(f_v_quality, text=self.app.t("video_intensity_label")).grid(row=4, column=0, sticky="w", pady=5)
         self.scale_intensity = tk.Scale(f_v_quality, from_=0.1, to_=2.0, resolution=0.1, orient="horizontal")
         self.scale_intensity.set(config.get("video_intensity", 1.0))
-        self.scale_intensity.grid(row=3, column=1, sticky="ew", padx=5)
+        self.scale_intensity.grid(row=4, column=1, sticky="ew", padx=5, pady=5)
 
         # 3. Assets & Output
         f_v_assets = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_assets_output_label"), padding=10)
@@ -1361,6 +1366,7 @@ class SettingsDialog(tk.Toplevel):
             if self.var_video_output_mode: self.config["video_output_mode"] = self.var_video_output_mode.get()
             if self.ent_video_custom_path: self.config["video_custom_output_path"] = self.ent_video_custom_path.get()
             if self.combo_video_selection: self.config["video_selection_mode"] = self.combo_video_selection.get()
+            if self.combo_parallel_render: self.config["video_parallel_count"] = int(self.combo_parallel_render.get())
             
             # 2. Prompts Data Update
             import json
@@ -1824,15 +1830,17 @@ class MusicBotGUI:
         try:
             wb = openpyxl.load_workbook(path, data_only=True)
             ws = wb.active
-            headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+            headers = {str(cell.value).strip().lower(): i for i, cell in enumerate(ws[1]) if cell.value}
             
             self.all_songs = {}
             for item in self.tree.get_children():
                 self.tree.delete(item)
                 
             for row in ws.iter_rows(min_row=2, values_only=True):
-                # ID Logic
-                rid = str(row[headers.get('id', 0)]) if 'id' in headers and row[headers.get('id')] is not None else ""
+                # ID Logic (Robust)
+                id_idx = headers.get('id')
+                if id_idx is None: id_idx = 0 # Default to column A
+                rid = str(row[id_idx]) if id_idx < len(row) and row[id_idx] is not None else ""
                 
                 # Check Prompt/Title
                 prompt = ""
@@ -2272,48 +2280,43 @@ class MusicBotGUI:
             ws = wb.active
             headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
             
-            lyrics_col = headers.get('lyrics')
-            visual_col = headers.get('visual_prompt')
-            video_col = headers.get('video_prompt')
-            id_col = headers.get('id', 0)
-            title_col = headers.get('title')
-            prompt_col = headers.get('prompt')
-            
-            row_idx = 0
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                # We must replicate the same ID generation logic as load_project_data
-                rid = str(row[id_col]) if row[id_col] is not None else ""
-                
-                # Check Prompt/Title as fallback for ID generation
-                prompt_val = ""
-                if prompt_col is not None and row[prompt_col] is not None: prompt_val = str(row[prompt_col])
-                elif title_col is not None and row[title_col] is not None: prompt_val = str(row[title_col])
-                
-                if rid or prompt_val:
-                    row_idx += 1
-                    if not rid: rid = f"PENDING_{row_idx}"
-                    
-                    if rid in target_ids:
-                        # Get specific steps for THIS song
-                        s_steps = self.song_steps.get(rid)
-                        if s_steps is None:
-                            s_steps = [
-                                self.var_run_lyrics.get(), 
-                                self.var_run_music.get(),
-                                self.var_run_art_prompt.get(),
-                                self.var_run_art_image.get(),
-                                self.var_run_video.get()
-                            ]
+            # Robust column mapping (Case insensitive)
+            col_map = {str(cell.value).strip().lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            lyrics_col = col_map.get("lyrics")
+            visual_col = col_map.get("visual_prompt") or col_map.get("visual prompt") or col_map.get("visual_prompts")
+            video_col = col_map.get("video_prompt") or col_map.get("video prompt") or col_map.get("video_prompts")
+            id_col = col_map.get("id", 0)
 
-                        # Check if user wants lyrics for THIS song AND they exist
-                        if s_steps[0] and lyrics_col is not None and row[lyrics_col]:
-                            return True
-                        # Check if user wants visuals for THIS song AND they exist
-                        if s_steps[2] and visual_col is not None and row[visual_col]:
-                            return True
-                        # Check if user wants videos for THIS song AND they exist
-                        if s_steps[2] and self.config.get("gemini_video", False) and video_col is not None and row[video_col]:
-                            return True
+            # Normalize target_ids set
+            target_ids_set = set(str(t).strip().lower() for t in target_ids)
+
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                rid_orig = row[id_col]
+                rid = str(rid_orig).strip().lower() if rid_orig is not None else ""
+                
+                if not rid: rid = f"PENDING_{i}"
+                
+                if rid in target_ids_set:
+                    # Get specific steps for THIS song
+                    s_steps = self.song_steps.get(str(rid_orig))
+                    if s_steps is None:
+                        s_steps = [
+                            self.var_run_lyrics.get(), 
+                            self.var_run_music.get(),
+                            self.var_run_art_prompt.get(),
+                            self.var_run_art_image.get(),
+                            self.var_run_video.get()
+                        ]
+
+                    # Check if user wants lyrics for THIS song AND they exist
+                    if s_steps[0] and lyrics_col is not None and row[lyrics_col] and str(row[lyrics_col]).strip():
+                        return True
+                    # Check if user wants visuals for THIS song AND they exist
+                    if s_steps[2] and visual_col is not None and row[visual_col] and str(row[visual_col]).strip():
+                        return True
+                    # Check if user wants video prompts for THIS song AND they exist
+                    if s_steps[2] and self.config.get("gemini_video", False) and video_col is not None and row[video_col] and str(row[video_col]).strip():
+                        return True
             return False
         except Exception as e:
             logger.error(f"Error checking existing data: {e}")

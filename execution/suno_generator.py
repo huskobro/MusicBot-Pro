@@ -74,21 +74,33 @@ class SunoGenerator:
 
             wb = openpyxl.load_workbook(self.metadata_path)
             ws = wb.active
-            headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            headers = {str(cell.value).strip().lower(): cell.column - 1 for cell in ws[1] if cell.value}
             
             rows_data = []
+            
+            # Normalize target_ids for robust matching
+            target_ids_set = set(str(t).strip().lower() for t in target_ids) if target_ids else None
+
             for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                rid_orig = row[headers.get('id', 0)] if 'id' in headers else ""
+                rid = str(rid_orig).strip().lower()
+                
+                # Check target_ids
+                if target_ids_set and rid not in target_ids_set:
+                    continue
+                
                 status = str(row[headers.get('status', 0)]).lower() if 'status' in headers else ""
-                if not force_update and ("done" in status or "generated" in status): 
+                
+                # Determine if song already has music (M1 or M2 presence)
+                # In scan_materials, we check files. Here we can also check the status column.
+                is_done = "done" in status or "generated" in status
+                
+                if not force_update and is_done:
+                    logger.info(f"Song {rid_orig} already generated on Suno. Skipping.")
+                    if progress_callback: progress_callback(str(rid_orig), "Skip: Already Generated ✅")
                     continue
                 
                 row_dict = {key: row[idx] for key, idx in headers.items() if idx < len(row)}
-                
-                # Check target_ids
-                rid = str(row_dict.get('id', ''))
-                if target_ids and rid not in target_ids:
-                    continue
-                
                 row_dict['_row_idx'] = i 
                 rows_data.append(row_dict)
             

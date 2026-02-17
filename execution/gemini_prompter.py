@@ -99,33 +99,42 @@ Main title: “{title}”
             import uuid
             wb = openpyxl.load_workbook(self.metadata_path)
             ws = wb.active
-            headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            # Clean header mapping (Robust case-insensitive and whitespace handled)
+            headers = {str(cell.value).strip().lower(): cell.column - 1 for cell in ws[1] if cell.value}
             
-            # Column mapping for status check
+            # Column mapping for status check (Multiple variations support)
             lyr_col_idx = headers.get('lyrics')
-            vis_col_idx = headers.get('visual_prompt')
-            vid_col_idx = headers.get('video_prompt')
-            status_col_idx = headers.get('status', ws.max_column)
-            id_col_idx = headers.get('id', 0)
-            prompt_col_idx = headers.get('prompt', 1)
-            style_col_idx = headers.get('style', 2)
+            vis_col_idx = headers.get('visual_prompt') or headers.get('visual prompt') or headers.get('visual_prompts') or headers.get('visual prompts')
+            vid_col_idx = headers.get('video_prompt') or headers.get('video prompt') or headers.get('video_prompts') or headers.get('video prompts')
+            status_col_idx = headers.get('status')
+            id_col_idx = headers.get('id')
+            if id_col_idx is None: # Fallback to first column if no 'id' header found
+                id_col_idx = 0
+            prompt_col_idx = headers.get('prompt') or headers.get('lyrics_prompt') or 1
+            style_col_idx = headers.get('style') or 2
 
             pending_rows = []
             updates_needed = False
+            
+            # Normalize target_ids for comparison
+            target_ids_set = set(str(t).strip().lower() for t in target_ids) if target_ids else None
+
             for i, row in enumerate(ws.iter_rows(min_row=2), start=2):
-                rid = row[id_col_idx].value
+                rid_orig = row[id_col_idx].value
                 # 1. Ensure ID exists
-                if not rid:
-                    rid = str(uuid.uuid4())[:8]
-                    row[id_col_idx].value = rid
+                if not rid_orig:
+                    rid_orig = str(uuid.uuid4())[:8]
+                    row[id_col_idx].value = rid_orig
                     updates_needed = True
                 
-                rid = str(rid)
-                if target_ids and rid not in target_ids:
+                rid = str(rid_orig).strip().lower()
+                if target_ids_set and rid not in target_ids_set:
                     continue
                 
                 # 2. Check if song needs processing
-                status_val = str(row[status_col_idx].value).lower() if status_col_idx < len(row) else ""
+                status_val = ""
+                if status_col_idx is not None and status_col_idx < len(row):
+                    status_val = str(row[status_col_idx].value or "").lower()
                 
                 # We process if:
                 # - Status is not 'done'
@@ -139,13 +148,18 @@ Main title: “{title}”
                 visual_val = row[vis_col_idx].value if vis_col_idx is not None else ""
                 video_val = row[vid_col_idx].value if vid_col_idx is not None else ""
                 
-                if self.use_gemini_lyrics and not lyrics_val: needs_work = True
-                if self.generate_visual and not visual_val: needs_work = True
-                if self.generate_video and not video_val: needs_work = True
+                # Ensure values aren't just whitespace
+                has_lyrics = lyrics_val and str(lyrics_val).strip()
+                has_visual = visual_val and str(visual_val).strip()
+                has_video = video_val and str(video_val).strip()
+
+                if self.use_gemini_lyrics and not has_lyrics: needs_work = True
+                if self.generate_visual and not has_visual: needs_work = True
+                if self.generate_video and not has_video: needs_work = True
                 
                 if needs_work or force_update:
                     pending_rows.append({
-                        'id': rid, 
+                        'id': str(rid_orig), 
                         'row_idx': i, 
                         'theme': row[prompt_col_idx].value, 
                         'style': row[style_col_idx].value if style_col_idx is not None else "",
@@ -153,6 +167,9 @@ Main title: “{title}”
                         'existing_visual': visual_val,
                         'existing_video': video_val
                     })
+                else:
+                    logger.info(f"Song {rid_orig} marked as DONE/SKIP (Data already exists).")
+                    if progress_callback: progress_callback(str(rid_orig), "Skipping: Data exists ✅")
             
             if updates_needed:
                 wb.save(self.metadata_path)
@@ -484,14 +501,15 @@ Main title: “{title}”
                     if progress_callback: progress_callback("global", "Error: Missing Input/Output Files! Run Step 1.")
                     return 0
             
-            wb = openpyxl.load_workbook(self.output_path)
+            wb = openpyxl.load_workbook(self.output_path, data_only=True)
             ws = wb.active
-            headers = {str(cell.value).lower(): cell.column - 1 for cell in ws[1] if cell.value}
+            headers = {str(cell.value).strip().lower(): i for i, cell in enumerate(ws[1]) if cell.value}
             
             rows_to_process = []
-            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                rid = str(row[headers.get('id', 0)]) if 'id' in headers else ""
-                
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):                # ID Logic (Robust)
+                id_idx = headers.get('id')
+                if id_idx is None: id_idx = 0 # Default to column A
+                rid = str(row[id_idx]) if id_idx < len(row) and row[id_idx] is not None else ""
                 if target_ids and rid not in target_ids: 
                     continue
                 
@@ -701,7 +719,7 @@ Main title: “{title}”
         try:
             wb = openpyxl.load_workbook(self.output_path)
             ws = wb.active
-            col_map = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
+            col_map = {str(cell.value).strip().lower(): cell.column for cell in ws[1] if cell.value}
             
             # Ensure columns exist
             for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "suno_style", "status", "cover_art_prompt", "cover_art_path"]:
@@ -711,9 +729,10 @@ Main title: “{title}”
                     col_map[key] = new_idx
             
             target_row = None
-            id_col = col_map.get("id", 1)
+            id_col_num = col_map.get("id", 1)
             for row in range(2, ws.max_row + 1):
-                if str(ws.cell(row=row, column=id_col).value) == str(row_id):
+                cur_id = str(ws.cell(row=row, column=id_col_num).value or "").strip()
+                if cur_id == str(row_id).strip():
                     target_row = row
                     break
             
