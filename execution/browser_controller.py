@@ -5,6 +5,7 @@ import functools
 import logging
 from urllib.robotparser import RobotFileParser
 from playwright.sync_api import sync_playwright, Page, BrowserContext, ElementHandle
+from playwright_stealth import Stealth
 from humanizer import Humanizer
 
 
@@ -110,6 +111,9 @@ class BrowserController:
                 ignore_default_args=["--enable-automation"],
                 viewport={"width": 1280, "height": 800} 
             )
+
+            # Apply Stealth to the entire CONTEXT (affects all current and future pages)
+            Stealth().apply_stealth_sync(self.context)
             
             if self.context.pages:
                 self.pages["default"] = self.context.pages[0]
@@ -130,7 +134,9 @@ class BrowserController:
         
         if name not in self.pages:
             logger.info(f"Creating new tab: {name}")
-            self.pages[name] = self.context.new_page()
+            page = self.context.new_page()
+            # Stealth is already applied to the context
+            self.pages[name] = page
             
         return self.pages[name]
 
