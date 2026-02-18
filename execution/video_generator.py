@@ -15,7 +15,7 @@ class VideoGenerator:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50, progress_callback=None):
+    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50, progress_callback=None, threads=1):
         """
         Generates an MP4 video by combining audio and image with optional multiple effects.
         """
@@ -72,15 +72,21 @@ class VideoGenerator:
                 logger.error("Audio duration is 0 or invalid.")
                 return False
             
-            # 2. Load Image and Resize
-            if not os.path.exists(image_path):
-                logger.error(f"Image file not found: {image_path}")
-                return False
-                
-            base_clip = ImageClip(image_path).resized(height=target_res[1] if target_res[0] < target_res[1] else None, 
-                                                   width=target_res[0] if target_res[0] >= target_res[1] else None)
-            base_clip = base_clip.cropped(x_center=base_clip.w/2, y_center=base_clip.h/2, 
-                                       width=target_res[0], height=target_res[1]).with_duration(duration)
+            # 2. Load Image and Resize/Crop to fill resolution
+            img_clip = ImageClip(image_path)
+            w_ratio = target_res[0] / img_clip.w
+            h_ratio = target_res[1] / img_clip.h
+            scale = max(w_ratio, h_ratio)
+            
+            base_clip = img_clip.resized(scale)
+            base_clip = base_clip.cropped(
+                x_center=base_clip.w/2, 
+                y_center=base_clip.h/2, 
+                width=target_res[0], 
+                height=target_res[1]
+            ).with_duration(duration)
+            
+            logger.info(f"Base clip size: {base_clip.size}")
             
             # 3. Apply Effects
             current_clip = base_clip
@@ -99,9 +105,11 @@ class VideoGenerator:
                         overlay_clips.append(effect_clip)
             
             if overlay_clips:
-                final_clip = CompositeVideoClip([current_clip] + overlay_clips)
+                final_clip = CompositeVideoClip([current_clip] + overlay_clips, size=target_res)
             else:
                 final_clip = current_clip
+            
+            logger.info(f"Final clip resolution: {final_clip.size}")
             
             # 4. Set Audio and Write
             final_clip = final_clip.with_audio(audio)
@@ -118,7 +126,7 @@ class VideoGenerator:
                 codec="libx264", 
                 audio_codec="aac",
                 temp_audiofile=temp_audio_path,
-                threads=4,
+                threads=threads,
                 logger=MoviePyProgressLogger(progress_callback, rid) if progress_callback else None
             )
             
@@ -154,17 +162,29 @@ class VideoGenerator:
 
             def make_frame(t):
                 particles[:, 1] += particles[:, 2]
-                mask = particles[:, 1] > h
-                particles[mask, 1] = 0
-                particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                mask_f = particles[:, 1] > h
+                particles[mask_f, 1] = 0
+                particles[mask_f, 0] = np.random.randint(0, w, np.sum(mask_f))
+                frame = np.zeros((h, w, 3), dtype=np.uint8)
                 for p in particles:
                     x, y, s = int(p[0]), int(p[1]), int(p[3])
                     r_start, r_end = max(0, y), min(h, y+s)
                     c_start, c_end = max(0, x), min(w, x+s)
-                    frame[r_start:r_end, c_start:c_end] = [255, 255, 255, 180]
+                    frame[r_start:r_end, c_start:c_end] = [255, 255, 255]
                 return frame
-            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+                
+            def make_mask(t):
+                frame = np.zeros((h, w), dtype=float)
+                for p in particles:
+                    x, y, s = int(p[0]), int(p[1]), int(p[3])
+                    r_start, r_end = max(0, y), min(h, y+s)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = 0.7 # Alpha
+                return frame
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
 
         elif effect_type in ["Rain", "Yağmur Efekti"]:
             num_particles = int(4 * intensity)
@@ -176,18 +196,31 @@ class VideoGenerator:
 
             def make_frame(t):
                 particles[:, 1] += particles[:, 2]
-                mask = particles[:, 1] > h
-                particles[mask, 1] = 0
-                particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                mask_f = particles[:, 1] > h
+                particles[mask_f, 1] = 0
+                particles[mask_f, 0] = np.random.randint(0, w, np.sum(mask_f))
+                frame = np.zeros((h, w, 3), dtype=np.uint8)
                 for p in particles:
                     x, y, s = int(p[0]), int(p[1]), int(p[3])
                     length = int(s * 8)
                     r_start, r_end = max(0, y), min(h, y+length)
                     c_start, c_end = max(0, x), min(w, x+s)
-                    frame[r_start:r_end, c_start:c_end] = [180, 200, 255, 120]
+                    frame[r_start:r_end, c_start:c_end] = [180, 200, 255]
                 return frame
-            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+
+            def make_mask(t):
+                frame = np.zeros((h, w), dtype=float)
+                for p in particles:
+                    x, y, s = int(p[0]), int(p[1]), int(p[3])
+                    length = int(s * 8)
+                    r_start, r_end = max(0, y), min(h, y+length)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = 0.5
+                return frame
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
             
         elif effect_type in ["Particles", "Parçacıklar"]:
             num_particles = int(1.5 * intensity)
@@ -201,50 +234,69 @@ class VideoGenerator:
             def make_frame(t):
                 particles[:, 1] -= particles[:, 2]
                 particles[:, 0] += np.sin(t + particles[:, 4]) * 0.8
-                mask = particles[:, 1] < 0
-                particles[mask, 1] = h
-                particles[mask, 0] = np.random.randint(0, w, np.sum(mask))
-                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                mask_f = particles[:, 1] < 0
+                particles[mask_f, 1] = h
+                particles[mask_f, 0] = np.random.randint(0, w, np.sum(mask_f))
+                frame = np.zeros((h, w, 3), dtype=np.uint8)
                 for p in particles:
                     x, y, s = int(p[0]), int(p[1]), int(p[3])
                     r_start, r_end = max(0, y), min(h, y+s)
                     c_start, c_end = max(0, x), min(w, x+s)
-                    frame[r_start:r_end, c_start:c_end] = [255, 220, 100, 150]
+                    frame[r_start:r_end, c_start:c_end] = [255, 220, 100]
                 return frame
-            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+                
+            def make_mask(t):
+                frame = np.zeros((h, w), dtype=float)
+                for p in particles:
+                    x, y, s = int(p[0]), int(p[1]), int(p[3])
+                    r_start, r_end = max(0, y), min(h, y+s)
+                    c_start, c_end = max(0, x), min(w, x+s)
+                    frame[r_start:r_end, c_start:c_end] = 0.6
+                return frame
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
 
         elif effect_type == "Glitch" or effect_type == "Bozulma (Glitch)":
             def make_frame(t):
-                frame = np.zeros((h, w, 4), dtype=np.uint8)
+                frame = np.zeros((h, w, 3), dtype=np.uint8)
                 if random.random() < (0.1 * intensity / 50):
-                    # Vertical slice shift
                     y_slice = random.randint(0, h-50)
                     h_slice = random.randint(20, 100)
-                    offset = random.randint(-40, 40)
-                    # Instead of real glitch, we'll draw some rectangles for effect
-                    # because we are generating an overlay
                     r_start, r_end = max(0, y_slice), min(h, y_slice+h_slice)
                     frame[r_start:r_end, :, 0] = 255 # Red shift
-                    frame[r_start:r_end, :, 3] = 40 # Alpha
                 return frame
-            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+                
+            def make_mask(t):
+                frame = np.zeros((h, w), dtype=float)
+                if random.random() < (0.1 * intensity / 50):
+                    y_slice = random.randint(0, h-50)
+                    h_slice = random.randint(20, 100)
+                    r_start, r_end = max(0, y_slice), min(h, y_slice+h_slice)
+                    frame[r_start:r_end, :] = 0.2
+                return frame
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
 
         elif effect_type == "Vignette" or effect_type == "Köşe Karartma (Vignette)":
             def make_frame(t):
-                # Create a radial gradient for vignette
+                return np.zeros((h, w, 3), dtype=np.uint8) # Full black, mask handles shading
+
+            def make_mask(t):
                 Y, X = np.ogrid[:h, :w]
                 center_y, center_x = h / 2, w / 2
                 dist_from_center = np.sqrt((X - center_x)**2 + (Y - center_y)**2)
                 max_dist = np.sqrt(center_x**2 + center_y**2)
-                
-                # Vignette strength based on intensity
                 radius = 1.0 - (intensity / 150)
                 vignette = 1.0 - np.clip((dist_from_center / (max_dist * radius)), 0, 1)
-                
-                frame = np.zeros((h, w, 4), dtype=np.uint8)
-                frame[:, :, 3] = (1.0 - vignette) * 200 # Black with variable alpha
-                return frame
-            return VideoClip(make_frame, duration=duration, is_mask=False).with_position("center")
+                return (1.0 - vignette) * 0.8 # Variable alpha mask
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
 
         return None
 

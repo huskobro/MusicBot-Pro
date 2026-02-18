@@ -13,16 +13,18 @@ logger = logging.getLogger(__name__)
 class SunoGenerator:
     def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None,
                  audio_influence=25, vocal_gender="Default", lyrics_mode="Default", 
-                 weirdness=50, style_influence=50, persona_link=""):
+                 weirdness=50, style_influence=50, persona_link="", turbo=False):
         self.project_file = project_file
         self.metadata_path = project_file # Backward compat
         
         self.output_dir = output_dir
         self.delay = delay
         self.startup_delay = startup_delay
-        self.browser = browser if browser else BrowserController()
-        self.tab = self.browser.get_page("suno")
+        self.browser = browser or BrowserController()
+        self.tab = self.browser.page
         self.base_url = "https://suno.com/create"
+        self.stop_requested = False
+        self.turbo = turbo
         
         # Advanced Params
         self.audio_influence = audio_influence
@@ -205,8 +207,8 @@ class SunoGenerator:
                 status = str(row[headers.get('status', 0)]).lower() if 'status' in headers else ""
                 is_done = "done" in status or "generated" in status
                 
-                # Check for existing MP3 files to double-verify (for Download phase skip)
-                # But here we mostly care about Generation Phase skip
+                # Determine if song already has music (M1 or M2 presence)
+                # In scan_materials, we check files. Here we can also check the status column.
                 
                 if not force_update and is_done:
                     continue
@@ -287,43 +289,142 @@ class SunoGenerator:
                 
                 logger.info(f"Targeted Batch: Waiting for {len(pending_ids)} songs to complete before download...")
                 
+                max_row_reached = 0
+                loop_count = 0
                 while pending_ids and (time.time() - start_wait < total_timeout):
                     if self.stop_requested: break
+                    loop_count += 1
+                    
+                    # SESSION HARDENING: Check if tab is alive, if not RECOVER
+                    try:
+                        # Simple check to see if tab is responsive
+                        self.tab.url
+                    except:
+                        logger.warning("Browser tab lost or crashed! Attempting recovery...")
+                        try:
+                            if self.persona_link: self._setup_persona_workflow(progress_callback)
+                            else: self.browser.goto(self.base_url, page=self.tab)
+                            time.sleep(5)
+                            self._ensure_v5_active()
+                        except Exception as re_e:
+                            logger.error(f"Recovery failed: {re_e}")
+                            time.sleep(10)
+                            continue
+
                     still_generating = []
+                    current_max_idx = 0
+                    all_targets_found_in_view = True
                     
+                    # 1. SCAN AND COLLECT STATUS
+                    found_this_loop = {}
+                    try:
+                        rows = self.tab.locator("div.clip-row")
+                        row_count = rows.count()
+                        for i in range(min(60, row_count)):
+                            row_text = rows.nth(i).inner_text().lower()
+                            for rid in pending_ids:
+                                if str(rid).lower() in row_text:
+                                    found_this_loop[rid] = {"index": i, "ready": "generating" not in row_text}
+                                    current_max_idx = max(current_max_idx, i)
+                                    # If any target found in view, we'll track its max index
+                    except Exception as scan_e:
+                        logger.debug(f"Scan interrupted: {scan_e}")
+
+                    # 2. DECIDE WHO IS STILL PENDING AND IF WE NEED TO SCROLL
                     for rid in pending_ids:
-                        r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                        if not r_data: continue
-                        
-                        title = r_data.get("title", "Song")
-                        suno_title = f"{rid}_{title}"
-                        
-                        # Just checking readiness, not downloading yet
-                        if not self._check_if_ready(suno_title, rid, suffix="1") or \
-                           not self._check_if_ready(suno_title, rid, suffix="2"):
-                            still_generating.append(rid)
+                        if rid in found_this_loop:
+                            if found_this_loop[rid]["ready"]:
+                                # Extra check for robustness
+                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                                suno_title = f"{rid}_{r_data.get('title', 'Song')}"
+                                if self._check_if_ready(suno_title, rid, suffix="1") and \
+                                   self._check_if_ready(suno_title, rid, suffix="2"):
+                                    logger.info(f"ID {rid} is ready for download phase.")
+                                    if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
+                                else:
+                                    still_generating.append(rid)
+                            else:
+                                still_generating.append(rid) # Found but still generating
                         else:
-                            if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
+                            # NOT FOUND IN CURRENT VIEW AT ALL
+                            still_generating.append(rid)
+                            all_targets_found_in_view = False
                     
+                    # 3. SMART SCROLLING: Only if someone is missing from view
+                    if not all_targets_found_in_view:
+                        if max_row_reached > 5:
+                            try:
+                                logger.info(f"Waterfall Scroll: Pushing down from row {max_row_reached} to find missing songs...")
+                                rows = self.tab.locator("div.clip-row")
+                                if rows.count() > max_row_reached:
+                                    rows.nth(min(max_row_reached, rows.count()-1)).scroll_into_view_if_needed()
+                                    time.sleep(1)
+                                    self.tab.mouse.wheel(0, 2500)
+                            except: pass
+                        else:
+                            try:
+                                self.tab.mouse.wheel(0, 1500)
+                                time.sleep(1)
+                            except: pass
+                    else:
+                        logger.debug("All pending songs found in current view. No scrolling needed.")
+
+                    # 4. SEARCH FALLBACK: If missing for too long (e.g. 5+ attempts)
+                    if not all_targets_found_in_view and loop_count > 5:
+                        missing = [rid for rid in pending_ids if rid not in found_this_loop]
+                        if missing:
+                            logger.info(f"Using Search Fallback for missing ID {missing[0]}...")
+                            r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == missing[0]), None)
+                            try:
+                                self._search_for_song(missing[0], r_data.get('title', 'Song'))
+                                time.sleep(2)
+                            except: pass
+
+                    max_row_reached = max(max_row_reached, current_max_idx)
                     pending_ids = still_generating
                     if not pending_ids: break
                     
-                    if progress_callback: progress_callback("global", f"Üretim Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
-                    time.sleep(15)
+                    if progress_callback: progress_callback("global", f"Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
+                    time.sleep(10)
                     
-                    # Refresh page occasionally
-                    if (time.time() - start_wait) % 90 < 15:
-                        self.tab.reload()
-                        time.sleep(5)
-                        self._ensure_v5_active()
+                    # Periodic reload to refresh state (Every 120-150s)
+                    if (time.time() - start_wait) > 30 and (time.time() - start_wait) % 150 < 15:
+                        try:
+                            logger.info("Periodic reload to refresh state...")
+                            self.tab.keyboard.press("Escape")
+                            time.sleep(1)
+                            self.tab.reload(timeout=60000)
+                            time.sleep(5)
+                            self._ensure_v5_active()
+                        except Exception as e:
+                            logger.warning(f"Reload failed: {e}")
 
                 # ACTUAL DOWNLOAD PHASE
-                # Now that everything (or mostly everything) is ready, download them
+                # Everything is ready, now we execute the persistent download logic
                 download_queue = list(generated_ids)
                 completed_ids = []
                 
+                # Clear search before starting final downloads to ensure clean list view
+                try:
+                    search_input = self.tab.locator("input[aria-label='Search clips']").first
+                    if search_input.is_visible():
+                        search_input.fill("")
+                        self.tab.keyboard.press("Enter")
+                        time.sleep(2)
+                except: pass
+
                 for rid in download_queue:
                     if self.stop_requested: break
+                    
+                    # SESSION CHECK: Ensure tab didn't crash before starting a new ID
+                    try: self.tab.url
+                    except:
+                        logger.warning(f"Tab crashed before downloading {rid}. Recovering...")
+                        if self.persona_link: self._setup_persona_workflow()
+                        else: self.browser.goto(self.base_url, page=self.tab)
+                        time.sleep(5)
+                        self._ensure_v5_active()
+
                     r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
                     if not r_data: continue
                     
@@ -332,19 +433,22 @@ class SunoGenerator:
                     
                     if progress_callback: progress_callback(rid, "İndiriliyor... ⬇️")
                     
+                    # Persistent _download_specific handles indexing, search fallback, and popup retries
                     s1 = self._download_specific(suno_title, rid, suffix="1")
                     s2 = self._download_specific(suno_title, rid, suffix="2")
                     
                     if s1 or s2:
                         self.update_row_status(r_data['_row_idx'], "Generated")
-                        if progress_callback: progress_callback(rid, "İndirildi! ✅")
+                        if progress_callback: 
+                             status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
+                             progress_callback(rid, status_txt)
                         completed_ids.append(rid)
                     else:
                         if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
 
                 return len(completed_ids)
 
-            return len(completed_ids)
+            return 0
 
         except Exception as e:
             logger.error(f"Batch Run Error: {e}")
@@ -397,10 +501,13 @@ class SunoGenerator:
                         input_title = title_loc_alt.nth(i); break
 
             def fill_field(el, val):
-                try:
-                    self.browser.humanizer.type_text(self.tab, el, val)
-                except:
+                if self.turbo:
                     el.fill(str(val))
+                else:
+                    try:
+                        self.browser.humanizer.type_text(self.tab, el, val)
+                    except:
+                        el.fill(str(val))
 
             fill_field(textareas[0], content)
             
@@ -425,7 +532,7 @@ class SunoGenerator:
 
             if create_btn.is_enabled():
                 create_btn.click()
-                time.sleep(2) 
+                time.sleep(1 if self.turbo else 2) 
 
                 # Wait for clip count increase OR "Generating"
                 for i in range(15):
@@ -449,50 +556,42 @@ class SunoGenerator:
             logger.error(f"Generate Batch Error {rid}: {e}")
             return False
 
+
     def _check_if_ready(self, title, rid, suffix="1"):
         """Checks if a song with title/rid is ready (not generating)."""
         try:
-            # 1. Initial Quick Scan (first 20 rows)
             rows = self.tab.locator("div.clip-row")
             count = rows.count()
             
             occurrence = 0
             target_occur = 0 if suffix == "1" else 1
 
-            for i in range(min(20, count)):
+            # Increased scan range to 60 to find deeper songs in batch
+            for i in range(min(60, count)):
                 row = rows.nth(i)
                 row_text = row.inner_text().lower()
                 
+                if i < 3:
+                    logger.debug(f"[_check_if_ready] Row {i} Text Preview: {repr(row_text[:60])}...")
+                
                 if str(title).lower() in row_text or (str(rid) + "_" in row_text):
+                    logger.info(f"[_check_if_ready] Matched {rid} in row {i}. FULL TEXT: {repr(row_text)}")
                     if occurrence == target_occur:
-                        # Found it! Check status
+                        # Hover to ensure buttons are visible
+                        try: row.hover(timeout=500)
+                        except: pass
+                        
                         is_gen = row.locator("text='Generating'").is_visible(timeout=500)
+                        
+                        # Broader more button search - Use count() to be less strict than is_visible()
                         more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
-                        if not is_gen and more_btn.count() > 0:
+                        is_more = more_btn.count() > 0
+                        
+                        logger.info(f"[_check_if_ready] Status: Generating={is_gen}, MoreBtnCount={more_btn.count()}")
+                        if not is_gen and is_more:
                             return True
                         return False 
                     occurrence += 1
-            
-            # 2. If not found, try scrolling once to trigger lazy load
-            if occurrence <= target_occur:
-                self.tab.mouse.wheel(0, 2000)
-                time.sleep(1)
-                # Re-scan up to 50 rows
-                rows = self.tab.locator("div.clip-row")
-                count = rows.count()
-                occurrence = 0
-                for i in range(min(50, count)):
-                    row = rows.nth(i)
-                    row_text = row.inner_text().lower()
-                    if str(title).lower() in row_text or (str(rid) + "_" in row_text):
-                        if occurrence == target_occur:
-                            is_gen = row.locator("text='Generating'").is_visible(timeout=500)
-                            more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
-                            if not is_gen and more_btn.count() > 0:
-                                return True
-                            return False
-                        occurrence += 1
-
             return False
         except: return False
 
@@ -504,53 +603,76 @@ class SunoGenerator:
             except: pass
             time.sleep(0.5)
 
+            rows = self.tab.locator("div.clip-row")
+            count = rows.count()
+            if count == 0:
+                logger.warning("[_download_specific] No rows found!")
+                return False
+
             occurrence = 0
             target_occur = 0 if suffix == "1" else 1
+            
             target_row = None
-
-            # 1. Main scan (up to 50 rows, scrolling gradually)
-            for scroll_step in range(4): # Scroll 4 times max
-                rows = self.tab.locator("div.clip-row")
-                count = rows.count()
+            
+            # 1. INITIAL SCAN (Increased range to 100 to avoid redundant search/scroll)
+            for i in range(min(100, count)): 
+                row = rows.nth(i)
+                row_text = row.inner_text().lower()
                 
-                occurrence = 0 # Reset count for each scan
-                for i in range(min(50, count)):
-                    row = rows.nth(i)
-                    row_text = row.inner_text().lower()
-                    if str(title).lower() in row_text or (str(rid) + "_" in row_text):
-                        if occurrence == target_occur:
-                            target_row = row
-                            break
-                        occurrence += 1
+                if i < 3:
+                    logger.debug(f"[_download_specific] Row {i} Text Preview: {repr(row_text[:60])}...")
                 
-                if target_row: break
-                
-                # Scroll down if not found
-                self.tab.mouse.wheel(0, 1500)
-                time.sleep(1.5)
-
-            # 2. Search Fallback (if still not found)
+                # Check for ID or title (avoiding double ID prefix during check)
+                if str(rid).lower() in row_text:
+                    logger.info(f"[_download_specific] Found Match: ID {rid} in row {i}")
+                    if occurrence == target_occur:
+                        target_row = row
+                        break
+                    occurrence += 1
+            
             if not target_row:
-                logger.info(f"Target song {rid} not found after scrolling. Trying search fallback...")
+                # FALLBACK 1: SEARCH BAR (Faster, More Accurate, Safer)
+                logger.info(f"[_download_specific] ID {rid} not in top 100. Using SEARCH fallback...")
                 if self._search_for_song(rid, title):
-                    # Re-scan search results
-                    rows = self.tab.locator("div.clip-row")
-                    count = rows.count()
-                    occurrence = 0
-                    for i in range(min(10, count)): # Search results should be near top
-                        row = rows.nth(i)
-                        row_text = row.inner_text().lower()
-                        if str(title).lower() in row_text or (str(rid) + "_" in row_text):
-                            if occurrence == target_occur:
-                                target_row = row
-                                break
-                            occurrence += 1
+                    # WAIT FOR SEARCH LOADING (Polling for target)
+                    for wait_search in range(5):
+                        time.sleep(1)
+                        rows = self.tab.locator("div.clip-row")
+                        if rows.count() > 0:
+                            matched = False
+                            for i in range(min(10, rows.count())):
+                                if str(rid).lower() in rows.nth(i).inner_text().lower():
+                                    target_row = rows.nth(i)
+                                    matched = True
+                                    break
+                            if matched: break
+                
+                # FALLBACK 2: WATERFALL SCROLL (The 'Safety Net')
+                if not target_row:
+                    logger.info(f"[_download_specific] Search for {rid} failed/loading too long. Trying WATERFALL SCROLL fallback...")
+                    # Clear search if it was stuck
+                    try:
+                        self.tab.locator("input[aria-label='Search clips']").fill("")
+                        self.tab.keyboard.press("Enter")
+                        time.sleep(1)
+                    except: pass
 
-            if not target_row:
-                logger.warning(f"[_download_specific] Song {rid} NOT found after scrolling and search.")
+                    if self._scroll_to_find_song(rid, title):
+                        rows = self.tab.locator("div.clip-row")
+                        occurrence = 0
+                        for i in range(rows.count()):
+                            row_text = rows.nth(i).inner_text().lower()
+                            if str(rid).lower() in row_text:
+                                if occurrence == target_occur:
+                                    target_row = rows.nth(i)
+                                    break
+                                occurrence += 1
+
+            if not target_row: 
+                logger.warning(f"[_download_specific] Target row NOT FOUND even after Search & Scroll for {rid}_{suffix}")
                 return False
             
-            # --- EXACT LOGIC FROM _wait_and_download (Lines 998-1040) ---
+            # --- NEXT LOGIC FROM _wait_and_download ---
             target_row.scroll_into_view_if_needed()
             target_row.click()
             time.sleep(1)
@@ -558,7 +680,7 @@ class SunoGenerator:
             # Match locator logic: first try aria-label 'More', then .context-menu-button
             target_more = target_row.locator("button[aria-label*='More' i]").first
             if not target_more.is_visible():
-                target_more = target_row.locator("button.context-menu-button").last # Matches _wait_and_download line 1007
+                target_more = target_row.locator("button.context-menu-button").last 
 
             if not target_more.is_visible():
                 logger.warning(f"[_download_specific] 'More' button not visible for {rid}")
@@ -602,56 +724,51 @@ class SunoGenerator:
             logger.info(f"[_download_specific] Selecting Format for {rid}")
             ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
             
-            # Click format button (WAV/MP3) -> Opens Popup
-            target_audio.click()
-            time.sleep(2)
-
             # --- POPUP HANDLING ---
-            # User reported a popup opens with a "Download File" button
-            try:
-                # Wait for modal/dialog
-                popup = self.tab.locator("div[role='dialog'], div.chakra-modal__content").last
-                if popup.is_visible(timeout=5000):
-                    logger.info(f"[_download_specific] Popup detected for {rid}")
-                    
-                    # Find 'Download File' button inside popup
-                    # Common patterns: "Download File", "Download", or icon
-                    dl_confirm_btn = popup.locator("button").filter(has_text="Download").last
-                    
-                    # Be more specific if possible
-                    if not dl_confirm_btn.is_visible():
-                         dl_confirm_btn = popup.locator("button:has-text('Download File')").first
-                    
-                    if dl_confirm_btn.is_visible():
-                        logger.info(f"[_download_specific] Clicking 'Download File' confirmation for {rid}")
-                        with self.tab.expect_download(timeout=60000) as download_info:
-                            dl_confirm_btn.click()
+            # Click format button (WAV/MP3) -> Opens Popup
+            success_dl = False
+            for dl_retry in range(3):
+                logger.info(f"[_download_specific] Attempting format click (Attempt {dl_retry+1}) for {rid}")
+                target_audio.click()
+                time.sleep(3) # Increased sleep for Suno UI
+                
+                try:
+                    # Wait for modal/dialog
+                    popup = self.tab.locator("div[role='dialog'], div.chakra-modal__content").last
+                    if popup.is_visible(timeout=5000):
+                        logger.info(f"[_download_specific] Popup detected for {rid}")
                         
-                        download = download_info.value
-                        clean_title = re.sub(r'[^\w\s-]', '', title).strip()
-                        clean_title = re.sub(r'[-\s]+', '_', clean_title)
-                        filename = f"{clean_title}_{suffix}.{ext}"
-                        save_path = os.path.join(self.output_dir, filename)
-                        download.save_as(save_path)
-                        logger.info(f"[_download_specific] Saved {filename}")
+                        dl_confirm_btn = popup.locator("button").filter(has_text="Download").last
+                        if not dl_confirm_btn.is_visible():
+                             dl_confirm_btn = popup.locator("button:has-text('Download File')").first
                         
-                        # Close popup if it didn't close automatically
-                        try: self.tab.keyboard.press("Escape")
-                        except: pass
-                        
-                        return True
+                        if dl_confirm_btn.is_visible():
+                            logger.info(f"[_download_specific] Clicking 'Download File' confirmation for {rid}")
+                            with self.tab.expect_download(timeout=60000) as download_info:
+                                dl_confirm_btn.click()
+                            
+                            download = download_info.value
+                            clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+                            clean_title = re.sub(r'[-\s]+', '_', clean_title)
+                            filename = f"{clean_title}_{suffix}.{ext}"
+                            save_path = os.path.join(self.output_dir, filename)
+                            download.save_as(save_path)
+                            logger.info(f"[_download_specific] Saved {filename}")
+                            
+                            try: self.tab.keyboard.press("Escape")
+                            except: pass
+                            
+                            success_dl = True
+                            break
                     else:
-                        logger.warning(f"[_download_specific] Popup found but 'Download File' button NOT visible for {rid}")
-                        # Fallback: maybe the first click triggered download directly?
-            except Exception as e:
-                logger.warning(f"[_download_specific] Popup handling error: {e}")
+                        logger.warning(f"[_download_specific] Popup NOT visible after format click for {rid}. Retrying...")
+                except Exception as e:
+                    logger.warning(f"[_download_specific] Popup handling attempt {dl_retry+1} failed: {e}")
+                
+                # If we're here, we need to retry or refresh the 'More' state
+                time.sleep(2)
 
-            # Fallback if no popup or direct download
-            # Check if download event happened on first click? (Unlikely given user report)
-            logger.error(f"[_download_specific] Download failed - Popup flow incomplete for {rid}")
-            return False
-            
-            return False
+            return success_dl
         except Exception as e:
             logger.error(f"Download Specific Error {rid}: {e}")
             return False
@@ -664,7 +781,7 @@ class SunoGenerator:
             logger.info(f"Navigating to Persona Link: {self.persona_link}")
             if progress_callback: progress_callback("global", "Persona Profili Seçiliyor... 👤")
             self.browser.goto(self.persona_link, page=self.tab)
-            time.sleep(5)
+            time.sleep(3 if self.turbo else 5)
 
             def find_and_click():
                 return self.tab.evaluate("""() => {
@@ -1077,9 +1194,9 @@ class SunoGenerator:
             except Exception as e:
                 logger.error(f"Error during Suno download: {e}")
                 return False
-                
+
         except Exception as e:
-            logger.error(f"Critical error in _wait_and_download: {e}")
+            logger.error(f"Wait and Download Error {rid}: {e}")
             return False
 
     def close(self): pass
@@ -1346,35 +1463,37 @@ class SunoGenerator:
         except: pass
 
     def _scroll_to_find_song(self, rid, title):
-        """Gradually scrolls the song list to find a song by ID or title."""
-        logger.info(f"Scrolling to find song: {rid}_{title}")
-        for _ in range(5): # Scroll 5 times maximum
-            # Check if it's already visible
-            rows = self.tab.locator("div.clip-row")
-            for i in range(rows.count()):
-                text = rows.nth(i).inner_text().lower()
-                if str(rid).lower() + "_" in text or str(title).lower() in text:
-                    logger.info(f"Found song {rid} after scrolling.")
-                    return True
-            
-            # Scroll down
-            self.tab.mouse.wheel(0, 1000)
-            time.sleep(1.5)
-        return False
+        """Gradually scrolls the SPECIFIC song list container to find a song."""
+        logger.info(f"Scrolling to find song ID: {rid}")
+        try:
+            for _ in range(12): # Increased attempts
+                rows = self.tab.locator("div.clip-row")
+                for i in range(rows.count()):
+                    if str(rid).lower() in rows.nth(i).inner_text().lower():
+                        return True
+                
+                # Scroll from bottom to trigger lazy load
+                if rows.count() > 0:
+                    rows.last.hover()
+                    self.tab.mouse.wheel(0, 2000)
+                    time.sleep(1.5)
+            return False
+        except: return False
 
     def _search_for_song(self, rid, title):
-        """Uses the Suno search bar to find a specific song."""
-        logger.info(f"Searching for song: {rid}_{title}")
+        """Uses the Suno search bar to find a specific song (Searching by ID only for reliability)."""
+        query = str(rid)
+        logger.info(f"Searching for song ID: {query}")
         try:
-            # Try to find search input. Often it's near the top.
-            search_input = self.tab.locator("input[placeholder*='Search' i]").first
+            # Search input for 'clips' list
+            search_input = self.tab.locator("input[aria-label='Search clips'], input[placeholder='Search']").first
             if not search_input.is_visible():
-                # Try clicking search button if there is one
-                search_btn = self.tab.locator("button:has([aria-label*='Search' i]), button:has-text('Search')").first
+                # Check if we need to click a search icon first (some layouts)
+                search_btn = self.tab.locator("button:has([aria-label*='Search' i]), button.search-toggle").first
                 if search_btn.is_visible():
                     search_btn.click()
                     time.sleep(1)
-                    search_input = self.tab.locator("input[placeholder*='Search' i]").first
+                    search_input = self.tab.locator("input[aria-label='Search clips'], input[placeholder='Search']").first
 
             if search_input.is_visible():
                 search_input.click()
@@ -1382,8 +1501,7 @@ class SunoGenerator:
                 self.tab.keyboard.press("Control+A")
                 self.tab.keyboard.press("Backspace")
                 time.sleep(0.5)
-                # Search by ID_Title
-                query = f"{rid}_{title}"
+                # Search by ID only (Per user demonstration)
                 search_input.fill(query)
                 self.tab.keyboard.press("Enter")
                 time.sleep(3) # Wait for search results

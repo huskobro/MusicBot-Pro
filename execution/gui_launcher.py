@@ -104,6 +104,7 @@ TRANSLATIONS = {
         "enable_lyrics_mode_label": "Enable Lyrics Mode:",
         "suno_batch_label": "Enable Batch Mode (Generate All -> Download All)",
         "batch": "Batch",
+        "turbo": "Turbo",
         "batch_op_full": "Full Cycle (Gen + DL)",
         "batch_op_gen": "Generate Only",
         "batch_op_dl": "Download Only",
@@ -230,7 +231,8 @@ TRANSLATIONS = {
         "f_missing_r": "Missing Images",
         "f_missing_m1": "Missing Music 1",
         "f_missing_m2": "Missing Music 2",
-        "video_assets_output_label": "Assets & Output Settings"
+        "video_assets_output_label": "Assets & Output Settings",
+        "open_project_btn": "📊 Open Excel"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -309,6 +311,7 @@ TRANSLATIONS = {
         "enable_lyrics_mode_label": "Şarkı Sözü Modunu Etkinleştir:",
         "suno_batch_label": "Toplu Modu Etkinleştir (Hepsini Üret -> Hepsini İndir)",
         "batch": "Toplu",
+        "turbo": "Turbo",
         "batch_op_full": "Tam Döngü (Üret + İndir)",
         "batch_op_gen": "Sadece Üret",
         "batch_op_dl": "Sadece İndir",
@@ -440,7 +443,8 @@ TRANSLATIONS = {
         "f_missing_r": "Eksik Resimler",
         "f_missing_m1": "Eksik Müzik 1",
         "f_missing_m2": "Eksik Müzik 2",
-        "video_assets_output_label": "Klasör ve Çıktı Ayarları"
+        "video_assets_output_label": "Klasör ve Çıktı Ayarları",
+        "open_project_btn": "📊 Excel Aç"
     }
 }
 
@@ -1542,7 +1546,7 @@ class MusicBotGUI:
         self.lbl_project = ttk.Label(self.f_top, textvariable=self.lbl_project_text, font=("Helvetica", 10, "italic"), foreground="gray")
         self.lbl_project.pack(side="left", padx=10)
         
-        ttk.Button(self.f_top, text=self.t("open_project_btn"), command=self.open_xlsx).pack(side="left", padx=2)
+        ttk.Button(self.f_top, text=self.t("open_project_btn"), command=self.open_excel_file).pack(side="left", padx=2)
 
         # Filter (Enhanced)
         self.f_filter = ttk.Frame(self.root, padding="5 0 5 10")
@@ -1599,6 +1603,9 @@ class MusicBotGUI:
         ttk.Radiobutton(self.f_run_ops, text="Full", variable=self.var_batch_op, value="full").pack(side="left", padx=2)
         ttk.Radiobutton(self.f_run_ops, text="Gen", variable=self.var_batch_op, value="gen_only").pack(side="left", padx=2)
         ttk.Radiobutton(self.f_run_ops, text="DL", variable=self.var_batch_op, value="dl_only").pack(side="left", padx=2)
+        
+        self.var_turbo = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.f_run_ops, text="Turbo", variable=self.var_turbo).pack(side="left", padx=5)
 
         # Main Table
         self.f_tree = ttk.Frame(self.root)
@@ -1613,6 +1620,9 @@ class MusicBotGUI:
         
         # Style Tags
         self.tree.tag_configure("hover", background="#eef6ff") 
+        self.tree.tag_configure("done", foreground="gray", font=("Helvetica", 9, "italic"))
+        self.tree.tag_configure("missing", foreground="#e67e22") # Orange for missing materials
+        self.tree.tag_configure("error", background="#ffcccc", foreground="red") # Red row for errors
         
         # Drag & Drop Events
         self.tree.bind("<ButtonPress-1>", self.on_reorder_start, add="+")
@@ -1839,6 +1849,29 @@ class MusicBotGUI:
             self.config["last_project"] = path
             self.load_project_data(path)
 
+    def open_excel_file(self):
+        """Opens the current project Excel file with the default system application."""
+        import subprocess
+        
+        path = getattr(self, "project_path", None)
+        if not path:
+             path = self.config.get("last_project")
+
+        if path and os.path.exists(path):
+            try:
+                if sys.platform == "darwin":
+                    subprocess.call(["open", path])
+                elif sys.platform == "win32":
+                    os.startfile(path)
+                else: # Linux
+                    subprocess.call(["xdg-open", path])
+                logger.info(f"Opening Excel file: {path}")
+            except Exception as e:
+                logger.error(f"Failed to open Excel: {e}")
+                messagebox.showerror(self.t("error"), f"Excel açılamadı: {e}")
+        else:
+            messagebox.showwarning(self.t("warning"), self.t("msg_load_first"))
+
     def load_project_data(self, path=None):
         """Loads data from the single project file."""
         if not path:
@@ -1876,10 +1909,14 @@ class MusicBotGUI:
                 if id_idx is None: id_idx = 0 # Default to column A
                 rid = str(row[id_idx]) if id_idx < len(row) and row[id_idx] is not None else ""
                 
-                # Check Prompt/Title
+                # Check Prompt/Title (Robust Check)
                 prompt = ""
-                if 'prompt' in headers and row[headers['prompt']] is not None: prompt = str(row[headers['prompt']])
-                elif 'title' in headers and row[headers['title']] is not None: prompt = str(row[headers['title']])
+                # Prioritize explicit 'title' or 'prompt' columns, and also check 'Başlık / Prompt' variations
+                t_keys = ['title', 'prompt', 'başlık / prompt', 'baslik / prompt', 'baslik', 'başlık']
+                for k in t_keys:
+                     if k in headers and row[headers[k]] is not None:
+                         prompt = str(row[headers[k]])
+                         break
                 
                 style = str(row[headers.get('style', 0)]) if 'style' in headers and row[headers.get('style')] is not None else ""
                 
@@ -2069,7 +2106,10 @@ class MusicBotGUI:
             s_lyrics = "✅" if s["lyrics"] else "⚪"
             s_music = "✅" if s["music"] else "⚪"
             s_art = "✅" if s["art"] else "⚪"
-            s_v = "✅" if s.get("video") or s.get("video_exists") else "⚪"
+            # Video status check (visual only)
+            video_done = s.get("video") or s.get("video_exists")
+            s_v = "✅" if video_done else "⚪"
+            
             s_mat = s.get("material_status", "")
             s_sel = "☑️" if rid in self.selected_songs else "☐"
             
@@ -2095,10 +2135,73 @@ class MusicBotGUI:
             s_rai = "🟢" if steps[3] else "☐"
             s_rv = "🟠" if (len(steps) > 4 and steps[4]) else "☐"
 
-            self.tree.insert("", "end", iid=rid, values=(
-                s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v, s_mat,
-                s_rl, s_rm, s_rap, s_rai, s_rv
-            ))
+            # Determine Tags
+            row_tags = []
+            if video_done:
+                row_tags.append("done")
+            elif "Error" in s.get("status", "") or "Hata" in s.get("status", ""):
+                 row_tags.append("error")
+            elif s_mat != "OK" and s_mat != "":
+                 row_tags.append("missing")
+
+            # Store for sorting
+            # Sort Key: (Video Done (Last), ID (Numeric/Alpha))
+            # We add to a temporary list first, BUT loop is already filtering. Use a separate list for tree insertion.
+            pass # We need to refactor the loop to collect then sort
+
+        # --- SORTING & INSERTION LOGIC ---
+        # 1. Collect all matching items
+        display_items = []
+        for rid in self.filtered_ids:
+            s = self.all_songs[rid]
+            
+            # Re-calculate display values to be safe
+            s_lyrics = "✅" if s["lyrics"] else "⚪"
+            s_music = "✅" if s["music"] else "⚪"
+            s_art = "✅" if s["art"] else "⚪"
+            video_done = s.get("video") or s.get("video_exists")
+            s_v = "✅" if video_done else "⚪"
+            s_mat = s.get("material_status", "")
+            s_sel = "☑️" if rid in self.selected_songs else "☐"
+            
+            done_cnt_v = sum([1 for k in ["lyrics", "music", "art", "video"] if s.get(k)])
+            prog_bar = self.get_progress_bar(done_cnt_v, 4)
+            
+            steps = self.song_steps.get(rid, [
+                self.var_run_lyrics.get(), self.var_run_music.get(), 
+                self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()
+            ])
+            while len(steps) < 5: steps.append(False)
+            
+            s_rl = "🟣" if steps[0] else "☐"
+            s_rm = "🔵" if steps[1] else "☐"
+            s_rap = "🟡" if steps[2] else "☐"
+            s_rai = "🟢" if steps[3] else "☐"
+            s_rv = "🟠" if steps[4] else "☐"
+            
+            row_tags = []
+            if "error" in str(s.get("status", "")).lower() or "error" in str(s.get("title", "")).lower():
+                 row_tags.append("error")
+            elif video_done:
+                row_tags.append("done")
+            elif s_mat != "OK" and s_mat != "":
+                 row_tags.append("missing")
+            
+            # Sort Key: 0=Active, 1=VideoDone (so completed go to bottom)
+            sort_key = (1 if video_done else 0, rid)
+            
+            display_items.append({
+                "rid": rid, "values": (s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v, s_mat, s_rl, s_rm, s_rap, s_rai, s_rv),
+                "tags": tuple(row_tags),
+                "sort": sort_key
+            })
+
+        # 2. Sort
+        display_items.sort(key=lambda x: x["sort"])
+        
+        # 3. Insert
+        for item in display_items:
+             self.tree.insert("", "end", iid=item["rid"], values=item["values"], tags=item["tags"])
 
     def select_all(self):
         """Selects all songs currently visible in the filtered list."""
@@ -2192,7 +2295,11 @@ class MusicBotGUI:
             item_id = self.tree.identify_row(event.y)
             if not item_id: return
 
-            if column not in ["#10", "#11", "#12", "#13", "#14"]: # Any column EXCEPT the phase toggles
+            # Corrected Column Indices:
+            # #10 is Materials (Should select row, NOT toggle)
+            # #11 (run_l), #12 (run_m), #13 (run_ap), #14 (run_ai), #15 (run_v) are toggles
+            
+            if column not in ["#11", "#12", "#13", "#14", "#15"]: # Any column EXCEPT the phase toggles
                 if item_id in self.selected_songs:
                     self.selected_songs.remove(item_id)
                     self.tree.set(item_id, "sel", "☐")
@@ -2204,8 +2311,8 @@ class MusicBotGUI:
                 self.tree.selection_set(item_id)
                 self.tree.focus(item_id)
             
-            elif column in ["#10", "#11", "#12", "#13", "#14"]: # L, M, AP, AI, V
-                idx = int(column[1:]) - 10 # 0, 1, 2, 3, 4
+            elif column in ["#11", "#12", "#13", "#14", "#15"]: # L, M, AP, AI, V
+                idx = int(column[1:]) - 11 # 0, 1, 2, 3, 4 (Offset changed to 11)
                 
                 # Get current setting or defaults
                 current_defaults = [
@@ -2233,24 +2340,34 @@ class MusicBotGUI:
                     elif idx == 3: char = "🟢"
                     elif idx == 4: char = "🟠"
 
-                col_name = self.tree.cget("columns")[idx + 9] # column name index 9 is run_l
+                col_name = self.tree.cget("columns")[idx + 10] # column name index 10 is run_l (0-15 total columns)
                 self.tree.set(item_id, col_name, char)
             
             return "break" # Prevent selection change if clicking checkbox
             
     def on_tree_hover(self, event):
         item = self.tree.identify_row(event.y)
-        # Clear existing hover tags
+        # Remove hover from all items first to clean up
         for i in self.tree.tag_has("hover"):
-            self.tree.item(i, tags=())
-        # Apply to current
+            current_tags = list(self.tree.item(i, "tags"))
+            if "hover" in current_tags:
+                current_tags.remove("hover")
+                self.tree.item(i, tags=tuple(current_tags))
+                
+        # Apply to current item, preserving existing tags
         if item:
-            self.tree.item(item, tags=("hover",))
+            current_tags = list(self.tree.item(item, "tags"))
+            if "hover" not in current_tags:
+                current_tags.append("hover")
+                self.tree.item(item, tags=tuple(current_tags))
 
     def on_tree_leave(self, event):
-        # Clear all hover tags when mouse leaves the widget
+        # Clear all hover tags when mouse leaves
         for i in self.tree.tag_has("hover"):
-            self.tree.item(i, tags=())
+            current_tags = list(self.tree.item(i, "tags"))
+            if "hover" in current_tags:
+                current_tags.remove("hover")
+                self.tree.item(i, tags=tuple(current_tags))
 
     def start_process(self):
         # --- Pre-flight Checks 🛡️ ---
@@ -2457,6 +2574,7 @@ class MusicBotGUI:
                             progress_callback=progress_callback
                         )
                         if success:
+                            progress_callback(task["rid"], "Video Rendered ✅")
                             # Move used materials to 'done' (Ref: output_media/[profile]/done)
                             try:
                                 done_dir = os.path.join(task["profile_dir"], "done")
@@ -2469,9 +2587,12 @@ class MusicBotGUI:
                                     shutil.move(task["image_path"], os.path.join(done_dir, os.path.basename(task["image_path"])))
                             except Exception as me:
                                 logger.warning(f"Failed to move files to done/: {me}")
+                        else:
+                            logger.error(f"Render failed for {task['rid']} (returned False)")
+                            progress_callback(task["rid"], "Render Failed ❌")
                     except Exception as ve:
                         logger.error(f"Parallel Render Error ({task['rid']}): {ve}")
-                        progress_callback(task["rid"], "Render Failed ❌")
+                        progress_callback(task["rid"], "Render Error ❌")
 
                 # Run pool
                 with ThreadPoolExecutor(max_workers=parallel_count) as pool:
@@ -2799,7 +2920,8 @@ class MusicBotGUI:
                         weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
                         style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
                         lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
-                        persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
+                        persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else "",
+                        turbo=self.var_turbo.get()
                     )
                     suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                 
@@ -3005,7 +3127,8 @@ class MusicBotGUI:
                     weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
                     style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
                     lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
-                    persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else ""
+                    persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else "",
+                    turbo=self.var_turbo.get()
                 )
                 # Use the new Batch Method with OP MODE!
                 op_mode = self.config.get("suno_batch_op_mode", "full")
