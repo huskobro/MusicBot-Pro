@@ -320,7 +320,7 @@ class SunoGenerator:
                     try:
                         rows = self.tab.locator("div.clip-row")
                         row_count = rows.count()
-                        for i in range(min(60, row_count)):
+                        for i in range(min(150, row_count)):
                             row_text = rows.nth(i).inner_text().lower()
                             for rid in pending_ids:
                                 if str(rid).lower() in row_text:
@@ -566,8 +566,8 @@ class SunoGenerator:
             occurrence = 0
             target_occur = 0 if suffix == "1" else 1
 
-            # Increased scan range to 60 to find deeper songs in batch
-            for i in range(min(60, count)):
+            # Increased scan range to 150 to find deeper songs in batch
+            for i in range(min(150, count)):
                 row = rows.nth(i)
                 row_text = row.inner_text().lower()
                 
@@ -614,8 +614,8 @@ class SunoGenerator:
             
             target_row = None
             
-            # 1. INITIAL SCAN (Increased range to 100 to avoid redundant search/scroll)
-            for i in range(min(100, count)): 
+            # 1. INITIAL SCAN (Increased range to 150 to avoid redundant search/scroll)
+            for i in range(min(150, count)): 
                 row = rows.nth(i)
                 row_text = row.inner_text().lower()
                 
@@ -1485,26 +1485,50 @@ class SunoGenerator:
         query = str(rid)
         logger.info(f"Searching for song ID: {query}")
         try:
-            # Search input for 'clips' list
-            search_input = self.tab.locator("input[aria-label='Search clips'], input[placeholder='Search']").first
-            if not search_input.is_visible():
-                # Check if we need to click a search icon first (some layouts)
+            # 1. Detect and Find Search Input
+            # Priority: Clips Search -> Global Search -> Generic Search
+            search_selectors = [
+                "input[aria-label='Search clips']",
+                "input[aria-label='Search']",
+                "input[placeholder*='Search']"
+            ]
+            
+            search_input = None
+            for selector in search_selectors:
+                loc = self.tab.locator(selector).first
+                if loc.is_visible(timeout=1000):
+                    search_input = loc
+                    break
+            
+            if not search_input:
+                # Layout specific search toggle?
                 search_btn = self.tab.locator("button:has([aria-label*='Search' i]), button.search-toggle").first
                 if search_btn.is_visible():
                     search_btn.click()
                     time.sleep(1)
                     search_input = self.tab.locator("input[aria-label='Search clips'], input[placeholder='Search']").first
 
-            if search_input.is_visible():
+            if search_input and search_input.is_visible():
                 search_input.click()
-                # Clear existing text
-                self.tab.keyboard.press("Control+A")
-                self.tab.keyboard.press("Backspace")
-                time.sleep(0.5)
+                time.sleep(0.3)
+                
+                # Clear existing text - Using platform-aware keys
+                # We try both Meta (Mac) and fill('') for maximum coverage
+                try:
+                    self.tab.keyboard.press("Meta+A")
+                    self.tab.keyboard.press("Backspace")
+                    time.sleep(0.2)
+                except: pass
+                
+                search_input.fill("") # Playwright native clear
+                time.sleep(0.3)
+                
                 # Search by ID only (Per user demonstration)
-                search_input.fill(query)
+                search_input.type(query, delay=50) # Use type for better input event trigger
                 self.tab.keyboard.press("Enter")
-                time.sleep(3) # Wait for search results
+                
+                logger.debug(f"Search query '{query}' submitted.")
+                time.sleep(4) # Wait for results
                 return True
         except Exception as e:
             logger.warning(f"Search fallback failed: {e}")
