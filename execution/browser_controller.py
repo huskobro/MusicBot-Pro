@@ -70,7 +70,8 @@ class BrowserController:
         logger.info(f"Humanizer initialized: {h_conf}")
 
         # --- Mandatory Google Login Compatibility ---
-        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        # Updated to match the current system Chrome version (145.0.7632.77)
+        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.7632.77 Safari/537.36"
         self.last_action_time = 0
 
     def _cleanup_locks(self):
@@ -97,7 +98,8 @@ class BrowserController:
         self.playwright = sync_playwright().start()
         
         try:
-            # Mandatory flags for Google Login compatibility
+            # --- Mandatory Google Login Fix ---
+            # Using the exact minimal set for maximum compatibility
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,
@@ -105,14 +107,21 @@ class BrowserController:
                 user_agent=self.user_agent,
                 args=[
                     "--disable-blink-features=AutomationControlled",
-                    "--disable-infobars",
-                    "--no-sandbox"
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--lang=tr-TR",
+                    "--password-store=basic"
                 ],
-                ignore_default_args=["--enable-automation"],
-                viewport={"width": 1280, "height": 800} 
+                ignore_default_args=["--enable-automation", "--use-mock-keychain"],
+                viewport=None, 
+                device_scale_factor=1,
+                locale="tr-TR",
+                timezone_id="Europe/Istanbul"
             )
 
-            # Apply Stealth to the entire CONTEXT (affects all current and future pages)
+            # Standard Stealth only, no over-the-top scripts that break context
             Stealth().apply_stealth_sync(self.context)
             
             if self.context.pages:
@@ -126,6 +135,38 @@ class BrowserController:
             logger.error(f"Failed to launch browser: {e}")
             self.stop()
             raise e
+
+    def launch_native_chrome(self, urls=["https://suno.com/create", "https://gemini.google.com/app"]):
+        """
+        Launches the REAL Chrome binary as a standalone process.
+        This is the only 100% way to bypass 'Unsecure Browser' during login.
+        The bot should be STOPPED when this is used.
+        """
+        import subprocess
+        self._cleanup_locks()
+        
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if not os.path.exists(chrome_path):
+            logger.error("Google Chrome not found at standard Mac path.")
+            return False
+
+        cmd = [
+            chrome_path,
+            f"--user-data-dir={self.user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--lang=tr-TR",
+            "--password-store=basic"
+        ] + urls
+
+        logger.info(f"Launching NATIVE Chrome for manual login: {urls}")
+        try:
+            # We use Popen so it doesn't block the GUI
+            subprocess.Popen(cmd)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to launch native chrome: {e}")
+            return False
 
     def get_page(self, name="default"):
         """Returns a named page, creating it if it doesn't exist."""

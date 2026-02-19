@@ -208,21 +208,18 @@ Main title: “{title}”
                             final_style = lyrics_res.get("style", style_init)
                             if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
                         else:
-                            if progress_callback: progress_callback(row_id, "Lyrics Failed ❌ (Oturum Yenileniyor)")
-                            logger.warning(f"Lyrics failed for {row_id}. Refreshing Gemini tab for next attempt.")
+                            if progress_callback: progress_callback(row_id, "Gemini Hata: Yanıt Yok ❌ (Tarayıcı Kapatılıyor)")
+                            logger.error(f"Gemini failed to respond for {row_id} after timeout. Closing browser to prevent further hangs.")
                             failed_ids.append(rowdata)
                             
-                            # Session Refresh Logic: Close and reopen tab to clear any UI hangs
+                            # User requested to close the browser when Gemini doesn't respond for 1 min
                             try:
-                                self.tab.close()
-                                time.sleep(2)
-                                self.tab = self.browser.get_page("gemini")
-                                self.browser.goto(self.base_url, page=self.tab)
-                                time.sleep(5)
+                                self.browser.stop()
+                                logger.info("Browser stopped due to Gemini failure.")
                             except Exception as e:
-                                logger.error(f"Failed to refresh Gemini tab: {e}")
+                                logger.error(f"Failed to stop browser: {e}")
                             
-                            continue
+                            return failed_ids # Return early, effectively stopping this pass and pass 2
                     else:
                         logger.info(f"   -> Lyrics already exist for {row_id}, skipping to prompt design.")
                         final_title = theme # Fallback
@@ -408,7 +405,7 @@ Main title: “{title}”
             logger.error(f"Gemini {ptype} Step Error: {e}")
             return None
 
-    def _wait_for_response(self, timeout=90):
+    def _wait_for_response(self, timeout=120):
         """Helper to wait for Gemini response to appear and stabilize."""
         logger.info(f"Waiting for Gemini response (Global Timeout: {timeout}s)...")
         start_time = time.time()
@@ -425,8 +422,8 @@ Main title: “{title}”
         while time.time() - start_time < timeout:
             elapsed = time.time() - start_time
             
-            # 1. Stuck Detection: If after 25 seconds we still have no new message content, fail early
-            if not has_started and elapsed > 25:
+            # 1. Stuck Detection: If after 60 seconds (User requested 1 min) we still have no new message content, fail early
+            if not has_started and elapsed > 60:
                 logger.error(f"Gemini stuck detection: No response started after {elapsed:.1f}s. Failing early.")
                 return None
 

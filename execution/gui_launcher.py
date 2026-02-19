@@ -2729,81 +2729,73 @@ class MusicBotGUI:
         os.system(f"open '{img_dir}'")
 
     def open_chrome_profile(self):
-        """Launches a headless=False browser for manual login."""
+        """Launches the ACTUAL Google Chrome binary for manual login (Undetectable)."""
+        
+        # Determine current profile name/path
+        profile_name = "Default"
+        if hasattr(self, "current_profile_name") and self.current_profile_name:
+            profile_name = self.current_profile_name.strip().replace(" ", "_")
+        
+        # Base path for profiles
+        base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
+        profile_path = os.path.join(base_path, profile_name)
+        os.makedirs(profile_path, exist_ok=True)
         
         def _launch():
             try:
                 # 1. Notify User via Log
                 logger.info(self.t("log_chrome_start"))
-                logger.info(self.t("log_wait_chrome"))
-                                    
-                # 2. Start
-                # Store in self to prevent Garbage Collection from closing it immediately
-                self.chrome_session = BrowserController(headless=False)
-                self.chrome_session.start()
+                logger.info(f"Using Profile: {profile_name} at {profile_path}")
+                                     
+                # 2. Start Native Chrome with SPECIFIC PROFILE
+                temp_bc = BrowserController(headless=False, profile_path=profile_path)
+                success = temp_bc.launch_native_chrome()
                 
-                logger.info(self.t("log_chrome_success"))
-                logger.info(self.t("log_chrome_profile").format(path=self.chrome_session.user_data_dir))
-                logger.info(self.t("log_chrome_login"))
-                logger.info(self.t("log_chrome_close"))
-                
-                # 3. Open Tabs
-                try:
-                    page = self.chrome_session.pages.get("default")
-                    if page:
-                        page.goto("https://suno.com/create")
-                        # New tab for gemini
-                        p2 = self.chrome_session.context.new_page()
-                        p2.goto("https://gemini.google.com/app")
-                except Exception as e:
-                    logger.warning(f"Failed to open browser tabs: {e}")
+                if success:
+                    logger.info(f"✅ Native Chrome launched for profile '{profile_name}'.")
+                    logger.info("Please login manually and CLOSE the browser before starting the bot.")
+                else:
+                    logger.error("❌ Failed to launch native Chrome.")
                 
             except Exception as e:
-                import traceback
-                err = traceback.format_exc()
                 logger.error(f"❌ Failed to open browser: {e}")
-                logger.error(err)
 
         # Threads
         threading.Thread(target=_launch, daemon=True).start()
 
     def reset_chrome_profile(self):
-        """Total reset of the Chrome profile to clear all cookies, cache, and history."""
+        """Resets ONLY the current profile's Chrome data."""
+        
+        profile_name = "Default"
+        if hasattr(self, "current_profile_name") and self.current_profile_name:
+            profile_name = self.current_profile_name.strip().replace(" ", "_")
+            
+        base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
+        profile_path = os.path.join(base_path, profile_name)
+
+        if not messagebox.askyesno(self.t("confirm"), f"Are you sure you want to reset the Chrome profile for '{profile_name}'?\n\nThis will delete cookies and logins for THIS profile only."):
+            return
+
         try:
-            # 1. Close active session if any
-            if hasattr(self, "chrome_session") and self.chrome_session:
-                try:
-                    logger.info("Stopping active browser session for reset...")
-                    self.chrome_session.stop()
-                    self.chrome_session = None
-                    time.sleep(2) # Wait for file handles to release
+            # First, try to kill any chrome instances for safety
+            if self.active_browser:
+                try: self.active_browser.stop()
                 except: pass
             
-            # 2. Delete profile folder
-            workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
-            profile_path = os.path.join(workspace, "chrome_profile")
+            logger.info(f"Resetting Chrome profile at: {profile_path}")
             
             if os.path.exists(profile_path):
                 import shutil
-                # Using rmtree for a truly fresh start (no remnants)
-                logger.info(f"Removing profile directory: {profile_path}")
                 shutil.rmtree(profile_path, ignore_errors=True)
-                
-                # Double check - if still exists (locked), try renaming it as fallback
-                if os.path.exists(profile_path):
-                    timestamp = int(time.time())
-                    backup_path = os.path.join(workspace, f"chrome_profile_locked_{timestamp}")
-                    os.rename(profile_path, backup_path)
-                
-                logger.info(self.t("log_chrome_reset_success"))
-                messagebox.showinfo(self.t("success"), self.t("log_chrome_reset_success"))
+                logger.info(f"✅ Profile '{profile_name}' reset successfully.")
+                messagebox.showinfo(self.t("success"), f"Profile '{profile_name}' reset successfully.")
             else:
-                logger.info("No chrome profile found to reset.")
-                messagebox.showinfo(self.t("info"), "Zaten mevcut bir profil bulunamadı, tertemiz bir başlangıç için her şey hazır.")
+                logger.warning(f"Profile path not found: {profile_path}")
+                messagebox.showinfo("Info", "Profile directory did not exist (already clean).")
                 
         except Exception as e:
-            logger.error(self.t("log_chrome_reset_fail").format(error=str(e)))
-            messagebox.showerror(self.t("error_title"), self.t("log_chrome_reset_fail").format(error=str(e)))
+            logger.error(f"Failed to reset profile: {e}")
+            messagebox.showerror("Error", f"Failed to reset profile: {e}")
 
     def disable_buttons(self):
         self.btn_run.config(state="disabled")
@@ -2874,6 +2866,15 @@ class MusicBotGUI:
                 browser_needed = s_steps[0] or s_steps[1] or s_steps[2] # Lyrics, Music, or Art Prompt
                 
                 if browser_needed:
+                    # ---------------- PROFILE LOGIC ----------------
+                    profile_name = "Default"
+                    if hasattr(self, "current_profile_name") and self.current_profile_name:
+                        profile_name = self.current_profile_name.strip().replace(" ", "_")
+                    
+                    base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
+                    profile_path = os.path.join(base_path, profile_name)
+                    # -----------------------------------------------
+
                     from browser_controller import BrowserController
                     h_conf = {
                         "level": self.config.get("humanizer_level", "MEDIUM"),
@@ -2881,7 +2882,7 @@ class MusicBotGUI:
                         "retries": self.config.get("humanizer_retries", 1),
                         "adaptive": self.config.get("humanizer_adaptive", True)
                     }
-                    song_browser = BrowserController(headless=False, humanizer_config=h_conf)
+                    song_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
                     song_browser.start()
                     self.active_browser = song_browser
                 
