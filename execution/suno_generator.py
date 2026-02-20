@@ -1554,12 +1554,16 @@ class SunoGenerator:
         return False
 
     def _play_alert(self):
-        """Plays a prominent alert sound on macOS."""
+        """Plays a notification sound based on OS."""
         import sys
         try:
             if sys.platform == "darwin":
                 # Play 'Glass' or 'Basso' for attention
                 os.system("afplay /System/Library/Sounds/Glass.aiff &")
+            elif sys.platform == "win32":
+                import winsound
+                # Play SystemExclamation for prominent attention
+                winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
         except: pass
 
 if __name__ == "__main__":
