@@ -1476,12 +1476,26 @@ class MusicBotGUI:
         self.var_run_video = tk.BooleanVar(value=self.config.get("default_run_video", False))
         self.var_run_compilation = tk.BooleanVar(value=self.config.get("default_run_compilation", True))
 
-        # Keyboard Bindings
+        # Keyboard Bindings (Platform Aware)
+        mod = "Command" if sys.platform == "darwin" else "Control"
+        
         self.root.bind("<Return>", lambda e: self.start_process())
         self.root.bind("<Escape>", lambda e: self.stop_process())
-        self.root.bind("<Control-f>", lambda e: self.ent_filter.focus())
-        self.root.bind("<Command-f>", lambda e: self.ent_filter.focus())
+        self.root.bind(f"<{mod}-f>", lambda e: self.ent_filter.focus())
+        self.root.bind(f"<{mod}-a>", lambda e: self.select_all())
+        self.root.bind(f"<{mod}-s>", lambda e: self.save_settings())
+        self.root.bind(f"<{mod}-r>", lambda e: self.load_project_data())
         self.root.bind("<space>", self.on_space_toggle)
+
+        # Standard Text Operations Fix (Global for Mac)
+        if sys.platform == "darwin":
+            self.root.bind_all("<Command-c>", lambda e: e.widget.event_generate("<<Copy>>"))
+            self.root.bind_all("<Command-v>", lambda e: e.widget.event_generate("<<Paste>>"))
+            self.root.bind_all("<Command-x>", lambda e: e.widget.event_generate("<<Cut>>"))
+            self.root.bind_all("<Command-a>", lambda e: e.widget.event_generate("<<SelectAll>>"))
+        else:
+            # Special case for Select All in entry fields for Windows/Linux
+            self.root.bind_all("<Control-a>", lambda e: e.widget.event_generate("<<SelectAll>>") if isinstance(e.widget, (tk.Entry, tk.Text)) else None)
 
         # Apply Light Theme Styles (Constructs UI)
         self.setup_styles()
