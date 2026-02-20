@@ -40,7 +40,7 @@ playwright install chromium
 
 :: 6. Paketleme
 echo Uygulama paketleniyor (Windows exe olusturuluyor)...
-pyinstaller --noconfirm --clean ^
+python -m PyInstaller --noconfirm --clean ^
     --name "MusicBotPro" ^
     --windowed ^
     --add-data "data;data" ^
@@ -50,6 +50,7 @@ pyinstaller --noconfirm --clean ^
     --collect-all imageio ^
     --collect-all playwright ^
     --collect-all playwright_stealth ^
+    --hidden-import playwright.sync_api ^
     execution/gui_launcher.py
 
 echo --------------------------------------------------

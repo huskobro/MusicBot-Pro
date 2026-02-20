@@ -12,10 +12,10 @@ if %errorlevel% neq 0 (
 )
 
 echo [1/3] Gerekli kutuphaneler yukleniyor...
-pip install pyinstaller openpyxl selenium webdriver-manager google-generativeai playwright playwright-stealth humanizer imageio moviepy
+pip install pyinstaller openpyxl selenium webdriver-manager google-generativeai playwright playwright-stealth humanizer imageio moviepy numpy
 
 echo [2/3] Uygulama paketleniyor (Bu islem birkac dakika surebilir)...
-pyinstaller --noconfirm --clean ^
+python -m PyInstaller --noconfirm --clean ^
     --name "MusicBotPro" ^
     --windowed ^
     --add-data "data;data" ^
@@ -25,6 +25,7 @@ pyinstaller --noconfirm --clean ^
     --collect-all imageio ^
     --collect-all playwright ^
     --collect-all playwright_stealth ^
+    --hidden-import playwright.sync_api ^
     execution/gui_launcher.py
 
 echo [3/3] Temizlik yapiliyor...
