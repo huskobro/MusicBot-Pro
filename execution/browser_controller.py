@@ -112,7 +112,8 @@ class BrowserController:
                     "--disable-dev-shm-usage",
                     "--no-first-run",
                     "--no-default-browser-check",
-                    "--lang=tr-TR"
+                    "--lang=tr-TR",
+                    "--profile-directory=Default"
                 ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
                 ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                 viewport=None, 
@@ -169,6 +170,7 @@ class BrowserController:
         cmd = [
             chrome_path,
             f"--user-data-dir={self.user_data_dir}",
+            "--profile-directory=Default",
             "--no-first-run",
             "--no-default-browser-check",
             "--lang=tr-TR"
