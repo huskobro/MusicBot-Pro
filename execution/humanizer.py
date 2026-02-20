@@ -56,8 +56,9 @@ class Humanizer:
             except: pass
             
         # 2. Clear existing (Human-like)
-        page.keyboard.press("Meta+A")
-        page.keyboard.press("Control+A")
+        import sys
+        mod = "Meta" if sys.platform == "darwin" else "Control"
+        page.keyboard.press(f"{mod}+A")
         page.keyboard.press("Backspace")
         time.sleep(0.3)
 
@@ -97,7 +98,9 @@ class Humanizer:
                 if isinstance(selector_or_loc, str): page.click(selector_or_loc, force=True)
                 else: selector_or_loc.click(force=True)
                 
-                page.keyboard.press("Meta+A"); page.keyboard.press("Control+A"); page.keyboard.press("Backspace")
+                import sys
+                mod = "Meta" if sys.platform == "darwin" else "Control"
+                page.keyboard.press(f"{mod}+A"); page.keyboard.press("Backspace")
                 perform_typing(str(text))
         except: pass
             

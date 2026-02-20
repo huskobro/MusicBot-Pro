@@ -34,6 +34,9 @@ class SunoGenerator:
         self.style_influence = style_influence
         self.persona_link = str(persona_link).strip()
         
+        import sys
+        self.mod = "Meta" if sys.platform == "darwin" else "Control"
+        
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         self.stop_requested = False
@@ -1372,7 +1375,7 @@ class SunoGenerator:
                                 time.sleep(0.3)
                         
                         if input_ready:
-                            self.tab.keyboard.press("Meta+A")
+                            self.tab.keyboard.press(f"{self.mod}+A")
                             time.sleep(0.1)
                             self.tab.keyboard.type(str(target_val))
                             self.tab.keyboard.press("Enter")
@@ -1515,7 +1518,7 @@ class SunoGenerator:
                 # Clear existing text - Using platform-aware keys
                 # We try both Meta (Mac) and fill('') for maximum coverage
                 try:
-                    self.tab.keyboard.press("Meta+A")
+                    self.tab.keyboard.press(f"{self.mod}+A")
                     self.tab.keyboard.press("Backspace")
                     time.sleep(0.2)
                 except: pass
