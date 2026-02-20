@@ -1482,20 +1482,21 @@ class MusicBotGUI:
         self.root.bind("<Return>", lambda e: self.start_process())
         self.root.bind("<Escape>", lambda e: self.stop_process())
         self.root.bind(f"<{mod}-f>", lambda e: self.ent_filter.focus())
-        self.root.bind(f"<{mod}-a>", lambda e: self.select_all())
+        self.root.bind(f"<{mod}-a>", self.handle_ctrl_a)
         self.root.bind(f"<{mod}-s>", lambda e: self.save_settings())
         self.root.bind(f"<{mod}-r>", lambda e: self.load_project_data())
         self.root.bind("<space>", self.on_space_toggle)
 
         # Standard Text Operations Fix (Global for Mac)
         if sys.platform == "darwin":
-            self.root.bind_all("<Command-c>", lambda e: e.widget.event_generate("<<Copy>>"))
-            self.root.bind_all("<Command-v>", lambda e: e.widget.event_generate("<<Paste>>"))
-            self.root.bind_all("<Command-x>", lambda e: e.widget.event_generate("<<Cut>>"))
-            self.root.bind_all("<Command-a>", lambda e: e.widget.event_generate("<<SelectAll>>"))
+            self.root.bind_all("<Command-c>", lambda e: e.widget.event_generate("<<Copy>>") if hasattr(e.widget, 'event_generate') else None)
+            self.root.bind_all("<Command-v>", lambda e: e.widget.event_generate("<<Paste>>") if hasattr(e.widget, 'event_generate') else None)
+            self.root.bind_all("<Command-x>", lambda e: e.widget.event_generate("<<Cut>>") if hasattr(e.widget, 'event_generate') else None)
+            # Cmd+A is handled by handle_ctrl_a at root level, but bind_all is safer for deep widgets
+            self.root.bind_all("<Command-a>", self.handle_ctrl_a)
         else:
             # Special case for Select All in entry fields for Windows/Linux
-            self.root.bind_all("<Control-a>", lambda e: e.widget.event_generate("<<SelectAll>>") if isinstance(e.widget, (tk.Entry, tk.Text)) else None)
+            self.root.bind_all("<Control-a>", self.handle_ctrl_a)
 
         # Apply Light Theme Styles (Constructs UI)
         self.setup_styles()
@@ -2223,6 +2224,17 @@ class MusicBotGUI:
             if rid not in self.selected_songs:
                 self.selected_songs.add(rid)
         self.apply_filter()
+
+    def handle_ctrl_a(self, event):
+        """Intelligent Select All: Text in Entry vs Songs in Tree."""
+        widget = self.root.focus_get()
+        # If we are in an entry or text widget, select the text
+        if isinstance(widget, (tk.Entry, tk.Text, ttk.Entry)):
+            widget.event_generate("<<SelectAll>>")
+            return "break" # Prevent propagation
+        # Otherwise select all songs
+        self.select_all()
+        return "break"
 
     def deselect_all(self):
         """Deselects all songs currently visible in the filtered list."""
