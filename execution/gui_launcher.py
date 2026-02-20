@@ -188,6 +188,7 @@ TRANSLATIONS = {
         "glitch": "Glitch",
         "ken_burns": "Ken Burns (Zoom)",
         "vignette": "Vignette",
+        "audio_visualizer": "Audio Visualizer",
         "browse": "Browse",
         "msg_select_folder": "Please select a folder",
         "msg_enter_test_link": "Please enter a link to test or select from the list.",
@@ -399,6 +400,7 @@ TRANSLATIONS = {
         "glitch": "Bozulma (Glitch)",
         "ken_burns": "Yakınlaşma (Ken Burns)",
         "vignette": "Köşe Karartma (Vignette)",
+        "audio_visualizer": "Ses Dalgaları",
         "browse": "Gözat",
         "msg_select_folder": "Lütfen bir klasör seçin",
         "msg_persona_loaded": "'{alias}' düzenleme için yüklendi.\nDeğişiklik yapıp '+' butonuna basın.",
@@ -888,7 +890,7 @@ class SettingsDialog(tk.Toplevel):
         f_v_effects.pack(fill="x", padx=10, pady=5)
         
         self.effect_vars = {}
-        effects = ["Snow", "Rain", "Particles", "Glitch", "Ken Burns", "Vignette"]
+        effects = ["Snow", "Rain", "Particles", "Glitch", "Ken Burns", "Vignette", "Audio Visualizer"]
         saved_effects = config.get("video_effects", [config.get("video_effect", "None")])
         
         for i, eff in enumerate(effects):

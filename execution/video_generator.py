@@ -100,7 +100,7 @@ class VideoGenerator:
             overlay_clips = []
             for effect_type in effect_types:
                 if effect_type and effect_type != "None" and "Ken Burns" not in effect_type and "Yakınlaşma" not in effect_type:
-                    effect_clip = self._create_procedural_effect(effect_type, duration, target_res, intensity)
+                    effect_clip = self._create_procedural_effect(effect_type, duration, target_res, intensity, audio)
                     if effect_clip:
                         overlay_clips.append(effect_clip)
             
@@ -148,7 +148,7 @@ class VideoGenerator:
             logger.error(traceback.format_exc())
             return False
 
-    def _create_procedural_effect(self, effect_type, duration, resolution, intensity=50):
+    def _create_procedural_effect(self, effect_type, duration, resolution, intensity=50, audio_clip=None):
         """Generates a procedural effect clip using numpy and moviepy."""
         w, h = resolution
         
@@ -296,6 +296,96 @@ class VideoGenerator:
 
             clip = VideoClip(make_frame, duration=duration).with_position("center")
             clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            return clip
+
+        elif effect_type in ["Audio Visualizer", "Ses Dalgaları"]:
+            if audio_clip is None:
+                logger.warning("Audio Visualizer requested but no audio clip provided.")
+                return None
+                
+            fps = 24
+            audio_fps = audio_clip.fps
+            
+            # Extract mono audio array
+            try:
+                # Get audio array (handle potential multi-channel by taking mean)
+                audio_array = audio_clip.to_soundarray(fps=audio_fps)
+                if audio_array.ndim > 1:
+                    audio_array = np.mean(audio_array, axis=1)
+            except Exception as e:
+                logger.error(f"Failed to extract audio array for visualizer: {e}")
+                return None
+                
+            num_bars = 64
+            bar_width = max(2, w // (num_bars * 2))
+            spacing = max(1, bar_width // 2)
+            total_viz_width = num_bars * (bar_width + spacing)
+            start_x = (w - total_viz_width) // 2
+            
+            # Base max height of the bars
+            max_bar_height = h // 4 
+            base_y = int(h * 0.9) # Position near bottom
+            
+            samples_per_frame = int(audio_fps / fps)
+            total_samples = len(audio_array)
+            
+            # Intensity scales the height multiplier
+            height_multiplier = 1.0 + (intensity / 50.0)
+
+            def make_frame(t):
+                frame = np.zeros((h, w, 3), dtype=np.uint8)
+                
+                # Find current audio window
+                start_idx = int(t * audio_fps)
+                end_idx = min(start_idx + samples_per_frame, total_samples)
+                
+                if start_idx >= total_samples:
+                    return frame # Audio ended
+                    
+                window = np.abs(audio_array[start_idx:end_idx])
+                
+                if len(window) == 0:
+                    return frame
+                    
+                # Downsample window into bins
+                if len(window) >= num_bars:
+                    # Quick chunking for visual effect
+                    chunks = np.array_split(window, num_bars)
+                    bins = np.array([np.mean(chunk) for chunk in chunks])
+                else:
+                    bins = np.zeros(num_bars)
+                    
+                # Normalize and apply intensity
+                bins = bins * height_multiplier * 5.0 # Arbitrary scaling for visual impact
+                bins = np.clip(bins, 0.05, 1.0) # Ensure a tiny minimum bar and cap at 1.0
+                
+                # Draw bars
+                for i in range(num_bars):
+                    bar_h = int(bins[i] * max_bar_height)
+                    x1 = start_x + (i * (bar_width + spacing))
+                    x2 = x1 + bar_width
+                    y1 = base_y - bar_h
+                    y2 = base_y
+                    
+                    # Create a gradient color effect
+                    r = min(255, int(100 + (bins[i] * 155)))
+                    g = min(255, int(200 - (bins[i] * 50)))
+                    b = 255
+                    
+                    frame[y1:y2, x1:x2] = [r, g, b]
+                    
+                return frame
+                
+            def make_mask(t):
+                # Basic mask where any non-zero pixel is visible, with slight transparency
+                frame = make_frame(t)
+                mask = np.where(frame.any(axis=-1), 0.85, 0.0)
+                return mask
+
+            clip = VideoClip(make_frame, duration=duration).with_position("center")
+            clip.mask = VideoClip(make_mask, is_mask=True, duration=duration)
+            
+            # We don't need audio on the visualizer clip itself, CompositeVideoClip handles the base audio
             return clip
 
         return None
