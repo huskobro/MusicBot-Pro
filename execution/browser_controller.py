@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import platform
 import functools
 import logging
 from urllib.robotparser import RobotFileParser
@@ -145,9 +146,25 @@ class BrowserController:
         import subprocess
         self._cleanup_locks()
         
-        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        if not os.path.exists(chrome_path):
-            logger.error("Google Chrome not found at standard Mac path.")
+        system = platform.system()
+        chrome_path = ""
+        
+        if system == "Darwin": # macOS
+            chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        elif system == "Windows":
+             # Standard Windows paths
+             possible_paths = [
+                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                 r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                 os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe")
+             ]
+             for p in possible_paths:
+                 if os.path.exists(p):
+                     chrome_path = p
+                     break
+        
+        if not chrome_path or not os.path.exists(chrome_path):
+            logger.error(f"Google Chrome not found at standard path for {system}.")
             return False
 
         cmd = [
