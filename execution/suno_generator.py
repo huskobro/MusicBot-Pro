@@ -213,7 +213,10 @@ class SunoGenerator:
                 # Determine if song already has music (M1 or M2 presence)
                 # In scan_materials, we check files. Here we can also check the status column.
                 
-                if not force_update and is_done:
+                # [FIX] In dl_only or full mode, we DON'T skip generated items here 
+                # because we need them in rows_data for the Phase 2 (Download).
+                # We will skip them explicitly inside Phase 1 (Generation).
+                if not force_update and is_done and op_mode == "gen_only":
                     continue
                 
                 row_dict = {key: row[idx] for key, idx in headers.items() if idx < len(row)}
@@ -252,6 +255,14 @@ class SunoGenerator:
                         time.sleep(self.delay)
                     
                     self.update_row_status(row_dict['_row_idx'], "Processing")
+                    
+                    # [Safety] Skip generation if already done (and not forced)
+                    status = str(row_dict.get('status', '')).lower()
+                    if not force_update and ("generated" in status or "done" in status):
+                        logger.info(f"Skipping Generation for {rid} (Already Generated)")
+                        generated_ids.append(rid) # Move straight to potential download queue
+                        continue
+
                     if progress_callback: progress_callback(rid, "Sıraya Alınıyor... 🎵")
                     
                     success = self._generate_single_no_wait(row_dict, progress_callback)
