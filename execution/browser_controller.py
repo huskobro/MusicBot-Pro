@@ -71,8 +71,10 @@ class BrowserController:
         logger.info(f"Humanizer initialized: {h_conf}")
 
         # --- Mandatory Google Login Compatibility ---
-        # Updated to match the current system Chrome version (145.0.7632.77)
-        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.7632.77 Safari/537.36"
+        if platform.system() == "Windows":
+            self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        else:
+            self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.7632.77 Safari/537.36"
         self.last_action_time = 0
 
     def _cleanup_locks(self):
@@ -95,12 +97,19 @@ class BrowserController:
 
         self._cleanup_locks()
 
+        # Windows-specific: Wait a moment for native Chrome to fully release the folder
+        if platform.system() == "Windows":
+             time.sleep(1.5)
+
         logger.info(f"Starting browser with persistent profile at: {self.user_data_dir}")
         self.playwright = sync_playwright().start()
         
         try:
             # --- Mandatory Google Login Fix ---
             # Using the exact minimal set for maximum compatibility
+            
+            # THE FIX: Chrome with --user-data-dir uses a 'Default' subfolder by default.
+            # We must ensure Playwright also uses/sees the same structure.
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=self.user_data_dir,
                 headless=self.headless,

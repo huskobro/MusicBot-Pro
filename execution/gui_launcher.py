@@ -718,7 +718,7 @@ class SettingsDialog(tk.Toplevel):
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
         ttk.Label(f_lang, text=self.app.t("target_lang_label")).pack(anchor="w")
-        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese"], state="readonly")
+        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Thai"], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
@@ -2732,9 +2732,9 @@ class MusicBotGUI:
         """Launches the ACTUAL Google Chrome binary for manual login (Undetectable)."""
         
         # Determine current profile name/path
-        profile_name = "Default"
-        if hasattr(self, "current_profile_name") and self.current_profile_name:
-            profile_name = self.current_profile_name.strip().replace(" ", "_")
+        profile_name = self.config.get("active_preset", "Default")
+        if not profile_name: profile_name = "Default"
+        profile_name = profile_name.strip().replace(" ", "_")
         
         # Base path for profiles
         base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
@@ -2766,9 +2766,9 @@ class MusicBotGUI:
     def reset_chrome_profile(self):
         """Resets ONLY the current profile's Chrome data."""
         
-        profile_name = "Default"
-        if hasattr(self, "current_profile_name") and self.current_profile_name:
-            profile_name = self.current_profile_name.strip().replace(" ", "_")
+        profile_name = self.config.get("active_preset", "Default")
+        if not profile_name: profile_name = "Default"
+        profile_name = profile_name.strip().replace(" ", "_")
             
         base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
         profile_path = os.path.join(base_path, profile_name)
@@ -2867,9 +2867,9 @@ class MusicBotGUI:
                 
                 if browser_needed:
                     # ---------------- PROFILE LOGIC ----------------
-                    profile_name = "Default"
-                    if hasattr(self, "current_profile_name") and self.current_profile_name:
-                        profile_name = self.current_profile_name.strip().replace(" ", "_")
+                    profile_name = self.config.get("active_preset", "Default")
+                    if not profile_name: profile_name = "Default"
+                    profile_name = profile_name.strip().replace(" ", "_")
                     
                     base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
                     profile_path = os.path.join(base_path, profile_name)
@@ -3075,6 +3075,15 @@ class MusicBotGUI:
         try:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
             # We use one browser session for everything to avoid startups/shutdowns
+            # ---------------- PROFILE LOGIC ----------------
+            profile_name = self.config.get("active_preset", "Default")
+            if not profile_name: profile_name = "Default"
+            profile_name = profile_name.strip().replace(" ", "_")
+            
+            base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
+            profile_path = os.path.join(base_path, profile_name)
+            # -----------------------------------------------
+
             from browser_controller import BrowserController
             h_conf = {
                 "level": self.config.get("humanizer_level", "MEDIUM"),
@@ -3082,7 +3091,7 @@ class MusicBotGUI:
                 "retries": self.config.get("humanizer_retries", 1),
                 "adaptive": self.config.get("humanizer_adaptive", True)
             }
-            batch_browser = BrowserController(headless=False, humanizer_config=h_conf)
+            batch_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
             batch_browser.start()
             self.active_browser = batch_browser
             global_human = self.config.get("humanizer_enabled", True)
