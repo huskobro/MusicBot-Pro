@@ -112,10 +112,9 @@ class BrowserController:
                     "--disable-dev-shm-usage",
                     "--no-first-run",
                     "--no-default-browser-check",
-                    "--lang=tr-TR",
-                    "--password-store=basic"
-                ],
-                ignore_default_args=["--enable-automation", "--use-mock-keychain"],
+                    "--lang=tr-TR"
+                ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                 viewport=None, 
                 device_scale_factor=1,
                 locale="tr-TR",
@@ -172,9 +171,13 @@ class BrowserController:
             f"--user-data-dir={self.user_data_dir}",
             "--no-first-run",
             "--no-default-browser-check",
-            "--lang=tr-TR",
-            "--password-store=basic"
-        ] + urls
+            "--lang=tr-TR"
+        ]
+        
+        if platform.system() == "Darwin":
+            cmd.append("--password-store=basic")
+        
+        cmd += urls
 
         logger.info(f"Launching NATIVE Chrome for manual login: {urls}")
         try:
