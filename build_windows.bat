@@ -21,6 +21,9 @@ pyinstaller --noconfirm --clean ^
     --add-data "data;data" ^
     --add-data "execution;execution" ^
     --paths "execution" ^
+    --collect-all moviepy ^
+    --collect-all imageio ^
+    --collect-all playwright_stealth ^
     execution/gui_launcher.py
 
 echo [3/3] Temizlik yapiliyor...
