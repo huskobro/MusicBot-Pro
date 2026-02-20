@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [1/3] Gerekli kutuphaneler yukleniyor...
-pip install pyinstaller openpyxl selenium webdriver-manager google-generativeai
+pip install pyinstaller openpyxl selenium webdriver-manager google-generativeai playwright playwright-stealth humanizer imageio moviepy
 
 echo [2/3] Uygulama paketleniyor (Bu islem birkac dakika surebilir)...
 pyinstaller --noconfirm --clean ^
@@ -23,6 +23,7 @@ pyinstaller --noconfirm --clean ^
     --paths "execution" ^
     --collect-all moviepy ^
     --collect-all imageio ^
+    --collect-all playwright ^
     --collect-all playwright_stealth ^
     execution/gui_launcher.py
 
