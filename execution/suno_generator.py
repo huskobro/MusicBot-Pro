@@ -1388,7 +1388,11 @@ class SunoGenerator:
                         if input_ready:
                             self.tab.keyboard.press(f"{self.mod}+A")
                             time.sleep(0.1)
-                            self.tab.keyboard.type(str(target_val))
+                            # [Turbo Fix] Use fast type if turbo is on
+                            if self.turbo:
+                                self.tab.keyboard.type(str(target_val), delay=0)
+                            else:
+                                self.tab.keyboard.type(str(target_val), delay=100)
                             self.tab.keyboard.press("Enter")
                             time.sleep(2) # Wait for UI to update text
                             
@@ -1538,7 +1542,7 @@ class SunoGenerator:
                 time.sleep(0.3)
                 
                 # Search by ID only (Per user demonstration)
-                search_input.type(query, delay=50) # Use type for better input event trigger
+                search_input.type(query, delay=0 if self.turbo else 50) # Use type for better input event trigger
                 self.tab.keyboard.press("Enter")
                 
                 logger.debug(f"Search query '{query}' submitted.")

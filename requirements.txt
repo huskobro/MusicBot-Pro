@@ -7,4 +7,3 @@ moviepy
 numpy
 imageio
 imageio-ffmpeg
-humanizer
