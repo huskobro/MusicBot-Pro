@@ -11,10 +11,18 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-echo [1/3] Gerekli kutuphaneler yukleniyor...
-pip install pyinstaller openpyxl selenium webdriver-manager google-generativeai playwright playwright-stealth humanizer imageio moviepy numpy
+echo [1/3] Python sanal ortami hazirlaniyor...
+if not exist ".venv" (
+    python -m venv .venv
+)
+call .venv\Scripts\activate
 
-echo [2/3] Uygulama paketleniyor (Bu islem birkac dakika surebilir)...
+echo [2/3] Gerekli kutuphaneler yukleniyor...
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+
+echo [3/4] Uygulama paketleniyor (Bu islem birkac dakika surebilir)...
 python -m PyInstaller --noconfirm --clean ^
     --name "MusicBotPro" ^
     --windowed ^
@@ -28,7 +36,7 @@ python -m PyInstaller --noconfirm --clean ^
     --hidden-import playwright.sync_api ^
     execution/gui_launcher.py
 
-echo [3/3] Temizlik yapiliyor...
+echo [4/4] Temizlik yapiliyor...
 echo.
 echo --------------------------------------
 echo ISLEM TAMAMLANDI! 

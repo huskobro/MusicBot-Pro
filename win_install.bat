@@ -36,7 +36,8 @@ pip install -r requirements.txt
 
 :: 5. Tarayici bilesenlerini kur (Playwright)
 echo Tarayici bilesenleri yukleniyor...
-playwright install chromium
+python -m pip install playwright
+python -m playwright install chromium
 
 :: 6. Paketleme
 echo Uygulama paketleniyor (Windows exe olusturuluyor)...
