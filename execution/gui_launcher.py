@@ -720,7 +720,7 @@ class SettingsDialog(tk.Toplevel):
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
         ttk.Label(f_lang, text=self.app.t("target_lang_label")).pack(anchor="w")
-        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Thai"], state="readonly")
+        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Thai", "Hindi", "Mexican Spanish"], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
