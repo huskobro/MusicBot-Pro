@@ -101,6 +101,24 @@ class BrowserController:
                 os.remove(path)
             except Exception as e:
                 logger.warning(f"Failed to remove lock file {path}: {e}")
+        
+        # Clean iCloud-duplicated DB files inside Default/ that corrupt the profile
+        # These are files like "DIPS-wal 2", "SharedStorage-wal 3", "LOG 5", etc.
+        default_dir = os.path.join(self.user_data_dir, "Default")
+        if os.path.isdir(default_dir):
+            conflict_patterns = ["DIPS-wal [0-9]*", "SharedStorage-wal [0-9]*", 
+                                 "LOG [0-9]*", "LOG [0-9]*.old",
+                                 "BrowserMetrics-spare [0-9]*"]
+            for pattern in conflict_patterns:
+                for path in glob.glob(os.path.join(default_dir, pattern)):
+                    try:
+                        os.remove(path)
+                    except: pass
+            # Also clean top-level iCloud conflicts
+            for path in glob.glob(os.path.join(self.user_data_dir, "BrowserMetrics-spare [0-9]*")):
+                try:
+                    os.remove(path)
+                except: pass
 
     def start(self):
         """Starts the Playwright persistent context with mandatory compatibility flags."""
