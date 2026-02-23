@@ -305,6 +305,8 @@ class SunoGenerator:
                 
                 max_row_reached = 0
                 loop_count = 0
+                missing_counts = {rid: 0 for rid in pending_ids} # Track missing loops
+                
                 while pending_ids and (time.time() - start_wait < total_timeout):
                     if self.stop_requested: break
                     loop_count += 1
@@ -347,6 +349,7 @@ class SunoGenerator:
                     # 2. DECIDE WHO IS STILL PENDING AND IF WE NEED TO SCROLL
                     for rid in pending_ids:
                         if rid in found_this_loop:
+                            missing_counts[rid] = 0 # Reset
                             if found_this_loop[rid]["ready"]:
                                 # Extra check for robustness
                                 r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
@@ -361,7 +364,16 @@ class SunoGenerator:
                                 still_generating.append(rid) # Found but still generating
                         else:
                             # NOT FOUND IN CURRENT VIEW AT ALL
-                            still_generating.append(rid)
+                            missing_counts[rid] = missing_counts.get(rid, 0) + 1
+                            if missing_counts[rid] > 12: # After ~2.5 minutes of not seeing it
+                                logger.warning(f"Timeout waiting for {rid} to appear. Skipping.")
+                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                                if r_data:
+                                    self.update_row_status(r_data['_row_idx'], status="Failed", dl_status="failed")
+                                if progress_callback: progress_callback(rid, "Üretilemedi / Bulunamadı ❌")
+                                # DO NOT append to still_generating so it drops from pending_ids
+                            else:
+                                still_generating.append(rid)
                             all_targets_found_in_view = False
                     
                     # 3. SMART SCROLLING: Only if someone is missing from view
@@ -415,7 +427,7 @@ class SunoGenerator:
 
                 # ACTUAL DOWNLOAD PHASE
                 # Everything is ready, now we execute the persistent download logic
-                download_queue = list(generated_ids)
+                download_queue = [rid for rid in generated_ids if missing_counts.get(rid, 0) <= 12]
                 completed_ids = []
                 
                 # Clear search before starting final downloads to ensure clean list view
