@@ -78,16 +78,35 @@ class BrowserController:
         self.last_action_time = 0
 
     def _cleanup_locks(self):
-        """Removes Chrome's Singleton lock files."""
-        lock_files = ["SingletonLock", "SingletonCookie", "SingletonSocket"]
-        for lock in lock_files:
-            path = os.path.join(self.user_data_dir, lock)
-            if os.path.exists(path):
-                try:
-                    logger.info(f"Removing stale lock file: {path}")
-                    os.remove(path)
-                except Exception as e:
-                    logger.warning(f"Failed to remove lock file {path}: {e}")
+        """Removes Chrome's Singleton lock files and kills stale processes."""
+        import platform
+        import subprocess
+        import glob
+        
+        # Aggressive process cleanup for macOS/Linux based on profile path
+        if platform.system() in ["Darwin", "Linux"]:
+            try:
+                # Find PIDs of processes using this specific user_data_dir
+                cmd = f"ps aux | grep '{self.user_data_dir}' | grep -v grep | awk '{{print $2}}'"
+                output = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
+                if output:
+                    for pid in output.split('\n'):
+                        pid = pid.strip()
+                        if pid:
+                            subprocess.run(f"kill -9 {pid}", shell=True, stderr=subprocess.DEVNULL)
+                            logger.info(f"Killed stale browser process: {pid}")
+                time.sleep(1) # Give OS time to close tracked files
+            except Exception as e:
+                logger.warning(f"Process cleanup warning: {e}")
+                
+        # Handle iCloud sync conflict files & broken symlinks
+        singleton_files = glob.glob(os.path.join(self.user_data_dir, "Singleton*"))
+        for path in singleton_files:
+            try:
+                logger.info(f"Removing stale lock file: {path}")
+                os.remove(path)
+            except Exception as e:
+                logger.warning(f"Failed to remove lock file {path}: {e}")
 
     def start(self):
         """Starts the Playwright persistent context with mandatory compatibility flags."""
