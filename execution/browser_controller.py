@@ -86,15 +86,9 @@ class BrowserController:
         # Aggressive process cleanup for macOS/Linux based on profile path
         if platform.system() in ["Darwin", "Linux"]:
             try:
-                # Find PIDs of processes using this specific user_data_dir
-                cmd = f"ps aux | grep '{self.user_data_dir}' | grep -v grep | awk '{{print $2}}'"
-                output = subprocess.check_output(cmd, shell=True).decode('utf-8').strip()
-                if output:
-                    for pid in output.split('\n'):
-                        pid = pid.strip()
-                        if pid:
-                            subprocess.run(f"kill -9 {pid}", shell=True, stderr=subprocess.DEVNULL)
-                            logger.info(f"Killed stale browser process: {pid}")
+                # Use pkill with full command line matching to catch long paths
+                safe_path = self.user_data_dir.replace("'", "'\\''")
+                subprocess.run(f"pkill -9 -f '{safe_path}'", shell=True, stderr=subprocess.DEVNULL)
                 time.sleep(1) # Give OS time to close tracked files
             except Exception as e:
                 logger.warning(f"Process cleanup warning: {e}")
