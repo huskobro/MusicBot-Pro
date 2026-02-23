@@ -399,11 +399,42 @@ class SunoGenerator:
                     if not all_targets_found_in_view and loop_count > 5:
                         missing = [rid for rid in pending_ids if rid not in found_this_loop]
                         if missing:
-                            logger.info(f"Using Search Fallback for missing ID {missing[0]}...")
-                            r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == missing[0]), None)
+                            target_rid = missing[0]
+                            logger.info(f"Using Search Fallback for missing ID {target_rid}...")
+                            r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == target_rid), None)
                             try:
-                                self._search_for_song(missing[0], r_data.get('title', 'Song'))
-                                time.sleep(2)
+                                if self._search_for_song(target_rid, r_data.get('title', 'Song')):
+                                    time.sleep(3)
+                                    found_it = False
+                                    ready = False
+                                    s_rows = self.tab.locator("div.clip-row")
+                                    for si in range(min(10, s_rows.count())):
+                                        s_text = s_rows.nth(si).inner_text().lower()
+                                        if target_rid in s_text:
+                                            found_it = True
+                                            ready = "generating" not in s_text
+                                            break
+                                    
+                                    if not found_it:
+                                        missing_counts[target_rid] = missing_counts.get(target_rid, 0) + 2
+                                    else:
+                                        missing_counts[target_rid] = 0  # It exists!
+                                        if ready:
+                                            suno_title = f"{target_rid}_{r_data.get('title', 'Song')}"
+                                            if self._check_if_ready(suno_title, target_rid, suffix="1") and \
+                                               self._check_if_ready(suno_title, target_rid, suffix="2"):
+                                                if target_rid in still_generating:
+                                                    still_generating.remove(target_rid)
+                                                if progress_callback: progress_callback(target_rid, "Hazır! Beklemede... ✅")
+                                                
+                                    # Clear search to restore default view for the next loop
+                                    try:
+                                        search_input = self.tab.locator("input[aria-label='Search clips']").first
+                                        if search_input.is_visible():
+                                            search_input.fill("")
+                                            self.tab.keyboard.press("Enter")
+                                            time.sleep(2)
+                                    except: pass
                             except: pass
 
                     max_row_reached = max(max_row_reached, current_max_idx)
