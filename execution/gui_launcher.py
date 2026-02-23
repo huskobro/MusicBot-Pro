@@ -233,7 +233,8 @@ TRANSLATIONS = {
         "f_missing_m1": "Missing Music 1",
         "f_missing_m2": "Missing Music 2",
         "video_assets_output_label": "Assets & Output Settings",
-        "open_project_btn": "📊 Open Excel"
+        "open_project_btn": "📊 Open Excel",
+        "column_dl_status": "DL Status"
     },
     "Turkish": {
         "title": "MusicBot Pro",
@@ -446,7 +447,8 @@ TRANSLATIONS = {
         "f_missing_m1": "Eksik Müzik 1",
         "f_missing_m2": "Eksik Müzik 2",
         "video_assets_output_label": "Klasör ve Çıktı Ayarları",
-        "open_project_btn": "📊 Excel Aç"
+        "open_project_btn": "📊 Excel Aç",
+        "column_dl_status": "İndirilme Durumu"
     }
 }
 
@@ -654,6 +656,16 @@ class SettingsDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # [User Request] 5. Browser Operations Moved to Top
+        f_browser = ttk.LabelFrame(scroll_frame, text=self.app.t("browser_action_label"), padding=10)
+        f_browser.pack(fill="x", padx=10, pady=5)
+        
+        btn_grid = ttk.Frame(f_browser)
+        btn_grid.pack(fill="x")
+        
+        ttk.Button(btn_grid, text=self.app.t("open_chrome_btn"), command=self.open_chrome, style="Action.TButton").pack(side="left", fill="x", expand=True, padx=2, pady=5)
+        ttk.Button(btn_grid, text=self.app.t("reset_chrome_btn"), command=self.reset_chrome).pack(side="left", fill="x", expand=True, padx=2, pady=5)
+
         # 1. Default Checked Steps
         f_defaults = ttk.LabelFrame(scroll_frame, text=self.app.t("default_steps"), padding=10)
         f_defaults.pack(fill="x", padx=10, pady=5)
@@ -738,15 +750,7 @@ class SettingsDialog(tk.Toplevel):
         self.var_log_at_start = tk.BooleanVar(value=config.get("log_open_at_start", False))
         ttk.Checkbutton(f_startup_opts, text=self.app.t("log_startup"), variable=self.var_log_at_start).pack(anchor="w")
 
-        # 5. Browser Operations
-        f_browser = ttk.LabelFrame(scroll_frame, text=self.app.t("browser_action_label"), padding=10)
-        f_browser.pack(fill="x", padx=10, pady=5)
-        
-        btn_grid = ttk.Frame(f_browser)
-        btn_grid.pack(fill="x")
-        
-        ttk.Button(btn_grid, text=self.app.t("open_chrome_btn"), command=self.open_chrome, style="Action.TButton").pack(side="left", fill="x", expand=True, padx=2, pady=5)
-        ttk.Button(btn_grid, text=self.app.t("reset_chrome_btn"), command=self.reset_chrome).pack(side="left", fill="x", expand=True, padx=2, pady=5)
+
 
         # --- TAB 1.5: Suno Adv ---
         self.tab_adv_suno = ttk.Frame(self.notebook)
@@ -1123,6 +1127,8 @@ class SettingsDialog(tk.Toplevel):
         
         # Mark as active immediately (User requirement)
         self.config["active_preset"] = alias
+        if hasattr(self.app, 'profile_var'):
+            self.app.profile_var.set(f"👤 {alias}")
         
         data = self.presets[alias]
         settings = data.get("settings", {})
@@ -1629,7 +1635,7 @@ class MusicBotGUI:
         self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "dl_status", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
         self.tree.bind("<Motion>", self.on_tree_hover)
@@ -1655,6 +1661,7 @@ class MusicBotGUI:
         self.tree.heading("lyrics", text="📝", command=lambda: self.sort_tree("lyrics", False))
         self.tree.heading("music", text="🎵", command=lambda: self.sort_tree("music", False))
         self.tree.heading("art", text="🎨", command=lambda: self.sort_tree("art", False))
+        self.tree.heading("dl_status", text="⬇️", command=lambda: self.sort_tree("dl_status", False))
         self.tree.heading("video_status", text="🎬", command=lambda: self.sort_tree("video_status", False))
         self.tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
         self.tree.heading("run_l", text="L")
@@ -1672,6 +1679,7 @@ class MusicBotGUI:
         self.tree.column("lyrics", width=30, anchor="center")
         self.tree.column("music", width=30, anchor="center")
         self.tree.column("art", width=30, anchor="center")
+        self.tree.column("dl_status", width=30, anchor="center")
         self.tree.column("video_status", width=30, anchor="center")
         self.tree.column("materials", width=80, anchor="center")
         self.tree.column("run_l", width=30, anchor="center")
@@ -1698,6 +1706,10 @@ class MusicBotGUI:
         
         self.status_var = tk.StringVar(value=self.t("ready"))
         ttk.Label(self.status_bar, textvariable=self.status_var, font=("Helvetica", 10, "italic")).pack(side="left", padx=10)
+        
+        # [User Request] Active Profile Display at bottom
+        self.profile_var = tk.StringVar(value=f"👤 {self.config.get('active_preset', 'Default')}")
+        ttk.Label(self.status_bar, textvariable=self.profile_var, font=("Helvetica", 10, "bold"), foreground="#2ecc71").pack(side="right", padx=15)
         
         ttk.Label(self.status_bar, text="|", foreground="gray").pack(side="left", padx=5)
         self.lbl_current_song = ttk.Label(self.status_bar, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2")
@@ -1761,6 +1773,8 @@ class MusicBotGUI:
                             last_p = self.config.get("last_active_profile")
                             if last_p and last_p in self.config.get("artist_presets", {}):
                                 self.config["active_preset"] = last_p
+                                if hasattr(self, "profile_var"):
+                                    self.profile_var.set(f"👤 {last_p}")
             except Exception as e:
                 logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
                 # If settings are corrupted, we just continue with defaults
@@ -1948,7 +1962,8 @@ class MusicBotGUI:
                     self.all_songs[rid] = {
                         "id": rid, "title": prompt, "style": style,
                         "lyrics": has_lyrics, "music": has_music, "art": has_art, "video": has_video,
-                        "video_exists": False, "material_status": ""
+                        "video_exists": False, "material_status": "",
+                        "dl_status": str(row[headers['dl_status']]) if 'dl_status' in headers and row[headers['dl_status']] is not None else ""
                     }
             
             self.scan_materials()
@@ -2037,7 +2052,8 @@ class MusicBotGUI:
             # Required Columns
             required = [
                 "id", "prompt", "style", "title", "lyrics", "status", 
-                "visual_prompt", "video_prompt", "suno_style", "cover_art_prompt", "cover_art_path"
+                "visual_prompt", "video_prompt", "suno_style", "cover_art_prompt", "cover_art_path",
+                "dl_status", "dl_attempts"
             ]
             
             updates = False
@@ -2176,6 +2192,12 @@ class MusicBotGUI:
             s_lyrics = "✅" if s["lyrics"] else "⚪"
             s_music = "✅" if s["music"] else "⚪"
             s_art = "✅" if s["art"] else "⚪"
+            
+            s_dl_val = s.get("dl_status", "").lower()
+            if s_dl_val == "success": s_dl = "✅"
+            elif s_dl_val in ["failed", "skipped"]: s_dl = "❌"
+            else: s_dl = "⚪"
+            
             video_done = s.get("video") or s.get("video_exists")
             s_v = "✅" if video_done else "⚪"
             s_mat = s.get("material_status", "")
@@ -2208,7 +2230,7 @@ class MusicBotGUI:
             sort_key = (1 if video_done else 0, rid)
             
             display_items.append({
-                "rid": rid, "values": (s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_v, s_mat, s_rl, s_rm, s_rap, s_rai, s_rv),
+                "rid": rid, "values": (s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_dl, s_v, s_mat, s_rl, s_rm, s_rap, s_rai, s_rv),
                 "tags": tuple(row_tags),
                 "sort": sort_key
             })

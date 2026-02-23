@@ -442,23 +442,46 @@ class SunoGenerator:
                     r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
                     if not r_data: continue
                     
+                    row_idx = r_data['_row_idx']
+                    dl_status = str(r_data.get("dl_status", "")).lower()
+                    try:
+                        dl_attempts = int(r_data.get("dl_attempts", 0) or 0)
+                    except:
+                        dl_attempts = 0
+
+                    if dl_status == "success":
+                        logger.info(f"Skipping {rid} - Already successfully downloaded.")
+                        continue
+                    
+                    if dl_attempts >= 2:
+                        logger.info(f"Skipping {rid} - Max download attempts (2) reached.")
+                        if progress_callback: progress_callback(rid, "Max Deneme (2) Aşıldı! ❌")
+                        if dl_status != "failed":
+                            self.update_row_status(row_idx, dl_status="failed")
+                        continue
+                    
                     title = r_data.get("title", "Song")
                     suno_title = f"{rid}_{title}"
                     
-                    if progress_callback: progress_callback(rid, "İndiriliyor... ⬇️")
+                    if progress_callback: progress_callback(rid, f"İndiriliyor (Deneme {dl_attempts + 1}/2)... ⬇️")
                     
                     # Persistent _download_specific handles indexing, search fallback, and popup retries
                     s1 = self._download_specific(suno_title, rid, suffix="1")
                     s2 = self._download_specific(suno_title, rid, suffix="2")
                     
                     if s1 or s2:
-                        self.update_row_status(r_data['_row_idx'], "Generated")
+                        self.update_row_status(row_idx, status="Generated", dl_status="success", dl_attempts=0)
                         if progress_callback: 
                              status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
                              progress_callback(rid, status_txt)
                         completed_ids.append(rid)
                     else:
-                        if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
+                        new_attempts = dl_attempts + 1
+                        new_dl_status = "failed" if new_attempts >= 2 else ""
+                        self.update_row_status(row_idx, dl_status=new_dl_status, dl_attempts=new_attempts)
+                        if progress_callback: 
+                            err_txt = "İndirme Hatası! ❌" if new_attempts >= 2 else f"Deneme {new_attempts}/2 Başarısız"
+                            progress_callback(rid, err_txt)
 
                 return len(completed_ids)
 
@@ -1466,19 +1489,39 @@ class SunoGenerator:
         except Exception as e:
             logger.warning(f"Advanced options error: {e}")
 
-    def update_row_status(self, row_idx, status):
+    def update_row_status(self, row_idx, status=None, dl_status=None, dl_attempts=None):
         try:
             wb = openpyxl.load_workbook(self.metadata_path)
             ws = wb.active
-            status_col = None
-            for cell in ws[1]:
-                if str(cell.value).lower() == "status": status_col = cell.column
-            if not status_col: 
-                status_col = ws.max_column + 1
-                ws.cell(row=1, column=status_col, value="status")
-            ws.cell(row=row_idx, column=status_col, value=status)
+            headers = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
+            
+            if status is not None:
+                col = headers.get("status")
+                if not col:
+                    col = ws.max_column + 1
+                    ws.cell(row=1, column=col, value="status")
+                    headers["status"] = col
+                ws.cell(row=row_idx, column=col, value=status)
+            
+            if dl_status is not None:
+                col = headers.get("dl_status")
+                if not col:
+                    col = ws.max_column + 1
+                    ws.cell(row=1, column=col, value="dl_status")
+                    headers["dl_status"] = col
+                ws.cell(row=row_idx, column=col, value=dl_status)
+                
+            if dl_attempts is not None:
+                col = headers.get("dl_attempts")
+                if not col:
+                    col = ws.max_column + 1
+                    ws.cell(row=1, column=col, value="dl_attempts")
+                    headers["dl_attempts"] = col
+                ws.cell(row=row_idx, column=col, value=dl_attempts)
+                
             wb.save(self.metadata_path)
-        except: pass
+        except Exception as e:
+            logger.error(f"Failed to update Excel status: {e}")
 
     def _scroll_to_find_song(self, rid, title):
         """Gradually scrolls the SPECIFIC song list container to find a song."""
