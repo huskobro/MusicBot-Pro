@@ -656,7 +656,7 @@ class SettingsDialog(tk.Toplevel):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # [User Request] 5. Browser Operations Moved to Top
+        # [User Request] Browser Operations Moved to Top
         f_browser = ttk.LabelFrame(scroll_frame, text=self.app.t("browser_action_label"), padding=10)
         f_browser.pack(fill="x", padx=10, pady=5)
         
@@ -749,7 +749,6 @@ class SettingsDialog(tk.Toplevel):
         f_startup_opts.pack(fill="x", padx=10, pady=5)
         self.var_log_at_start = tk.BooleanVar(value=config.get("log_open_at_start", False))
         ttk.Checkbutton(f_startup_opts, text=self.app.t("log_startup"), variable=self.var_log_at_start).pack(anchor="w")
-
 
 
         # --- TAB 1.5: Suno Adv ---
@@ -1663,6 +1662,7 @@ class MusicBotGUI:
         self.tree.heading("art", text="🎨", command=lambda: self.sort_tree("art", False))
         self.tree.heading("dl_status", text="⬇️", command=lambda: self.sort_tree("dl_status", False))
         self.tree.heading("video_status", text="🎬", command=lambda: self.sort_tree("video_status", False))
+        self.tree.heading("dl_status", text="⬇️", command=lambda: self.sort_tree("dl_status", False))
         self.tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
@@ -1681,6 +1681,7 @@ class MusicBotGUI:
         self.tree.column("art", width=30, anchor="center")
         self.tree.column("dl_status", width=30, anchor="center")
         self.tree.column("video_status", width=30, anchor="center")
+        self.tree.column("dl_status", width=40, anchor="center")
         self.tree.column("materials", width=80, anchor="center")
         self.tree.column("run_l", width=30, anchor="center")
         self.tree.column("run_m", width=30, anchor="center")
@@ -1714,6 +1715,11 @@ class MusicBotGUI:
         ttk.Label(self.status_bar, text="|", foreground="gray").pack(side="left", padx=5)
         self.lbl_current_song = ttk.Label(self.status_bar, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2")
         self.lbl_current_song.pack(side="left", padx=5, fill="x", expand=True)
+
+        # Active Profile Display
+        self.lbl_active_profile = ttk.Label(self.status_bar, text="", font=("Helvetica", 10, "bold"), foreground="#2ecc71")
+        self.lbl_active_profile.pack(side="right", padx=10)
+        ttk.Label(self.status_bar, text=self.t("active_profile"), font=("Helvetica", 10)).pack(side="right")
 
         # Action Buttons
         self.f_btns = ttk.Frame(self.f_bottom)
@@ -1775,6 +1781,8 @@ class MusicBotGUI:
                                 self.config["active_preset"] = last_p
                                 if hasattr(self, "profile_var"):
                                     self.profile_var.set(f"👤 {last_p}")
+                                if hasattr(self, "lbl_active_profile"):
+                                    self.lbl_active_profile.config(text=last_p)
             except Exception as e:
                 logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
                 # If settings are corrupted, we just continue with defaults
@@ -1798,6 +1806,8 @@ class MusicBotGUI:
             # Save last profile for persistence
             if "active_preset" in self.config:
                 self.config["last_active_profile"] = self.config["active_preset"]
+                if hasattr(self, "lbl_active_profile"):
+                    self.lbl_active_profile.config(text=self.config["active_preset"])
                 
             with open(settings_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
@@ -1809,8 +1819,19 @@ class MusicBotGUI:
         """Updates the progress text for a specific row ID."""
         if self.tree.exists(rid):
             # If text is something like 'Suno: Generating 20%', we can extract info
-            # For now, we update the progress column directly
+            # Update the main progress column
             self.tree.set(rid, "progress", text)
+            
+            # Check for Download Status keywords
+            text_lower = text.lower()
+            if any(k in text_lower for k in ["iniyor", "indiriliyor"]):
+                self.tree.set(rid, "dl_status", "⏳")
+            elif any(k in text_lower for k in ["indirildi", "downloaded"]):
+                self.tree.set(rid, "dl_status", "✅")
+            elif any(k in text_lower for k in ["indirilemedi", "hata", "başarısız", "failed", "bulunamadı"]):
+                # Only set error if it's specifically a download-related error during batch
+                if "hata" in text_lower or "indirilemedi" in text_lower or "bulunamadı" in text_lower:
+                    self.tree.set(rid, "dl_status", "❌")
             
             # If it's a completion mark, we might want to refresh the bar
             if "✅" in text or "Done" in text:
