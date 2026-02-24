@@ -458,15 +458,11 @@ class SunoGenerator:
 
                 # ACTUAL DOWNLOAD PHASE
                 # Everything is ready, now we execute the persistent download logic
+                # Only exclude songs that were never found (timed out in wait phase)
                 download_queue = [rid for rid in generated_ids if missing_counts.get(rid, 0) <= 12]
                 completed_ids = []
                 
-                # Reset dl_attempts for all songs in queue (fresh start per batch run)
-                for rid in download_queue:
-                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                    if r_data:
-                        r_data["dl_attempts"] = 0
-                        self.update_row_status(r_data['_row_idx'], dl_attempts=0)
+                logger.info(f"Download queue: {download_queue} ({len(download_queue)} songs)")
                 
                 # Clear search before starting final downloads to ensure clean list view
                 try:
@@ -494,26 +490,16 @@ class SunoGenerator:
                     
                     row_idx = r_data['_row_idx']
                     dl_status = str(r_data.get("dl_status", "")).lower()
-                    try:
-                        dl_attempts = int(r_data.get("dl_attempts", 0) or 0)
-                    except:
-                        dl_attempts = 0
 
                     if dl_status == "success":
                         logger.info(f"Skipping {rid} - Already successfully downloaded.")
                         continue
                     
-                    if dl_attempts >= 2:
-                        logger.info(f"Skipping {rid} - Max download attempts (2) reached.")
-                        if progress_callback: progress_callback(rid, "Max Deneme (2) Aşıldı! ❌")
-                        if dl_status != "failed":
-                            self.update_row_status(row_idx, dl_status="failed")
-                        continue
-                    
                     title = r_data.get("title", "Song")
                     suno_title = f"{rid}_{title}"
                     
-                    if progress_callback: progress_callback(rid, f"İndiriliyor (Deneme {dl_attempts + 1}/2)... ⬇️")
+                    logger.info(f"Attempting download for {rid} ({title})...")
+                    if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
                     
                     # Persistent _download_specific handles indexing, search fallback, and popup retries
                     s1 = self._download_specific(suno_title, rid, suffix="1")
@@ -525,13 +511,11 @@ class SunoGenerator:
                              status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
                              progress_callback(rid, status_txt)
                         completed_ids.append(rid)
+                        logger.info(f"Download SUCCESS for {rid}: s1={s1}, s2={s2}")
                     else:
-                        new_attempts = dl_attempts + 1
-                        new_dl_status = "failed" if new_attempts >= 2 else ""
-                        self.update_row_status(row_idx, dl_status=new_dl_status, dl_attempts=new_attempts)
-                        if progress_callback: 
-                            err_txt = "İndirme Hatası! ❌" if new_attempts >= 2 else f"Deneme {new_attempts}/2 Başarısız"
-                            progress_callback(rid, err_txt)
+                        self.update_row_status(row_idx, dl_status="failed", dl_attempts=1)
+                        if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
+                        logger.warning(f"Download FAILED for {rid}: s1={s1}, s2={s2}")
 
                 return len(completed_ids)
 
