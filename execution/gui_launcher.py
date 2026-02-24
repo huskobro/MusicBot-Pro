@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging IMMEDIATELY to catch all imports and initializations.
@@ -2298,6 +2299,14 @@ class MusicBotGUI:
                 self.tree.item(i, tags=tuple(current_tags))
 
     def start_process(self):
+        try:
+            self._start_process_internal()
+        except Exception as e:
+            logger.error(f"Critical error in start_process: {e}", exc_info=True)
+            import traceback
+            messagebox.showerror(self.t("error"), f"Beklenmeyen bir hata oluştu:\n{e}\n\n{traceback.format_exc()}")
+
+    def _start_process_internal(self):
         # --- Pre-flight Checks 🛡️ ---
         if not self.project_path:
             logger.error(self.t("msg_no_project"))
