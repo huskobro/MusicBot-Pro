@@ -670,10 +670,18 @@ class SunoGenerator:
     def _download_specific(self, title, rid, suffix="1"):
         """Downloads a specific occurrence of a song title."""
         try:
-            # Ensure safe start state
+            # Ensure safe start state - clear any leftover search and escape menus
             try: self.tab.keyboard.press("Escape")
             except: pass
-            time.sleep(0.5)
+            time.sleep(0.3)
+            try:
+                search_input = self.tab.locator("input[aria-label='Search clips']").first
+                if search_input.is_visible() and search_input.input_value().strip():
+                    logger.info(f"[_download_specific] Clearing leftover search before processing {rid}_{suffix}")
+                    search_input.fill("")
+                    self.tab.keyboard.press("Enter")
+                    time.sleep(2)
+            except: pass
 
             rows = self.tab.locator("div.clip-row")
             count = rows.count()
@@ -719,7 +727,9 @@ class SunoGenerator:
                 # FALLBACK 2: SEARCH BAR (Last resort - filters the view)
                 if not target_row:
                     logger.info(f"[_download_specific] Scroll failed for {rid}. Using SEARCH fallback...")
+                    search_was_used = False
                     if self._search_for_song(rid, title):
+                        search_was_used = True
                         # WAIT FOR SEARCH LOADING (Polling for target)
                         for wait_search in range(5):
                             time.sleep(1)
@@ -732,6 +742,17 @@ class SunoGenerator:
                                         matched = True
                                         break
                                 if matched: break
+                    
+                    # ALWAYS clear search after using it (whether found or not)
+                    if search_was_used and not target_row:
+                        try:
+                            search_input = self.tab.locator("input[aria-label='Search clips']").first
+                            if search_input.is_visible():
+                                search_input.fill("")
+                                self.tab.keyboard.press("Enter")
+                                time.sleep(2)
+                                logger.info(f"[_download_specific] Cleared search after failed lookup for {rid}")
+                        except: pass
 
             if not target_row: 
                 logger.warning(f"[_download_specific] Target row NOT FOUND even after Search & Scroll for {rid}_{suffix}")
