@@ -7,6 +7,7 @@ import os
 import re
 import time
 import logging
+import random
 
 from logging.handlers import RotatingFileHandler
 
@@ -32,6 +33,10 @@ class SunoDownloaderMixin:
     def _download_from_row(self, target_row, title, rid, suffix="1"):
         """Downloads a song from an already-found row element. Handles More→Download→Format→Popup→Save."""
         try:
+            jitter = random.uniform(1.5, 4.5)
+            logger.info(f"[_download_from_row] Thread Jitter: Delaying {jitter:.2f}s for {rid}_{suffix} to prevent rate-limiting...")
+            time.sleep(jitter)
+            
             logger.info(f"[_download_from_row] Starting download for {rid}_{suffix}")
 
             max_attempts = self.config.retry_count

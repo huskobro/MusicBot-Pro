@@ -53,7 +53,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
 
     def _check_stop(self):
         if self.stop_requested:
-            logger.info("Graceful shutdown requested by user.")
+            logger.info("Kullanıcı tarafından durdurma isteği alındı.")
             raise UserStoppedException("User requested stop")
         
         # Advanced Params
@@ -84,7 +84,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             if self.persona_link:
                 success = self._setup_persona_workflow(progress_callback)
                 if not success:
-                    logger.warning("Persona workflow failed, falling back to direct navigation.")
+                    logger.warning("Persona akışı başarısız oldu, doğrudan yenilemeye geçiliyor.")
                     self.browser.goto(self.base_url, page=self.tab)
             else:
                 self.browser.goto(self.base_url, page=self.tab)
@@ -95,8 +95,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             self._ensure_v5_active()
 
             if "login" in self.tab.url or self.browser.is_visible("text='Log In'", page=self.tab):
-                logger.warning("--- LOGIN REQUIRED ---")
-                if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
+                logger.warning("--- GİRİŞ GEREKLİ ---")
+                if progress_callback: progress_callback("global", "Giriş Gerekli! Lütfen Chrome'u kontrol edin.")
                 
                 # Check repeatedly for login
                 for _ in range(60): # Wait up to 5 mins for user login
@@ -109,7 +109,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 time.sleep(3)
 
             if not os.path.exists(self.metadata_path):
-                logger.error("Results file not found.")
+                logger.error("Sonuç dosyası (Excel) bulunamadı.")
                 return 0
 
             wb = openpyxl.load_workbook(self.metadata_path)
@@ -136,8 +136,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 is_done = "done" in status or "generated" in status
                 
                 if not force_update and is_done:
-                    logger.info(f"Song {rid_orig} already generated on Suno. Skipping.")
-                    if progress_callback: progress_callback(str(rid_orig), "Skip: Already Generated ✅")
+                    logger.info(f"{rid_orig} ID'li şarkı Suno'da zaten üretilmiş. Atlanıyor.")
+                    if progress_callback: progress_callback(str(rid_orig), "Atlandı: Zaten Üretilmiş ✅")
                     continue
                 
                 row_dict = {key: row[idx] for key, idx in headers.items() if idx < len(row)}
@@ -145,7 +145,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 rows_data.append(row_dict)
             
             if not rows_data:
-                logger.info("Nothing to generate on Suno.")
+                logger.info("Suno'da üretilecek şarkı bulunamadı.")
                 return 0
 
             if max_count and max_count > 0:
@@ -212,7 +212,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             self._ensure_v5_active()
 
             if "login" in self.tab.url or self.browser.is_visible("text='Log In'", page=self.tab):
-                logger.warning("--- LOGIN REQUIRED ---")
+                logger.warning("--- GİRİŞ GEREKLİ ---")
                 if progress_callback: progress_callback("global", "Login Required! Please check Chrome.")
                 for _ in range(60): 
                     if "create" in self.tab.url and "login" not in self.tab.url: break
@@ -272,7 +272,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 rows_data.append(row_dict)
             
             if not rows_data:
-                logger.info("Nothing to batch generate.")
+                logger.info("Toplu üretim için şarkı bulunamadı.")
                 return 0
                 
             self._batch_stats["total"] = len(rows_data)
@@ -282,7 +282,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             
             # --- PHASE 1: BATCH GENERATION ---
             if op_mode in ["full", "gen_only"]:
-                logger.info("--- Starting Batch Generation Phase ---")
+                logger.info("--- Toplu Üretim Aşaması Başlıyor ---")
                 if progress_callback: progress_callback("global", "Toplu Üretim Başlatılıyor... 🚀")
                 
                 for i, row_dict in enumerate(rows_data):
@@ -293,10 +293,10 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     # Ensure a fresh state for every song in batch mode by reloading
                     if i >= 0: # Reload for every song to be absolutely sure
                         if self.persona_link:
-                            logger.info(f"Batch: Re-activating Persona for song {rid}...")
+                            logger.info(f"Toplu Üretim: {rid} ID'li şarkı için Persona tekrar aktif ediliyor...")
                             self._setup_persona_workflow(progress_callback)
                         else:
-                            logger.info(f"Batch: Reloading /create for song {rid}...")
+                            logger.info(f"Toplu Üretim: {rid} ID'li şarkı için sayfa yenileniyor (/create)...")
                             self.browser.goto(self.base_url, page=self.tab)
                         
                         time.sleep(3)
@@ -310,7 +310,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     # [Safety] Skip generation if already done (and not forced)
                     status = str(row_dict.get('status', '')).lower()
                     if not force_update and ("generated" in status or "done" in status):
-                        logger.info(f"Skipping Generation for {rid} (Already Generated)")
+                        logger.info(f"{rid} ID'li şarkı için Üretim Atlanıyor (Zaten Üretilmiş)")
                         generated_ids.append(rid) # Move straight to potential download queue
                         continue
 
@@ -323,7 +323,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     else:
                         self.update_row_status(row_dict['_row_idx'], "Failed")
                 
-                logger.info(f"Batch Generation Phase Complete. {len(generated_ids)} songs queued.")
+                logger.info(f"Toplu Üretim Aşaması Tamamlandı. {len(generated_ids)} şarkı sıraya eklendi.")
             
             from suno_config import DownloadContext, SongState
             download_queue = []
@@ -346,7 +346,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
 
             # --- PHASE 2: BATCH DOWNLOAD ---
             if op_mode in ["full", "dl_only"] and generated_ids:
-                logger.info("--- Starting Batch Download Phase ---")
+                logger.info("--- Toplu İndirme Aşaması Başlıyor ---")
                 if progress_callback: progress_callback("global", "Toplu İndirme Bekleniyor... ⬇️")
                 
                 # PRE-DOWNLOAD PHASE: SMART WAIT ROOM
@@ -359,7 +359,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     start_wait = time.time()
                     total_timeout = max(600, len(pending_ids) * 180) 
                     
-                    logger.info(f"Targeted Batch: Waiting for {len(pending_ids)} songs to complete before download...")
+                    logger.info(f"Hedefli Toplu İşlem: İndirmeden önce {len(pending_ids)} şarkının tamamlanması bekleniyor...")
                     
                     max_row_reached = 0
                     loop_count = 0
@@ -498,7 +498,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 # Only exclude songs that were never found (timed out in wait phase)
                 completed_ids = []
                 
-                logger.info(f"Download queue: {[c.rid for c in download_queue if c.state != SongState.FAILED]} ({len([c for c in download_queue if c.state != SongState.FAILED])} songs)")
+                logger.info(f"İndirme sırası: {[c.rid for c in download_queue if c.state != SongState.FAILED]} ({len([c for c in download_queue if c.state != SongState.FAILED])} şarkı)")
                 
                 # Clear any leftover search
                 try:
@@ -511,7 +511,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 # ===== PHASE A: FULL WATERFALL SCROLL =====
                 # Scroll through the entire song list to load everything into DOM
-                logger.info("Phase A: Full waterfall scroll to load all songs into DOM...")
+                logger.info("Aşama A: Tüm şarkıları DOM'a yüklemek için şelale kaydırması yapılıyor...")
                 if progress_callback: progress_callback("global", "Şarkı listesi yükleniyor... ⬇️")
                 try:
                     for scroll_pass in range(15):  # Up to 15 scroll passes
@@ -523,11 +523,11 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             self.tab.mouse.wheel(0, 3000)
                             time.sleep(1.5)
                             new_count = self.tab.locator("div.clip-row").count()
-                            logger.info(f"Scroll pass {scroll_pass+1}: {current_count} → {new_count} rows")
+                            logger.info(f"Kaydırma geçişi {scroll_pass+1}: {current_count} → {new_count} satır")
                             if new_count <= current_count:
                                 break  # No more rows loading
                 except Exception as e:
-                    logger.warning(f"Waterfall scroll error: {e}")
+                    logger.warning(f"Şelale kaydırma hatası: {e}")
                 
                 # Scroll back to top 
                 try:
@@ -537,7 +537,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 # ===== PHASE B: SINGLE-PASS INDEX & DOWNLOAD =====
                 # ONE scan of DOM → index ALL songs → then download from index
-                logger.info("Phase B: Single-pass DOM indexing...")
+                logger.info("Aşama B: Tek geçişli (Single-pass) DOM indeksleme...")
                 if progress_callback: progress_callback("global", "DOM taranıyor... 🔍")
                 
                 # Step 1: Build index in ONE pass (O(n+m) instead of O(n×m))
@@ -547,7 +547,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 total_rows = rows.count()
                 
                 valid_ctxs = [c for c in download_queue if c.state != SongState.FAILED]
-                logger.info(f"[Phase B] Indexing {total_rows} DOM rows for {len(valid_ctxs)} target songs...")
+                logger.info(f"[Aşama B] {len(valid_ctxs)} hedef şarkı için {total_rows} DOM satırı indeksleniyor...")
                 
                 for i in range(total_rows):
                     try:
@@ -562,7 +562,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 found_count = len(song_index)
                 not_found_ctxs = [c for c in valid_ctxs if c.rid not in song_index]
-                logger.info(f"[Phase B] Index complete: {found_count} found, {len(not_found_ctxs)} not found in {total_rows} rows")
+                logger.info(f"[Aşama B] İndeksleme tamamlandı: {total_rows} satırda {found_count} tane bulundu, {len(not_found_ctxs)} bulunamadı")
                 
                 # Step 2: Download from index (no more DOM scanning needed!)
                 for ctx in valid_ctxs:
@@ -582,7 +582,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     suno_title = f"{ctx.rid}_{ctx.title}"
                     occurrences = song_index[ctx.rid]
                     
-                    logger.info(f"[Phase B] Downloading {ctx.rid} ({len(occurrences)} occurrences)...")
+                    logger.info(f"[Aşama B] {ctx.rid} ID'li şarkı indiriliyor ({len(occurrences)} versiyon bulundu)...")
                     if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
                     ctx.state = SongState.DOWNLOADING
                     
@@ -614,18 +614,18 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         if progress_callback: progress_callback(ctx.rid, status_txt)
                         completed_ids.append(ctx.rid)
                         ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
-                        logger.info(f"✅ Download SUCCESS for {ctx.rid}: s1={s1}, s2={s2}")
+                        logger.info(f"✅ İndirme BAŞARILI ({ctx.rid}): s1={s1}, s2={s2}")
                     else:
                         self._batch_stats["failed"] += 1
                         trigger_dashboard_update()
                         self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
                         if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
                         ctx.state = SongState.FAILED
-                        logger.warning(f"❌ Download FAILED for {ctx.rid}: s1={s1}, s2={s2}")
+                        logger.warning(f"❌ İndirme BAŞARISIZ ({ctx.rid}): s1={s1}, s2={s2}")
                 
                 # ===== PHASE C: SEARCH FALLBACK FOR NOT-FOUND SONGS =====
                 if not_found_ctxs:
-                    logger.info(f"Phase C: Search fallback for {len(not_found_ctxs)} not-found songs: {[c.rid for c in not_found_ctxs]}")
+                    logger.info(f"Aşama C: Sayfada bulunamayan {len(not_found_ctxs)} şarkı için arama motoru deneniyor: {[c.rid for c in not_found_ctxs]}")
                     if progress_callback: progress_callback("global", f"Arama ile {len(not_found_ctxs)} şarkı aranıyor... 🔍")
                     
                     for ctx in not_found_ctxs:
@@ -634,7 +634,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         # SESSION CHECK
                         try: self.tab.url
                         except:
-                            logger.warning(f"Tab crashed before searching {ctx.rid}. Recovering...")
+                            logger.warning(f"{ctx.rid} aranmadan önce sekme çöktü. Kurtarılıyor...")
                             if self.persona_link: self._setup_persona_workflow()
                             else: self.browser.goto(self.base_url, page=self.tab)
                             time.sleep(5)
@@ -642,7 +642,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             
                         suno_title = f"{ctx.rid}_{ctx.title}"
                         
-                        logger.info(f"[Phase C] Searching for {ctx.rid}...")
+                        logger.info(f"[Aşama C] {ctx.rid} ID'li şarkı aranıyor...")
                         if progress_callback: progress_callback(ctx.rid, f"Aranıyor... 🔍")
                         
                         if self._search_for_song(ctx.rid, ctx.title):
@@ -654,7 +654,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                     occurrences.append(rows.nth(i))
                             
                             if occurrences:
-                                logger.info(f"[Phase C] Found {len(occurrences)} occurrences for {ctx.rid} via search.")
+                                logger.info(f"[Aşama C] Arama ile {ctx.rid} ID'li şarkıdan {len(occurrences)} versiyon bulundu.")
                                 if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
                                 ctx.state = SongState.DOWNLOADING
                                 
@@ -673,7 +673,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                         if future_s2:
                                             s2 = future_s2.result(timeout=180)
                                     except Exception as e:
-                                        logger.error(f"Thread timeout or failure during Phase C download for {ctx.rid}: {e}")
+                                        logger.error(f"Aşama C sırasında indirme işleminde zaman aşımı veya hata ({ctx.rid}): {e}")
                                 
                                 if s1 or s2:
                                     self._batch_stats["success"] += 1
@@ -683,18 +683,18 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                     if progress_callback: progress_callback(ctx.rid, status_txt)
                                     completed_ids.append(ctx.rid)
                                     ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
-                                    logger.info(f"✅ Download SUCCESS for {ctx.rid}: s1={s1}, s2={s2}")
+                                    logger.info(f"✅ İndirme BAŞARILI ({ctx.rid}): s1={s1}, s2={s2}")
                                 else:
                                     self._batch_stats["failed"] += 1
                                     trigger_dashboard_update()
                                     self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
                                     if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
                                     ctx.state = SongState.FAILED
-                                    logger.warning(f"❌ Download FAILED for {ctx.rid}")
+                                    logger.warning(f"❌ İndirme BAŞARISIZ ({ctx.rid})")
                             else:
                                 self._batch_stats["failed"] += 1
                                 trigger_dashboard_update()
-                                logger.warning(f"[Phase C] {ctx.rid} not found even via search. Skipping.")
+                                logger.warning(f"[Aşama C] {ctx.rid} arama sonucunda bile bulunamadı. Atlanıyor.")
                                 if progress_callback: progress_callback(ctx.rid, "Bulunamadı ❌")
                                 ctx.state = SongState.FAILED
                                 self.update_row_status(ctx.row_idx, dl_status="failed")

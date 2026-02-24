@@ -1126,8 +1126,12 @@ class SettingsDialog(tk.Toplevel):
         
         # Mark as active immediately (User requirement)
         self.config["active_preset"] = alias
+        # === FIX: Set cmb_profile directly (no 👤 prefix, combobox holds plain name) ===
+        if hasattr(self.app, 'cmb_profile'):
+            self.app.cmb_profile['values'] = list(self.presets.keys())  # Ensure list is up to date
+            self.app.cmb_profile.set(alias)
         if hasattr(self.app, 'profile_var'):
-            self.app.profile_var.set(f"👤 {alias}")
+            self.app.profile_var.set(alias)
         
         data = self.presets[alias]
         settings = data.get("settings", {})
@@ -1255,7 +1259,11 @@ class SettingsDialog(tk.Toplevel):
                 self.ent_preset_alias.delete(0, tk.END)
 
     def update_preset_combo(self):
-        self.combo_preset_select['values'] = list(self.presets.keys())
+        preset_keys = list(self.presets.keys())
+        self.combo_preset_select['values'] = preset_keys
+        # === FIX: Also keep the main dashboard profile combobox in sync ===
+        if hasattr(self.app, 'cmb_profile'):
+            self.app.cmb_profile['values'] = preset_keys
 
     def load_prompts_data(self):
         import json
@@ -1615,16 +1623,22 @@ class MusicBotGUI:
         ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self.apply_filter).pack(side="left", padx=10)
         ttk.Checkbutton(self.f_run_ops, text=self.t("compilation"), variable=self.var_run_compilation, command=self.apply_filter).pack(side="left", padx=10)
 
-        # Batch Mode Section (Moved to Main)
+        # Hidden vars for _quick_save_advanced compatibility (Vocal/Lyrics moved to status bar info only)
+        self.var_vocal_gender_enabled = tk.BooleanVar(value=self.config.get("vocal_gender_enabled", False))
+        self.var_vocal_gender = tk.StringVar(value=self.config.get("vocal_gender", self.t("vocal_default")))
+        self.var_lyrics_mode_enabled = tk.BooleanVar(value=self.config.get("lyrics_mode_enabled", False))
+        self.var_lyrics_mode = tk.StringVar(value=self.config.get("lyrics_mode", self.t("vocal_default")))
+
+        # Batch Mode Section
         ttk.Separator(self.f_run_ops, orient="vertical").pack(side="left", fill="y", padx=10)
         
         self.var_suno_batch = tk.BooleanVar(value=self.config.get("suno_batch_mode", False))
-        ttk.Checkbutton(self.f_run_ops, text=self.t("batch"), variable=self.var_suno_batch).pack(side="left", padx=5)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("batch"), variable=self.var_suno_batch, command=self._quick_save_advanced).pack(side="left", padx=5)
         
         self.var_batch_op = tk.StringVar(value=self.config.get("suno_batch_op_mode", "full"))
-        ttk.Radiobutton(self.f_run_ops, text="Full", variable=self.var_batch_op, value="full").pack(side="left", padx=2)
-        ttk.Radiobutton(self.f_run_ops, text="Gen", variable=self.var_batch_op, value="gen_only").pack(side="left", padx=2)
-        ttk.Radiobutton(self.f_run_ops, text="DL", variable=self.var_batch_op, value="dl_only").pack(side="left", padx=2)
+        ttk.Radiobutton(self.f_run_ops, text="Full", variable=self.var_batch_op, value="full", command=self._quick_save_advanced).pack(side="left", padx=2)
+        ttk.Radiobutton(self.f_run_ops, text="Gen", variable=self.var_batch_op, value="gen_only", command=self._quick_save_advanced).pack(side="left", padx=2)
+        ttk.Radiobutton(self.f_run_ops, text="DL", variable=self.var_batch_op, value="dl_only", command=self._quick_save_advanced).pack(side="left", padx=2)
         
         self.var_turbo = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.f_run_ops, text="Turbo", variable=self.var_turbo).pack(side="left", padx=5)
@@ -1637,8 +1651,17 @@ class MusicBotGUI:
         columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "dl_status", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
         self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
         self.tree.bind("<Button-1>", self.on_tree_click)
+        self.tree.bind("<Button-2>", self.on_right_click) # macOS Right-Click
+        self.tree.bind("<Button-3>", self.on_right_click) # Windows Right-Click
         self.tree.bind("<Motion>", self.on_tree_hover)
         self.tree.bind("<Leave>", self.on_tree_leave)
+        
+        # Context Menu
+        self.tree_menu = tk.Menu(self.root, tearoff=0)
+        self.tree_menu.add_command(label=self.t("select_all"), command=self.select_all)
+        self.tree_menu.add_command(label=self.t("deselect_all"), command=self.deselect_all)
+        self.tree_menu.add_separator()
+        self.tree_menu.add_command(label="Open Output Folder", command=self.open_image_folder)
         
         # Style Tags
         self.tree.tag_configure("hover", background="#eef6ff") 
@@ -1657,12 +1680,11 @@ class MusicBotGUI:
         self.tree.heading("title", text=self.t("column_title"), command=lambda: self.sort_tree("title", False))
         self.tree.heading("style", text=self.t("column_style"))
         self.tree.heading("progress", text=self.t("column_progress"))
-        self.tree.heading("lyrics", text="📝", command=lambda: self.sort_tree("lyrics", False))
-        self.tree.heading("music", text="🎵", command=lambda: self.sort_tree("music", False))
-        self.tree.heading("art", text="🎨", command=lambda: self.sort_tree("art", False))
-        self.tree.heading("dl_status", text="⬇️", command=lambda: self.sort_tree("dl_status", False))
-        self.tree.heading("video_status", text="🎬", command=lambda: self.sort_tree("video_status", False))
-        self.tree.heading("dl_status", text="⬇️", command=lambda: self.sort_tree("dl_status", False))
+        self.tree.heading("lyrics", text="LYR", command=lambda: self.sort_tree("lyrics", False))
+        self.tree.heading("music", text="MUS", command=lambda: self.sort_tree("music", False))
+        self.tree.heading("art", text="ART", command=lambda: self.sort_tree("art", False))
+        self.tree.heading("dl_status", text="DL", command=lambda: self.sort_tree("dl_status", False))
+        self.tree.heading("video_status", text="VID", command=lambda: self.sort_tree("video_status", False))
         self.tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
         self.tree.heading("run_l", text="L")
         self.tree.heading("run_m", text="M")
@@ -1676,8 +1698,12 @@ class MusicBotGUI:
         self.tree.column("title", width=200)
         self.tree.column("style", width=100)
         self.tree.column("progress", width=120)
-        self.tree.column("lyrics", width=30, anchor="center")
-        self.tree.column("music", width=30, anchor="center")
+        self.tree.column("lyrics", width=40, anchor="center")
+        self.tree.column("music", width=40, anchor="center")
+        self.tree.column("art", width=40, anchor="center")
+        self.tree.column("dl_status", width=40, anchor="center")
+        self.tree.column("video_status", width=40, anchor="center")
+        self.tree.column("materials", width=80, anchor="center")
         self.tree.column("art", width=30, anchor="center")
         self.tree.column("dl_status", width=30, anchor="center")
         self.tree.column("video_status", width=30, anchor="center")
@@ -1708,18 +1734,32 @@ class MusicBotGUI:
         self.status_var = tk.StringVar(value=self.t("ready"))
         ttk.Label(self.status_bar, textvariable=self.status_var, font=("Helvetica", 10, "italic")).pack(side="left", padx=10)
         
-        # [User Request] Active Profile Display at bottom
-        self.profile_var = tk.StringVar(value=f"👤 {self.config.get('active_preset', 'Default')}")
-        ttk.Label(self.status_bar, textvariable=self.profile_var, font=("Helvetica", 10, "bold"), foreground="#2ecc71").pack(side="right", padx=15)
+        # [User Request] Active Profile Display Combobox at bottom
+        ttk.Label(self.status_bar, text="👤", font=("Helvetica", 10, "bold")).pack(side="right", padx=(5, 10))
+        self.profile_var = tk.StringVar(value=self.config.get('active_preset', 'Default'))
+        self.cmb_profile = ttk.Combobox(self.status_bar, textvariable=self.profile_var, state="readonly", width=15)
+        self.cmb_profile['values'] = list(self.config.get("chrome_presets", {"Default": {}}).keys())
+        self.cmb_profile.bind("<<ComboboxSelected>>", self._on_profile_changed)
+        self.cmb_profile.pack(side="right", padx=0)
+
+        # Profile Info Badge (shows key settings at a glance, updates on profile switch)
+        self.profile_info_var = tk.StringVar(value="")
+        self.lbl_profile_info = ttk.Label(
+            self.status_bar, textvariable=self.profile_info_var,
+            font=("Helvetica", 9), foreground="#555555", cursor="hand2"
+        )
+        self.lbl_profile_info.pack(side="right", padx=(0, 8))
+        self.lbl_profile_info.bind("<Button-1>", lambda e: self.open_settings())
+        self._refresh_profile_badge()  # Fill badge on load
         
         ttk.Label(self.status_bar, text="|", foreground="gray").pack(side="left", padx=5)
-        self.lbl_current_song = ttk.Label(self.status_bar, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2")
-        self.lbl_current_song.pack(side="left", padx=5, fill="x", expand=True)
 
-        # Active Profile Display
-        self.lbl_active_profile = ttk.Label(self.status_bar, text="", font=("Helvetica", 10, "bold"), foreground="#2ecc71")
-        self.lbl_active_profile.pack(side="right", padx=10)
-        ttk.Label(self.status_bar, text=self.t("active_profile"), font=("Helvetica", 10)).pack(side="right")
+        self.f_song_info = ttk.Frame(self.f_bottom)
+        self.f_song_info.pack(fill="x", pady=2)
+        self.lbl_current_song = ttk.Label(self.f_song_info, textvariable=self.current_song_var, font=("Helvetica", 10, "bold"), foreground="#4a90e2", wraplength=1000)
+        self.lbl_current_song.pack(side="left", fill="x", expand=True)
+
+        # Active Profile Display (Removed - Now handled by cmb_profile widget above)
 
         # Action Buttons
         self.f_btns = ttk.Frame(self.f_bottom)
@@ -1733,20 +1773,20 @@ class MusicBotGUI:
         self.btn_stop.configure(state="disabled")
 
         # --- STATISTICS DASHBOARD (PHASE 6) ---
-        self.f_stats = ttk.Frame(self.f_bottom)
-        self.f_stats.pack(fill="x", pady=(5, 0))
+        self.f_stats = tk.Frame(self.f_bottom, bg="#f8f9fa", bd=1, relief="solid")
+        self.f_stats.pack(fill="x", pady=(5, 5), ipady=4)
         
-        self.var_stat_total = tk.StringVar(value="Total: 0")
-        self.var_stat_success = tk.StringVar(value="Success: 0")
-        self.var_stat_failed = tk.StringVar(value="Failed: 0")
-        self.var_stat_time = tk.StringVar(value="Time: 00:00")
-        self.var_stat_threads = tk.StringVar(value="Threads: 0")
+        self.var_stat_total = tk.StringVar(value="📊 Total: 0")
+        self.var_stat_success = tk.StringVar(value="✅ Success: 0")
+        self.var_stat_failed = tk.StringVar(value="❌ Failed: 0")
+        self.var_stat_time = tk.StringVar(value="⏱ Time: 00:00")
+        self.var_stat_threads = tk.StringVar(value="⚙️ Threads: 0")
         
-        ttk.Label(self.f_stats, textvariable=self.var_stat_total, font=("Helvetica", 9, "bold")).pack(side="left", expand=True)
-        ttk.Label(self.f_stats, textvariable=self.var_stat_success, font=("Helvetica", 9), foreground="#2ecc71").pack(side="left", expand=True)
-        ttk.Label(self.f_stats, textvariable=self.var_stat_failed, font=("Helvetica", 9), foreground="#e74c3c").pack(side="left", expand=True)
-        ttk.Label(self.f_stats, textvariable=self.var_stat_time, font=("Helvetica", 9, "bold"), foreground="#4a90e2").pack(side="left", expand=True)
-        ttk.Label(self.f_stats, textvariable=self.var_stat_threads, font=("Helvetica", 9, "italic")).pack(side="left", expand=True)
+        tk.Label(self.f_stats, textvariable=self.var_stat_total, font=("Helvetica", 10, "bold"), bg="#f8f9fa", fg="#2c3e50").pack(side="left", expand=True)
+        tk.Label(self.f_stats, textvariable=self.var_stat_success, font=("Helvetica", 10, "bold"), bg="#f8f9fa", fg="#27ae60").pack(side="left", expand=True)
+        tk.Label(self.f_stats, textvariable=self.var_stat_failed, font=("Helvetica", 10, "bold"), bg="#f8f9fa", fg="#c0392b").pack(side="left", expand=True)
+        tk.Label(self.f_stats, textvariable=self.var_stat_time, font=("Helvetica", 10, "bold"), bg="#f8f9fa", fg="#2980b9").pack(side="left", expand=True)
+        tk.Label(self.f_stats, textvariable=self.var_stat_threads, font=("Helvetica", 10, "italic"), bg="#f8f9fa", fg="#8e44ad").pack(side="left", expand=True)
 
         # --- COLLAPSIBLE LOGS (NEW) ---
         self.f_log_container = ttk.Frame(self.root)
@@ -2111,9 +2151,9 @@ class MusicBotGUI:
         try:
             percent = (current / total) * 100
             filled_len = int(10 * current // total)
-            bar = "█" * filled_len + "░" * (10 - filled_len)
+            bar = "▰" * filled_len + "▱" * (10 - filled_len)
             return f"{bar} {int(percent)}%"
-        except: return "░░░░░░░░░░ 0%"
+        except: return "▱▱▱▱▱▱▱▱▱▱ 0%"
 
     def apply_filter(self, *args):
         # Debounced Search (300ms)
@@ -2125,8 +2165,19 @@ class MusicBotGUI:
         self._search_timer = self.root.after(300, self._do_filter)
 
     def _do_filter(self):
-        query = self.filter_var.get().lower()
+        query = self.filter_var.get().strip()
+        query_lower = query.lower()
         active_only = self.var_active_only.get()
+        
+        # --- ID RANGE DETECTION: e.g. "120-150" ---
+        id_range_min = None
+        id_range_max = None
+        import re as _re
+        range_match = _re.match(r'^(\d+)\s*-\s*(\d+)$', query.strip())
+        if range_match:
+            id_range_min = int(range_match.group(1))
+            id_range_max = int(range_match.group(2))
+            query_lower = ""  # Clear text query; only use range filter
         
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -2134,8 +2185,16 @@ class MusicBotGUI:
         self.filtered_ids = []
         
         for rid, s in self.all_songs.items():
-            # 1. Text Query
-            if query and query not in s["title"].lower() and query not in rid.lower():
+            # 1. Text Query OR ID Range Filter
+            if id_range_min is not None:
+                # Range filter mode: check if numeric ID falls in [min, max]
+                try:
+                    rid_num = int(rid)
+                    if not (id_range_min <= rid_num <= id_range_max):
+                        continue
+                except ValueError:
+                    continue  # Non-numeric IDs skip in range mode
+            elif query_lower and query_lower not in s["title"].lower() and query_lower not in rid.lower():
                 continue
             
             # 2. Active Only Filter
@@ -2325,15 +2384,15 @@ class MusicBotGUI:
     def update_dashboard_stats(self, **kwargs):
         """Updates the Tkinter statistics dashboard."""
         if "total" in kwargs:
-            self.var_stat_total.set(f"Total: {kwargs['total']}")
+            self.var_stat_total.set(f"📊 Total: {kwargs['total']}")
         if "success" in kwargs:
-            self.var_stat_success.set(f"Success: {kwargs['success']}")
+            self.var_stat_success.set(f"✅ Success: {kwargs['success']}")
         if "failed" in kwargs:
-            self.var_stat_failed.set(f"Failed: {kwargs['failed']}")
+            self.var_stat_failed.set(f"❌ Failed: {kwargs['failed']}")
         if "time" in kwargs:
-            self.var_stat_time.set(f"Time: {kwargs['time']}")
+            self.var_stat_time.set(f"⏱ Time: {kwargs['time']}")
         if "threads" in kwargs:
-            self.var_stat_threads.set(f"Threads: {kwargs['threads']}")
+            self.var_stat_threads.set(f"⚙️ Threads: {kwargs['threads']}")
         self.root.update_idletasks()
             
     def set_badge(self, text, bg, fg="white"):
@@ -2362,6 +2421,61 @@ class MusicBotGUI:
                 self.selected_songs.add(item_id)
                 self.tree.set(item_id, "sel", "☑️")
 
+    def _on_profile_changed(self, event=None):
+        """Instant profile save from dashboard combobox."""
+        new_profile = self.profile_var.get()
+        if new_profile:
+            self.config["active_preset"] = new_profile
+            from utils import save_config
+            save_config(self.config)
+            logger.info(f"Aktif Profil dönüştürüldü: {new_profile}")
+            self._refresh_profile_badge()
+
+    def _refresh_profile_badge(self):
+        """Reads current config and shows a compact info chip next to the profile combobox."""
+        try:
+            parts = []
+            # Language
+            lang = self.config.get("language", "")
+            if lang:
+                parts.append(f"🌐 {lang}")
+            # Vocal Gender
+            if self.config.get("vocal_gender_enabled", False):
+                gender = self.config.get("vocal_gender", "")
+                if gender:
+                    parts.append(f"🎤 {gender}")
+            # Lyrics Mode
+            if self.config.get("lyrics_mode_enabled", False):
+                mode = self.config.get("lyrics_mode", "")
+                if mode:
+                    parts.append(f"📜 {mode}")
+            # Weirdness
+            if self.config.get("weirdness_enabled", False):
+                weird = self.config.get("weirdness", "")
+                if weird and weird != "Default":
+                    parts.append(f"☄️ Weird:{weird}")
+            # Audio Influence
+            if self.config.get("audio_influence_enabled", False):
+                ai = self.config.get("audio_influence", "")
+                if ai:
+                    parts.append(f"🔊 AI:{ai}%")
+            badge_text = "  │  ".join(parts) if parts else "ℹ️ Ayarlar için tıkla"
+            self.profile_info_var.set(badge_text)
+        except Exception:
+            pass
+
+    def _quick_save_advanced(self, event=None):
+        """Instantly saves Advanced Options changes to config."""
+        self.config["vocal_gender_enabled"] = self.var_vocal_gender_enabled.get()
+        self.config["vocal_gender"] = self.var_vocal_gender.get()
+        self.config["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
+        self.config["lyrics_mode"] = self.var_lyrics_mode.get()
+        self.config["suno_batch_mode"] = self.var_suno_batch.get()
+        self.config["suno_batch_op_mode"] = self.var_batch_op.get()
+        
+        from utils import save_config
+        save_config(self.config)
+
     def play_chime(self):
         """Plays a notification sound based on OS."""
         try:
@@ -2388,6 +2502,17 @@ class MusicBotGUI:
         if target and source and target != source:
             self.tree.move(source, "", self.tree.index(target))
         self._drag_data["item"] = None
+        
+    def on_right_click(self, event):
+        item_id = self.tree.identify_row(event.y)
+        if item_id:
+            # Highlight row under cursor
+            self.tree.selection_set(item_id)
+            self.tree.focus(item_id)
+            try:
+                self.tree_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                self.tree_menu.grab_release()
 
     def on_tree_click(self, event):
         region = self.tree.identify("region", event.x, event.y)
@@ -2397,10 +2522,13 @@ class MusicBotGUI:
             if not item_id: return
 
             # Corrected Column Indices:
-            # #10 is Materials (Should select row, NOT toggle)
-            # #11 (run_l), #12 (run_m), #13 (run_ap), #14 (run_ai), #15 (run_v) are toggles
+            # #11 is Materials (Make unclickable)
+            # #12 (run_l), #13 (run_m), #14 (run_ap), #15 (run_ai), #16 (run_v) are toggles
             
-            if column not in ["#11", "#12", "#13", "#14", "#15"]: # Any column EXCEPT the phase toggles
+            if column == "#11":
+                return # Do nothing when Materials column is clicked
+                
+            if column not in ["#12", "#13", "#14", "#15", "#16"]: # Any column EXCEPT the phase toggles
                 if item_id in self.selected_songs:
                     self.selected_songs.remove(item_id)
                     self.tree.set(item_id, "sel", "☐")
@@ -2412,8 +2540,8 @@ class MusicBotGUI:
                 self.tree.selection_set(item_id)
                 self.tree.focus(item_id)
             
-            elif column in ["#11", "#12", "#13", "#14", "#15"]: # L, M, AP, AI, V
-                idx = int(column[1:]) - 11 # 0, 1, 2, 3, 4 (Offset changed to 11)
+            elif column in ["#12", "#13", "#14", "#15", "#16"]: # L, M, AP, AI, V
+                idx = int(column[1:]) - 12 # 0, 1, 2, 3, 4
                 
                 # Get current setting or defaults
                 current_defaults = [
