@@ -340,7 +340,12 @@ class SettingsDialog(tk.Toplevel):
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
         ttk.Label(f_lang, text=self.app.t("target_lang_label")).pack(anchor="w")
-        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Thai", "Hindi", "Mexican Spanish"], state="readonly")
+        self.combo_lang = ttk.Combobox(f_lang, values=[
+            "Turkish", "English", "German", "French", "Spanish", 
+            "Italian", "Portuguese", "Thai", "Hindi", "Mexican Spanish",
+            "Arabic", "Afro", "Japanese", "Balkan", "UK", "Indian",
+            "Caribbean", "Nordic", "African"
+        ], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
@@ -1113,9 +1118,9 @@ class MusicBotGUI:
 
         # Standard Text Operations Fix (Global for Mac)
         if sys.platform == "darwin":
-            self.root.bind_all("<Command-c>", lambda e: e.widget.event_generate("<<Copy>>") if hasattr(e.widget, 'event_generate') else None)
-            self.root.bind_all("<Command-v>", lambda e: e.widget.event_generate("<<Paste>>") if hasattr(e.widget, 'event_generate') else None)
-            self.root.bind_all("<Command-x>", lambda e: e.widget.event_generate("<<Cut>>") if hasattr(e.widget, 'event_generate') else None)
+            # Removed redundant manual <Command-c>, <Command-v>, <Command-x> bindings
+            # because Tkinter on macOS handles these natively for Entry and Text widgets,
+            # and manual generation causes the "double paste" bug.
             # Cmd+A is handled by handle_ctrl_a at root level, but bind_all is safer for deep widgets
             self.root.bind_all("<Command-a>", self.handle_ctrl_a)
         else:
