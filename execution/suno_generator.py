@@ -489,11 +489,6 @@ class SunoGenerator:
                     if not r_data: continue
                     
                     row_idx = r_data['_row_idx']
-                    dl_status = str(r_data.get("dl_status", "")).lower()
-
-                    if dl_status == "success":
-                        logger.info(f"Skipping {rid} - Already successfully downloaded.")
-                        continue
                     
                     title = r_data.get("title", "Song")
                     suno_title = f"{rid}_{title}"
