@@ -461,6 +461,13 @@ class SunoGenerator:
                 download_queue = [rid for rid in generated_ids if missing_counts.get(rid, 0) <= 12]
                 completed_ids = []
                 
+                # Reset dl_attempts for all songs in queue (fresh start per batch run)
+                for rid in download_queue:
+                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                    if r_data:
+                        r_data["dl_attempts"] = 0
+                        self.update_row_status(r_data['_row_idx'], dl_attempts=0)
+                
                 # Clear search before starting final downloads to ensure clean list view
                 try:
                     search_input = self.tab.locator("input[aria-label='Search clips']").first
