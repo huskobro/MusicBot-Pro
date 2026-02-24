@@ -737,40 +737,63 @@ class SunoGenerator:
                 logger.warning(f"[_download_specific] Target row NOT FOUND even after Search & Scroll for {rid}_{suffix}")
                 return False
             
-            # --- NEXT LOGIC FROM _wait_and_download ---
-            target_row.scroll_into_view_if_needed()
-            target_row.click()
-            time.sleep(1)
+            # --- DOWNLOAD FLOW ---
+            logger.info(f"[_download_specific] Found target row for {rid}_{suffix}. Starting download flow...")
+            
+            try:
+                target_row.scroll_into_view_if_needed()
+                time.sleep(0.5)
+                target_row.hover()
+                time.sleep(0.5)
+            except Exception as e:
+                logger.warning(f"[_download_specific] Could not scroll/hover row for {rid}: {e}")
 
-            # Match locator logic: first try aria-label 'More', then .context-menu-button
-            target_more = target_row.locator("button[aria-label*='More' i]").first
-            if not target_more.is_visible():
-                target_more = target_row.locator("button.context-menu-button").last 
+            # Find and click "More" button with retries
+            target_more = None
+            for more_try in range(3):
+                target_more = target_row.locator("button[aria-label*='More' i]").first
+                if target_more.count() > 0 and target_more.is_visible():
+                    break
+                target_more = target_row.locator("button.context-menu-button").last
+                if target_more.count() > 0 and target_more.is_visible():
+                    break
+                # Try hovering to make it appear
+                try:
+                    target_row.hover()
+                    time.sleep(1)
+                except: pass
+                target_more = None
 
-            if not target_more.is_visible():
-                logger.warning(f"[_download_specific] 'More' button not visible for {rid}")
+            if not target_more or not target_more.is_visible():
+                logger.warning(f"[_download_specific] 'More' button not visible for {rid}_{suffix} after retries")
                 return False
 
+            logger.info(f"[_download_specific] Clicking 'More' button for {rid}_{suffix}")
             target_more.scroll_into_view_if_needed()
-            time.sleep(1)
+            time.sleep(0.5)
             target_more.click()
             time.sleep(2)
             
+            # Find "Download" in dropdown menu
             target_dl = self.tab.locator("button:has-text('Download')").first
             if not target_dl.is_visible():
                 target_dl = self.tab.get_by_text("Download", exact=True).first
             
             if not target_dl.is_visible():
-                logger.warning(f"[_download_specific] 'Download' button NOT visible globally for {rid}")
+                logger.warning(f"[_download_specific] 'Download' button NOT visible in dropdown for {rid}_{suffix}")
+                try: self.tab.keyboard.press("Escape")
+                except: pass
                 return False
 
+            logger.info(f"[_download_specific] Clicking 'Download' menu item for {rid}_{suffix}")
             target_dl.hover()
             time.sleep(1.5)
             
+            # Find format button (WAV/MP3)
             target_audio = None
             for _ in range(5):
                 loc = self.tab.locator("button[aria-label*='WAV' i]").first
-                if loc.is_visible():
+                if loc.count() > 0 and loc.is_visible():
                     target_audio = loc
                     break
                 time.sleep(1)
@@ -782,33 +805,34 @@ class SunoGenerator:
                 target_audio = self.tab.locator("button:has-text('Audio')").first
 
             if not target_audio or not target_audio.is_visible():
-                logger.warning(f"[_download_specific] Format (WAV/MP3) not found for {rid}")
+                logger.warning(f"[_download_specific] Format (WAV/MP3/Audio) not found for {rid}_{suffix}")
+                try: self.tab.keyboard.press("Escape")
+                except: pass
                 return False
 
-            # End of identical logic - Proceed to save
-            logger.info(f"[_download_specific] Selecting Format for {rid}")
+            # Determine format
             ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
+            logger.info(f"[_download_specific] Selecting {ext.upper()} format for {rid}_{suffix}")
             
             # --- POPUP HANDLING ---
-            # Click format button (WAV/MP3) -> Opens Popup
             success_dl = False
             for dl_retry in range(3):
-                logger.info(f"[_download_specific] Attempting format click (Attempt {dl_retry+1}) for {rid}")
+                logger.info(f"[_download_specific] Format click attempt {dl_retry+1}/3 for {rid}_{suffix}")
                 target_audio.click()
-                time.sleep(3) # Increased sleep for Suno UI
+                time.sleep(3)
                 
                 try:
                     # Wait for modal/dialog
                     popup = self.tab.locator("div[role='dialog'], div.chakra-modal__content").last
                     if popup.is_visible(timeout=5000):
-                        logger.info(f"[_download_specific] Popup detected for {rid}")
+                        logger.info(f"[_download_specific] Popup detected for {rid}_{suffix}")
                         
                         dl_confirm_btn = popup.locator("button").filter(has_text="Download").last
                         if not dl_confirm_btn.is_visible():
                              dl_confirm_btn = popup.locator("button:has-text('Download File')").first
                         
                         if dl_confirm_btn.is_visible():
-                            logger.info(f"[_download_specific] Clicking 'Download File' confirmation for {rid}")
+                            logger.info(f"[_download_specific] Clicking 'Download File' confirmation for {rid}_{suffix}")
                             with self.tab.expect_download(timeout=60000) as download_info:
                                 dl_confirm_btn.click()
                             
@@ -818,24 +842,30 @@ class SunoGenerator:
                             filename = f"{clean_title}_{suffix}.{ext}"
                             save_path = os.path.join(self.output_dir, filename)
                             download.save_as(save_path)
-                            logger.info(f"[_download_specific] Saved {filename}")
+                            logger.info(f"[_download_specific] ✅ Saved {filename} to {save_path}")
                             
                             try: self.tab.keyboard.press("Escape")
                             except: pass
                             
                             success_dl = True
                             break
+                        else:
+                            logger.warning(f"[_download_specific] Download confirm button not found in popup for {rid}_{suffix}")
                     else:
-                        logger.warning(f"[_download_specific] Popup NOT visible after format click for {rid}. Retrying...")
+                        logger.warning(f"[_download_specific] Popup NOT visible after format click for {rid}_{suffix}. Retrying...")
                 except Exception as e:
-                    logger.warning(f"[_download_specific] Popup handling attempt {dl_retry+1} failed: {e}")
+                    logger.warning(f"[_download_specific] Popup handling attempt {dl_retry+1} failed for {rid}_{suffix}: {e}")
                 
-                # If we're here, we need to retry or refresh the 'More' state
+                # Cleanup before retry
+                try: self.tab.keyboard.press("Escape")
+                except: pass
                 time.sleep(2)
 
+            if not success_dl:
+                logger.warning(f"[_download_specific] ❌ All download attempts failed for {rid}_{suffix}")
             return success_dl
         except Exception as e:
-            logger.error(f"Download Specific Error {rid}: {e}")
+            logger.error(f"Download Specific Error {rid}_{suffix}: {e}")
             return False
 
 
