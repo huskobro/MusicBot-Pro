@@ -2365,6 +2365,8 @@ class MusicBotGUI:
                         target_ids = self.filtered_ids
         
         if not target_ids:
+            logger.warning("No target songs selected. Process cannot start.")
+            messagebox.showwarning(self.t("warning"), "Lütfen işlenecek şarkıları seçin!\n(İşlem yapılacak satırları işaretleyin veya filtreyi kullanarak 'Hepsini İşle' deyin.)")
             return
 
         # [Requirement 6] Strict Sequential Processing by ID
