@@ -395,8 +395,8 @@ class SunoGenerator:
                     else:
                         logger.debug("All pending songs found in current view. No scrolling needed.")
 
-                    # 4. SEARCH FALLBACK: If missing for too long (e.g. 5+ attempts)
-                    if not all_targets_found_in_view and loop_count > 5:
+                    # 4. SEARCH FALLBACK: If missing for too long (e.g. 8+ attempts after scrolling)
+                    if not all_targets_found_in_view and loop_count > 8:
                         missing = [rid for rid in pending_ids if rid not in found_this_loop]
                         if missing:
                             target_rid = missing[0]
@@ -697,42 +697,35 @@ class SunoGenerator:
                     occurrence += 1
             
             if not target_row:
-                # FALLBACK 1: SEARCH BAR (Faster, More Accurate, Safer)
-                logger.info(f"[_download_specific] ID {rid} not in top 100. Using SEARCH fallback...")
-                if self._search_for_song(rid, title):
-                    # WAIT FOR SEARCH LOADING (Polling for target)
-                    for wait_search in range(5):
-                        time.sleep(1)
-                        rows = self.tab.locator("div.clip-row")
-                        if rows.count() > 0:
-                            matched = False
-                            for i in range(min(10, rows.count())):
-                                if str(rid).lower() in rows.nth(i).inner_text().lower():
-                                    target_row = rows.nth(i)
-                                    matched = True
-                                    break
-                            if matched: break
+                # FALLBACK 1: WATERFALL SCROLL (Fast, doesn't filter the view)
+                logger.info(f"[_download_specific] ID {rid} not in top 150. Using WATERFALL SCROLL...")
+                if self._scroll_to_find_song(rid, title):
+                    rows = self.tab.locator("div.clip-row")
+                    occurrence = 0
+                    for i in range(rows.count()):
+                        row_text = rows.nth(i).inner_text().lower()
+                        if str(rid).lower() in row_text:
+                            if occurrence == target_occur:
+                                target_row = rows.nth(i)
+                                break
+                            occurrence += 1
                 
-                # FALLBACK 2: WATERFALL SCROLL (The 'Safety Net')
+                # FALLBACK 2: SEARCH BAR (Last resort - filters the view)
                 if not target_row:
-                    logger.info(f"[_download_specific] Search for {rid} failed/loading too long. Trying WATERFALL SCROLL fallback...")
-                    # Clear search if it was stuck
-                    try:
-                        self.tab.locator("input[aria-label='Search clips']").fill("")
-                        self.tab.keyboard.press("Enter")
-                        time.sleep(1)
-                    except: pass
-
-                    if self._scroll_to_find_song(rid, title):
-                        rows = self.tab.locator("div.clip-row")
-                        occurrence = 0
-                        for i in range(rows.count()):
-                            row_text = rows.nth(i).inner_text().lower()
-                            if str(rid).lower() in row_text:
-                                if occurrence == target_occur:
-                                    target_row = rows.nth(i)
-                                    break
-                                occurrence += 1
+                    logger.info(f"[_download_specific] Scroll failed for {rid}. Using SEARCH fallback...")
+                    if self._search_for_song(rid, title):
+                        # WAIT FOR SEARCH LOADING (Polling for target)
+                        for wait_search in range(5):
+                            time.sleep(1)
+                            rows = self.tab.locator("div.clip-row")
+                            if rows.count() > 0:
+                                matched = False
+                                for i in range(min(10, rows.count())):
+                                    if str(rid).lower() in rows.nth(i).inner_text().lower():
+                                        target_row = rows.nth(i)
+                                        matched = True
+                                        break
+                                if matched: break
 
             if not target_row: 
                 logger.warning(f"[_download_specific] Target row NOT FOUND even after Search & Scroll for {rid}_{suffix}")
