@@ -32,7 +32,7 @@ def run_diagnostic():
                 if ta.is_visible():
                     # Highlight it on page for visual confirmation
                     browser.page.evaluate(f"() => {{ const el = document.querySelectorAll('textarea')[{i}]; el.style.border = '5px solid red'; el.style.zIndex = '9999'; }}")
-            except: pass
+            except Exception: pass
 
         # 2. Probe Inputs
         inputs = browser.page.locator("input").all()
@@ -43,7 +43,7 @@ def run_diagnostic():
                 logger.info(f"   [{i}] Type: {inp.get_attribute('type')}, Placeholder: '{inp.get_attribute('placeholder')}', Box: {box}")
                 if inp.is_visible():
                      browser.page.evaluate(f"() => {{ const el = document.querySelectorAll('input')[{i}]; el.style.border = '5px solid blue'; }}")
-            except: pass
+            except Exception: pass
 
         # 3. Probe ContentEditable Divs (Modern UI often uses these)
         editables = browser.page.locator("div[contenteditable='true']").all()
@@ -54,7 +54,7 @@ def run_diagnostic():
                 logger.info(f"   [{i}] Role: {ed.get_attribute('role')}, Aria-Label: {ed.get_attribute('aria-label')}, Box: {box}")
                 if ed.is_visible():
                      browser.page.evaluate(f"() => {{ const el = document.querySelectorAll('div[contenteditable=\"true\"]')[{i}]; el.style.border = '5px solid green'; }}")
-            except: pass
+            except Exception: pass
 
         # 4. Probe Buttons (Specifically 'Custom' and 'Create')
         buttons = browser.page.locator("button").all()

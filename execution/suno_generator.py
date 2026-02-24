@@ -6,22 +6,7 @@ import re
 import json
 from browser_controller import BrowserController
 
-from logging.handlers import RotatingFileHandler
-
-os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-# Clear existing handlers to prevent duplicate logs in case of reload
-if logger.hasHandlers():
-    logger.handlers.clear()
-
-file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
-console_handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
 
 from suno_config import SunoConfig
 from suno_excel import SunoExcelMixin
@@ -163,6 +148,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 if progress_callback: progress_callback(rid, "Generating Music... 🎵")
                 
                 try:
+                    self.browser.ensure_alive()
                     success = self.process_row(row_dict, progress_callback=progress_callback)
                     if success:
                         self.update_row_status(row_dict['_row_idx'], "Generated")
@@ -182,6 +168,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             logger.error(f"Suno error: {e}")
             raise e
         finally:
+            if hasattr(self, "flush_excel_cache"):
+                self.flush_excel_cache()
             logger.info("Suno finished.")
 
     def run_batch(self, target_ids=None, progress_callback=None, stats_callback=None, force_update=False, op_mode="full"):
@@ -373,7 +361,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         try:
                             # Simple check to see if tab is responsive
                             self.tab.url
-                        except:
+                        except Exception:
                             logger.warning("Browser tab lost or crashed! Attempting recovery...")
                             try:
                                 if self.persona_link: self._setup_persona_workflow(progress_callback)
@@ -437,12 +425,12 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                         rows.nth(min(max_row_reached, rows.count()-1)).scroll_into_view_if_needed()
                                         time.sleep(1)
                                         self.tab.mouse.wheel(0, 2500)
-                                except: pass
+                                except Exception: pass
                             else:
                                 try:
                                     self.tab.mouse.wheel(0, 1500)
                                     time.sleep(1)
-                                except: pass
+                                except Exception: pass
                         else:
                             logger.debug("All pending songs found in current view. No scrolling needed.")
 
@@ -471,7 +459,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                         search_input.fill("")
                                         self.tab.keyboard.press("Enter")
                                         time.sleep(2)
-                                except: pass
+                                except Exception: pass
 
                         time.sleep(3)
                         
@@ -507,7 +495,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         search_input.fill("")
                         self.tab.keyboard.press("Enter")
                         time.sleep(2)
-                except: pass
+                except Exception: pass
                 
                 # ===== PHASE A: FULL WATERFALL SCROLL =====
                 # Scroll through the entire song list to load everything into DOM
@@ -533,7 +521,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 try:
                     self.tab.keyboard.press("Home")
                     time.sleep(1)
-                except: pass
+                except Exception: pass
                 
                 # ===== PHASE B: SINGLE-PASS INDEX & DOWNLOAD =====
                 # ONE scan of DOM → index ALL songs → then download from index
@@ -557,7 +545,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                 if ctx.rid not in song_index:
                                     song_index[ctx.rid] = []
                                 song_index[ctx.rid].append(rows.nth(i))
-                    except:
+                    except Exception:
                         continue
                 
                 found_count = len(song_index)
@@ -572,7 +560,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     
                     # SESSION CHECK
                     try: self.tab.url
-                    except:
+                    except Exception:
                         logger.warning(f"Tab crashed before downloading {ctx.rid}. Recovering...")
                         if self.persona_link: self._setup_persona_workflow()
                         else: self.browser.goto(self.base_url, page=self.tab)
@@ -633,7 +621,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         
                         # SESSION CHECK
                         try: self.tab.url
-                        except:
+                        except Exception:
                             logger.warning(f"{ctx.rid} aranmadan önce sekme çöktü. Kurtarılıyor...")
                             if self.persona_link: self._setup_persona_workflow()
                             else: self.browser.goto(self.base_url, page=self.tab)
@@ -711,7 +699,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                 search_input.fill("")
                                 self.tab.keyboard.press("Enter")
                                 time.sleep(2)
-                        except: pass
+                        except Exception: pass
                 
                 return len(completed_ids)
 
@@ -773,7 +761,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 else:
                     try:
                         self.browser.humanizer.type_text(self.tab, el, val)
-                    except:
+                    except Exception:
                         el.fill(str(val))
 
             fill_field(textareas[0], content)
@@ -786,7 +774,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             
             if input_title:
                 try: fill_field(input_title, suno_title)
-                except: pass
+                except Exception: pass
                 
             # Adv Options
             self._setup_lyrics_mode()
@@ -895,7 +883,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             el.dispatchEvent(new Event('change', { bubbles: true }));
                         }""", el)
                         time.sleep(0.2)
-                    except: pass
+                    except Exception: pass
 
                     logger.info(f"Filling field with: {str(val)[:20]}...")
                     self.browser.humanizer.type_text(self.tab, el, val)
@@ -904,7 +892,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     try:
                         el.scroll_into_view_if_needed()
                         el.fill(str(val))
-                    except: pass
+                    except Exception: pass
 
             fill_field(textareas[0], content)
             

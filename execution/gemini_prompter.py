@@ -433,7 +433,7 @@ Main title: “{title}”
                 stop_btn = self.tab.locator("button[aria-label*='Stop' i], button[aria-label*='Durdur' i]").first
                 if stop_btn.is_visible(timeout=500):
                     stop_btn_visible = True
-            except: pass
+            except Exception: pass
 
             candidates = self.tab.locator("message-content").all() 
             if not candidates: candidates = self.tab.locator(".model-response-text").all()
@@ -619,7 +619,7 @@ Main title: “{title}”
             candidates = self.tab.locator("message-content").all()
             if candidates: return candidates[-1].inner_text().strip()
             return None
-        except: return None
+        except Exception: return None
 
     def _generate_and_download_image(self, prompt, rid):
         try:
@@ -660,7 +660,7 @@ Main title: “{title}”
                         if self.tab.locator(sel).first.is_visible():
                             is_loading = True
                             break
-                    except: pass
+                    except Exception: pass
                 
                 if is_loading:
                     logger.info(f"   Still generating (Attempt {attempt+1}/18)...")

@@ -40,3 +40,20 @@ output/
 # Project Specific
 MusicBot.spec
 MusicBot/
+
+# Build Artifacts
+*.log
+*.spec
+
+# Test Artifacts
+test_*.xlsx
+test_*.mp3
+test_*.jpg
+
+# Debug & Crash Reports
+crash_report.txt
+musicbot_debug.log
+
+# IDE
+.vscode/
+.idea/

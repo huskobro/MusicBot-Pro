@@ -14,10 +14,11 @@ from humanizer import Humanizer
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def r_try(max_retries=3, delay=2):
+def r_try(max_retries=3, base_delay=2.0, max_delay=15.0):
     """
-    Decorator to retry a function call multiple times.
+    Decorator to retry a function call multiple times with Exponential Backoff.
     Useful for network requests or UI interactions that might flake.
+    Delay increases as: base_delay * (2 ** (attempt - 1)) up to max_delay.
     """
     def decorator(func):
         @functools.wraps(func)
@@ -30,7 +31,9 @@ def r_try(max_retries=3, delay=2):
                     last_exception = e
                     logger.warning(f"Attempt {attempt}/{max_retries} failed for {func.__name__}: {e}")
                     if attempt < max_retries:
-                        time.sleep(delay)
+                        current_delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                        logger.info(f"Retrying {func.__name__} in {current_delay:.1f}s...")
+                        time.sleep(current_delay)
             logger.error(f"Function {func.__name__} failed after {max_retries} attempts.")
             raise last_exception
         return wrapper
@@ -113,12 +116,12 @@ class BrowserController:
                 for path in glob.glob(os.path.join(default_dir, pattern)):
                     try:
                         os.remove(path)
-                    except: pass
+                    except Exception: pass
             # Also clean top-level iCloud conflicts
             for path in glob.glob(os.path.join(self.user_data_dir, "BrowserMetrics-spare [0-9]*")):
                 try:
                     os.remove(path)
-                except: pass
+                except Exception: pass
 
     def start(self):
         """Starts the Playwright persistent context with mandatory compatibility flags."""
@@ -243,6 +246,27 @@ class BrowserController:
             
         return self.pages[name]
 
+    def ensure_alive(self, name="default"):
+        """Health check for the browser and specific page. Recovers if dead."""
+        try:
+            if not self.context or not self.playwright:
+                logger.warning("Browser not initialized. Starting...")
+                self.start()
+            
+            p = self.pages.get(name)
+            if not p or p.is_closed():
+                logger.warning(f"Page '{name}' was closed or dead. Recreating...")
+                if name in self.pages:
+                    del self.pages[name]
+                self.get_page(name)
+            return True
+        except Exception as e:
+            logger.error(f"Browser health check failed: {e}. Attempting full restart...")
+            self.stop()
+            self.start()
+            self.get_page(name)
+            return True
+
     @property
     def page(self):
         """Standard 'page' property for backward compatibility (returns default)."""
@@ -319,7 +343,7 @@ class BrowserController:
         p = page if page else self.page
         try:
             p.wait_for_selector(selector, timeout=2000)
-        except: pass
+        except Exception: pass
         return p.is_visible(selector)
 
     def wait_for_stable_dom(self, page=None, timeout=3000):
@@ -327,7 +351,7 @@ class BrowserController:
         p = page if page else self.page
         try:
             p.wait_for_load_state("networkidle", timeout=timeout)
-        except: pass
+        except Exception: pass
         time.sleep(0.3) # Short settle
 
 
@@ -336,7 +360,7 @@ class BrowserController:
         p = page if page else self.page
         try:
             return p.eval_on_selector(selector, "el => el.value")
-        except:
+        except Exception:
             return None
 
     def screenshot(self, path, page=None):

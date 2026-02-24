@@ -133,7 +133,7 @@ class VideoGenerator:
             # Cleanup temp audio
             if os.path.exists(temp_audio_path):
                 try: os.remove(temp_audio_path)
-                except: pass
+                except Exception: pass
                 
             if os.path.exists(output_path):
                 logger.info(f"Video generated successfully: {output_path}")

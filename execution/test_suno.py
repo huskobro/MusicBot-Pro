@@ -77,7 +77,7 @@ class TestSunoComponents(unittest.TestCase):
         try:
             wb = openpyxl.load_workbook(self.excel_path)
             recovered = True
-        except:
+        except Exception:
             recovered = False
             
         self.assertTrue(recovered, "File was not recovered from backup structure after corruption!")

@@ -42,7 +42,7 @@ class Humanizer:
             
             # Defensive focus: Hover, Focus, then Click
             try: ele.hover(timeout=2000)
-            except: pass
+            except Exception: pass
             
             ele.focus()
             ele.click(force=True) # Ensure it's active
@@ -53,7 +53,7 @@ class Humanizer:
             # Instead of silent fill, we try one more focus attempt
             try:
                 page.click(selector_or_loc if isinstance(selector_or_loc, str) else selector_or_loc.selector, force=True)
-            except: pass
+            except Exception: pass
             
         # 2. Clear existing (Human-like)
         import sys
@@ -102,7 +102,7 @@ class Humanizer:
                 mod = "Meta" if sys.platform == "darwin" else "Control"
                 page.keyboard.press(f"{mod}+A"); page.keyboard.press("Backspace")
                 perform_typing(str(text))
-        except: pass
+        except Exception: pass
             
     def click_element(self, page, selector_or_loc):
         """Clicks an element with level-based delay and stability check."""
@@ -118,7 +118,7 @@ class Humanizer:
             if self.level == "HIGH":
                 logger.info("Humanizer (HIGH): Performing slow hover before click...")
                 try: ele.hover(timeout=2000)
-                except: pass
+                except Exception: pass
                 time.sleep(0.5)
                 
             ele.click()
@@ -144,5 +144,5 @@ class Humanizer:
                 if page.locator(sel).first.is_visible():
                     logger.warning("--- CAPTCHA DETECTED --- Please solve manually in Chrome.")
                     return True
-            except: pass
+            except Exception: pass
         return False

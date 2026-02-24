@@ -83,7 +83,7 @@ def self_test():
         logger.error(f"Self-test failed: {e}")
         try:
              browser.screenshot(f"{output_dir}/error_crash.png")
-        except: pass
+        except Exception: pass
     finally:
         # Keep browser open for a few seconds so user sees result
         time.sleep(5)

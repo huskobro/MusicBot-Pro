@@ -8,7 +8,7 @@ def get_safe_workspace():
     ws = os.path.expanduser("~/Documents/MusicBot_Workspace")
     try:
         if not os.path.exists(ws): os.makedirs(ws, exist_ok=True)
-    except: pass
+    except Exception: pass
     return ws
 
 workspace = get_safe_workspace()
@@ -26,431 +26,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TRANSLATIONS = {
-    "English": {
-        "title": "MusicBot Pro",
-        "settings": "⚙️ Settings",
-        "refresh": "🔄 Refresh",
-        "new_project": "✨ New Project",
-        "load_project": "📂 Load Project",
-        "images": "🖼️ Images",
-        "search": "🔍 Search:",
-        "global_settings": "🚀 Global Run Settings (Defaults for items)",
-        "lyrics": "Lyrics",
-        "music": "Music",
-        "art_prompt": "Art Prompt",
-        "art_prompt": "Art Prompt",
-        "art_image": "Art Image",
-        "video": "Video",
-        "column_id": "ID",
-        "column_title": "Title / Prompt",
-        "column_style": "Style",
-        "column_progress": "Status & Progress",
-        "start": "▶ START ENGINE",
-        "stop": "⬛ STOP ENGINE",
-        "show_log": "▲ SHOW ACTIVITY LOG",
-        "hide_log": "▼ HIDE ACTIVITY LOG",
-        "no_project": "No Project Loaded",
-        "ready": "Ready",
-        "working_on": "Working on:",
-        "processing": "Processing",
-        "done": "Done",
-        "error": "Error",
-        "ui_language": "UI Language",
-        "log_startup": "Open Activity Log at Startup",
-        "active_run": "Active Run",
-        "general": "General",
-        "humanizer": "Humanizer",
-        "prompts": "Prompts",
-        "log": "Log",
-        "save_all": "💾 Save All Settings & Active Profile",
-        "vocal_gender": "Vocal Gender",
-        "audio_influence": "Audio Influence",
-        "weirdness": "Weirdness",
-        "style_influence": "Style Influence",
-        "lyrics_mode": "Lyrics Mode",
-        "profiles_tab": "Profiles",
-        "profile_mgmt": "Artist Identity & Preset Management",
-        "active_profile": "Active Profile:",
-        "preset_alias": "Preset Alias:",
-        "artist_name_label": "Artist Name:",
-        "artist_style_label": "Artist Music Style:",
-        "save_preset_btn": "💾 Save Current as Preset",
-        "load_selected_btn": "📂 Load Selected",
-        "delete_selected_btn": "🗑️ Delete Selected",
-        "default_steps": "Default Run Steps (Checked on Start)",
-        "note_changes": "Note: Changes take effect on next 'Start'.",
-        "gemini_logic": "Gemini Content Logic",
-        "gen_lyrics_vs_title": "Generate Lyrics (vs just Title)",
-        "gen_music_style": "Generate Music Style",
-        "gen_visual_prompts": "Generate Visual Prompts",
-        "gen_video_prompts": "Generate Video Prompts",
-        "automation_delays": "Automation Delays",
-        "suno_delay_label": "Suno Gen Delay (s):",
-        "startup_delay_label": "Browser Startup Delay (s):",
-        "lang_reg": "Language & Regional",
-        "target_lang_label": "Target Song Language:",
-        "browser_action_label": "Browser Action",
-        "open_chrome_btn": "🌐 Open Chrome for Login",
-        "suno_adv_params": "Music Generation Parameters",
-        "suno_adv_tab": "Suno Adv",
-        "enable_persona_label": "Enable Persona Profile:",
-        "alias_label": "Alias:",
-        "link_label": "Link:",
-        "enable_vocal_gender_label": "Enable Vocal Gender:",
-        "enable_audio_influence_label": "Enable Audio Influence (%):",
-        "enable_weirdness_label": "Enable Weirdness:",
-        "enable_style_influence_label": "Enable Style Influence:",
-        "enable_lyrics_mode_label": "Enable Lyrics Mode:",
-        "suno_batch_label": "Enable Batch Mode (Generate All -> Download All)",
-        "batch": "Batch",
-        "turbo": "Turbo",
-        "batch_op_full": "Full Cycle (Gen + DL)",
-        "batch_op_gen": "Generate Only",
-        "batch_op_dl": "Download Only",
-        "human_settings_label": "Human-like Interaction Settings",
-        "enable_humanizer_label": "ENABLE HUMANIZER (Global)",
-        "activate_humanizer_label": "Activate Humanizer in:",
-        "phase1_label": "Phase 1: Gemini",
-        "phase1_label": "Phase 1: Gemini",
-        "phase2_label": "Phase 2: Suno",
-        "phase3_label": "Phase 3: Video",
-        "human_level_label": "Humanizer Level:",
-        "typing_speed_label": "Typing Speed:",
-        "speed_hint": "(0.05 = Fastest / 1.0 = Normal / 2.5 = Slowest)",
-        "max_retries_label": "Max Retries:",
-        "enable_adaptive_label": "Enable Adaptive Delays",
-        "video_settings_label": "Video Generation Settings",
-        "video_effect_label": "Visual Effect:",
-        "lyrics_master_label": "1. Lyrics Master Prompt (Gemini):",
-        "visual_master_label": "2. Visual Master Prompt (Midjourney Style):",
-        "video_master_label": "3. Video Master Prompt (Sora/Runway):",
-        "art_master_label": "4. Art Master Prompt (YouTube Thumbnail):",
-        "startup_opts_label": "Startup Options",
-        "msg_no_project": "❌ No Project Loaded! Please Load or Create a project.",
-        "msg_load_first": "Please load a project file first.",
-        "msg_no_steps": "❌ No steps selected! Please check at least one 'Run Step'.",
-        "msg_select_step_warn": "Please select at least one step to run.",
-        "msg_confirm_process_all": "No songs selected. Process ALL listed songs?",
-        "msg_stopping": "Stopping engine...",
-        "msg_halted": "Process halted by user command.",
-        "msg_done_title": "Done",
-        "msg_done_info": "Selected tasks completed! 🎵",
-        "msg_critical_error": "Critical Error",
-        "msg_confirm_regen": "Regenerate?",
-        "msg_regen_body": "Some rows already have data (Lyrics, Prompts, etc.).\n\nDo you want to regenerate them?\n\n'Yes' will update data, 'No' will only complete missing ones.",
-        "msg_restart_lang": "Restart the application to apply UI language changes.",
-        "msg_settings_saved": "Settings and Prompts saved successfully!",
-        "msg_enter_preset_alias": "Please enter a Profile Alias name.",
-        "msg_preset_saved": "Profile '{alias}' saved successfully!",
-        "msg_preset_loaded": "Profile '{alias}' loaded!",
-        "msg_confirm_delete_preset": "Delete profile '{alias}'?",
-        "msg_failed_to_save": "Failed to save: {error}",
-        "msg_new_project_created": "New project created and loaded! 🚀",
-        "msg_failed_to_create_project": "Could not create project",
-        "msg_loaded_songs": "Loaded {count} songs from project.",
-        "msg_failed_to_load_project": "Failed to load project",
-        "vocal_default": "Default",
-        "vocal_none": "None",
-        "vocal_male": "Male",
-        "vocal_female": "Female",
-        "mode_manual": "Manual",
-        "mode_auto": "Auto",
-        "level_low": "LOW",
-        "level_medium": "MEDIUM",
-        "success": "Success",
-        "error_title": "Error",
-        "warning": "Warning",
-        "confirm": "Confirm",
-        "badge_idle": "IDLE",
-        "badge_active": "ACTIVE",
-        "badge_stopping": "STOPPING",
-        "badge_error": "ERROR",
-        "log_settings_loaded": "✅ Settings loaded from settings.json",
-        "log_settings_fail": "❌ Failed to load settings: {error}",
-        "log_project_init": "✅ Project structure initialized for {name}",
-        "log_project_load_error": "❌ Error loading project: {error}",
-        "log_halted": "🛑 Process halted by user command.",
-        "log_browser_stop": "🛑 Browser terminated by user stop command.",
-        "log_chrome_start": "🌐 Initializing Chrome for Login...",
-        "log_wait_chrome": "⏳ Please wait, browser is starting...",
-        "log_chrome_success": "✅ Chrome started successfully!",
-        "log_chrome_profile": "📂 Profile Path: {path}",
-        "log_chrome_login": "👉 Please log in to Suno/Gemini now.",
-        "log_chrome_close": "👉 You can close the browser window when finished.",
-        "video_fps_label": "Frame Rate (FPS):",
-        "video_res_label": "Resolution:",
-        "video_intensity_label": "Effect Intensity:",
-        "video_assets_label": "Source Assets Folder:",
-        "video_res_shorts": "Vertical (Shorts - 1080x1920)",
-        "video_res_hd": "Horizontal (HD - 1920x1080)",
-        "video_res_sd": "Horizontal (SD - 1280x720)",
-        "glitch": "Glitch",
-        "ken_burns": "Ken Burns (Zoom)",
-        "vignette": "Vignette",
-        "audio_visualizer": "Audio Visualizer",
-        "browse": "Browse",
-        "msg_select_folder": "Please select a folder",
-        "msg_enter_test_link": "Please enter a link to test or select from the list.",
-        "info": "Info",
-        "video_output_mode_label": "Video Output Path:",
-        "video_output_same_label": "Save in input/profile folder",
-        "video_output_custom_label": "Save in 'Output_Videos' (System Default)",
-        "video_assets_hint": "💡 If empty, 'output_media/[Profile_Name]' will be searched for images first.",
-        "last_profile_label": "Last Profile:",
-        "save_to_profile_note": "Note: 'Save All' also updates the active preset.",
-        "add_new_profile_btn": "✨ Add New Profile",
-        "compilation": "Compilation (Step 6)",
-        "phase4_label": "Phase 4: Compilation",
-        "log_merge_start": "🎬 Starting Video Merger (Phase 6)...",
-        "log_merge_success": "✅ Compilation video created: {path}",
-        "log_merge_fail": "❌ Failed to create compilation video: {error}",
-        "log_merge_no_files": "⚠️ No videos found to merge in {path}.",
-        "reset_chrome_btn": "🧹 Reset Chrome Profile (Fresh Install)",
-        "msg_confirm_reset_chrome": "Are you sure you want to RESET Chrome?\n\nThis will CLOSE the browser, backup your current login sessions, and start with a completely FRESH profile.\n\nYou will need to login again to Suno/Gemini.",
-        "log_chrome_reset_success": "✅ Chrome profile reset successfully. New profile will be created on next launch.",
-        "log_chrome_reset_fail": "❌ Failed to reset Chrome profile: {error}",
-        "select_all": "Select All",
-        "deselect_all": "Deselect All",
-        "active_only": "⚡ Show Active/Selected Only",
-        "eta_label": "ETA: {time}",
-        "filter_status": "Filter Status:",
-        "f_all": "All",
-        "f_done": "Completed",
-        "f_pending": "Pending/Incomplete",
-        "f_no_lyrics": "Missing Lyrics",
-        "f_no_music": "Missing Music",
-        "f_no_art": "Missing Art",
-        "f_no_video": "Missing Video",
-        "video_parallel_label": "Parallel Render Count:",
-        "video_quality_label": "Video Quality & Performance",
-        "video_selection_label": "Video Selection Mode:",
-        "v_mode_1": "Only _1",
-        "v_mode_2": "Only _2",
-        "v_mode_both": "Both (_1 & _2)",
-        "column_materials": "Materials",
-        "f_missing_r": "Missing Images",
-        "f_missing_m1": "Missing Music 1",
-        "f_missing_m2": "Missing Music 2",
-        "video_assets_output_label": "Assets & Output Settings",
-        "open_project_btn": "📊 Open Excel",
-        "column_dl_status": "DL Status"
-    },
-    "Turkish": {
-        "title": "MusicBot Pro",
-        "settings": "⚙️ Ayarlar",
-        "refresh": "🔄 Yenile",
-        "new_project": "✨ Yeni Proje",
-        "load_project": "📂 Proje Yükle",
-        "images": "🖼️ Resimler",
-        "search": "🔍 Ara:",
-        "global_settings": "🚀 Global Çalıştırma Ayarları (Varsayılanlar)",
-        "lyrics": "Sözler",
-        "music": "Müzik",
-        "art_prompt": "Resim Prompt",
-        "art_prompt": "Resim Prompt",
-        "art_image": "Resim Üretim",
-        "video": "Video",
-        "column_id": "ID",
-        "column_title": "Başlık / Prompt",
-        "column_style": "Tarz",
-        "column_progress": "Durum & İlerleme",
-        "start": "▶ MOTORU BAŞLAT",
-        "stop": "⬛ MOTORU DURDUR",
-        "show_log": "▲ AKTİVİTE GÜNLÜĞÜNÜ GÖSTER",
-        "hide_log": "▼ AKTİVİTE GÜNLÜĞÜNÜ GİZLE",
-        "no_project": "Proje Yüklü Değil",
-        "ready": "Hazır",
-        "working_on": "Çalışılan:",
-        "processing": "İşleniyor",
-        "done": "Tamamlandı",
-        "error": "Hata",
-        "ui_language": "Arayüz Dili",
-        "log_startup": "Başlangıçta Günlüğü Aç",
-        "active_run": "Aktif Çalışma",
-        "general": "Genel",
-        "humanizer": "İnsanlaştırıcı",
-        "prompts": "Promptlar",
-        "log": "Günlük",
-        "save_all": "💾 Tüm Ayarları ve Aktif Profili Kaydet",
-        "vocal_gender": "Vokal Cinsiyeti",
-        "audio_influence": "Ses Etkisi",
-        "weirdness": "Tuhaflık",
-        "style_influence": "Stil Etkisi",
-        "lyrics_mode": "Şarkı Sözü Modu",
-        "profiles_tab": "Profiller",
-        "profile_mgmt": "Sanatçı Kimliği ve Profil Yönetimi",
-        "active_profile": "Aktif Profil Seçimi:",
-        "preset_alias": "Profil İsmi (Alias):",
-        "artist_name_label": "Sanatçı Adı:",
-        "artist_style_label": "Sanatçı Müzik Tarzı:",
-        "save_preset_btn": "💾 Profili Kaydet/Güncelle",
-        "load_selected_btn": "📂 Seçileni Yükle",
-        "delete_selected_btn": "🗑️ Seçileni Sil",
-        "default_steps": "Varsayılan Çalıştırma Aşamaları (Başlangıçta Seçili)",
-        "note_changes": "Not: Değişiklikler bir sonraki 'Başlat' işleminde etkili olur.",
-        "gemini_logic": "Gemini İçerik Mantığı",
-        "gen_lyrics_vs_title": "Söz Üret (Sadece Başlık Yerine)",
-        "gen_music_style": "Müzik Tarzı Üret",
-        "gen_visual_prompts": "Görsel Promptları Üret",
-        "gen_video_prompts": "Video Promptları Üret",
-        "automation_delays": "Otomasyon Gecikmeleri",
-        "suno_delay_label": "Suno Üretim Gecikmesi (sn):",
-        "startup_delay_label": "Tarayıcı Başlangıç Gecikmesi (sn):",
-        "lang_reg": "Dil ve Bölgesel",
-        "target_lang_label": "Hedef Şarkı Dili:",
-        "browser_action_label": "Tarayıcı İşlemi",
-        "open_chrome_btn": "🌐 Giriş için Chrome'u Aç",
-        "suno_adv_params": "Müzik Üretim Parametreleri",
-        "suno_adv_tab": "Suno Gelişmiş",
-        "enable_persona_label": "Persona Profilini Etkinleştir:",
-        "alias_label": "Takma Ad:",
-        "link_label": "Bağlantı:",
-        "enable_vocal_gender_label": "Vokal Cinsiyetini Etkinleştir:",
-        "enable_audio_influence_label": "Ses Etkisini Etkinleştir (%):",
-        "enable_weirdness_label": "Tuhaflığı Etkinleştir:",
-        "enable_style_influence_label": "Stil Etkisini Etkinleştir:",
-        "enable_lyrics_mode_label": "Şarkı Sözü Modunu Etkinleştir:",
-        "suno_batch_label": "Toplu Modu Etkinleştir (Hepsini Üret -> Hepsini İndir)",
-        "batch": "Toplu",
-        "turbo": "Turbo",
-        "batch_op_full": "Tam Döngü (Üret + İndir)",
-        "batch_op_gen": "Sadece Üret",
-        "batch_op_dl": "Sadece İndir",
-        "human_settings_label": "İnsan Benzeri Etkileşim Ayarları",
-        "enable_humanizer_label": "İNSANLAŞTIRICIYI ETKİNLEŞTİR (Global)",
-        "activate_humanizer_label": "İnsanlaştırıcıyı Şurada Aktifleştir:",
-        "phase1_label": "Aşama 1: Gemini",
-        "phase1_label": "Aşama 1: Gemini",
-        "phase2_label": "Aşama 2: Suno",
-        "phase3_label": "Aşama 3: Video",
-        "human_level_label": "İnsanlaştırma Seviyesi:",
-        "typing_speed_label": "Yazma Hızı:",
-        "speed_hint": "(0.05 = En Hızlı / 1.0 = Normal / 2.5 = En Yavaş)",
-        "max_retries_label": "Maksimum Deneme:",
-        "enable_adaptive_label": "Uyarlanabilir Gecikmeleri Etkinleştir",
-        "video_settings_label": "Video Oluşturma Ayarları",
-        "video_effect_label": "Görsel Efekt:",
-        "lyrics_master_label": "1. Şarkı Sözü Ana Promptu (Gemini):",
-        "visual_master_label": "2. Görsel Ana Promptu (Midjourney):",
-        "video_master_label": "3. Video Ana Promptu (Sora/Runway):",
-        "art_master_label": "4. Resim Ana Promptu (YouTube):",
-        "startup_opts_label": "Başlangıç Seçenekleri",
-        "msg_no_project": "❌ Proje Yüklü Değil! Lütfen bir proje yükleyin veya oluşturun.",
-        "msg_load_first": "Lütfen önce bir proje dosyası yükleyin.",
-        "msg_no_steps": "❌ Hiçbir aşama seçilmedi! Lütfen en az bir 'Çalıştırma Aşaması' seçin.",
-        "msg_select_step_warn": "Lütfen çalıştırmak için en az bir aşama seçin.",
-        "msg_confirm_process_all": "Şarkı seçilmedi. Listedeki TÜM şarkılar işlensin mi?",
-        "msg_stopping": "Motor durduruluyor...",
-        "msg_halted": "İşlem kullanıcı komutuyla durduruldu.",
-        "msg_done_title": "Tamamlandı",
-        "msg_done_info": "Seçilen işlemler tamamlandı! 🎵",
-        "msg_critical_error": "Kritik Hata",
-        "msg_confirm_regen": "Yeniden Üret?",
-        "msg_regen_body": "Bazı satırlarda zaten veri (Söz, Prompt vb.) mevcut.\n\nBunları yeniden üretmek ister misiniz?\n\n'Evet' derseniz veriler güncellenir, 'Hayır' derseniz sadece eksikler tamamlanır.",
-        "msg_restart_lang": "Arayüz dili değişikliklerinin uygulanması için uygulamayı yeniden başlatın.",
-        "msg_settings_saved": "Ayarlar ve Promptlar başarıyla kaydedildi!",
-        "msg_enter_preset_alias": "Lütfen bir Preset Adı girin.",
-        "msg_preset_saved": "Preset '{alias}' başarıyla kaydedildi!",
-        "msg_preset_loaded": "Preset '{alias}' yüklendi!",
-        "msg_confirm_delete_preset": "Preset '{alias}' silinsin mi?",
-        "msg_failed_to_save": "Kaydetme hatası: {error}",
-        "msg_new_project_created": "Yeni proje oluşturuldu ve yüklendi! 🚀",
-        "msg_failed_to_create_project": "Proje oluşturulamadı",
-        "msg_loaded_songs": "Projeden {count} şarkı yüklendi.",
-        "msg_failed_to_load_project": "Proje yüklenemedi",
-        "vocal_default": "Varsayılan",
-        "vocal_none": "Yok",
-        "vocal_male": "Erkek",
-        "vocal_female": "Kadın",
-        "mode_manual": "Manuel",
-        "mode_auto": "Otomatik",
-        "level_low": "DÜŞÜK",
-        "level_medium": "ORTA",
-        "level_high": "YÜKSEK",
-        "success": "Başarı",
-        "error_title": "Hata",
-        "warning": "Uyarı",
-        "confirm": "Onay",
-        "badge_idle": "BEKLEMEDE",
-        "badge_active": "AKTİF",
-        "badge_stopping": "DURDURULUYOR",
-        "badge_error": "HATA",
-        "log_settings_loaded": "✅ Ayarlar settings.json dosyasından yüklendi",
-        "log_settings_fail": "❌ Ayarlar yüklenemedi: {error}",
-        "log_project_init": "✅ Proje yapısı {name} için hazırlandı",
-        "log_project_load_error": "❌ Proje yükleme hatası: {error}",
-        "log_halted": "🛑 İşlem kullanıcı komutuyla durduruldu.",
-        "log_browser_stop": "🛑 Tarayıcı kullanıcı tarafından kapatıldı.",
-        "log_chrome_start": "🌐 Giriş için Chrome başlatılıyor...",
-        "log_wait_chrome": "⏳ Lütfen bekleyin, tarayıcı açılıyor...",
-        "log_chrome_success": "✅ Chrome başarıyla başlatıldı!",
-        "log_chrome_profile": "📂 Profil Yolu: {path}",
-        "log_chrome_login": "👉 Lütfen şimdi Suno/Gemini oturumu açın.",
-        "log_chrome_close": "👉 İşleminiz bitince tarayıcı penceresini kapatabilirsiniz.",
-        "video_fps_label": "Kare Hızı (FPS):",
-        "video_res_label": "Çözünürlük:",
-        "video_intensity_label": "Efekt Yoğunluğu:",
-        "video_assets_label": "Kaynak Materyal Klasörü:",
-        "video_res_shorts": "Dikey (Shorts - 1080x1920)",
-        "video_res_hd": "Yatay (HD - 1920x1080)",
-        "video_res_sd": "Yatay (SD - 1280x720)",
-        "snow": "Kar Efekti",
-        "rain": "Yağmur Efekti",
-        "particles": "Parçacıklar",
-        "glitch": "Bozulma (Glitch)",
-        "ken_burns": "Yakınlaşma (Ken Burns)",
-        "vignette": "Köşe Karartma (Vignette)",
-        "audio_visualizer": "Ses Dalgaları",
-        "browse": "Gözat",
-        "msg_select_folder": "Lütfen bir klasör seçin",
-        "msg_persona_loaded": "'{alias}' düzenleme için yüklendi.\nDeğişiklik yapıp '+' butonuna basın.",
-        "msg_enter_test_link": "Lütfen test edilecek bir link girin veya listeden seçin.",
-        "info": "Bilgi",
-        "video_output_mode_label": "Video Çıktı Yolu:",
-        "video_output_same_label": "Girdi/Profil klasörüne kaydet",
-        "video_output_custom_label": "'Output_Videos' klasörüne kaydet (Varsayılan)",
-        "video_assets_hint": "💡 Boş bırakılırsa, resimler için önce 'output_media/[Profil_Adı]' klasörüne bakılır.",
-        "last_profile_label": "Son Profil:",
-        "save_to_profile_note": "💡 İpucu: Yeni bir profil oluşturmak için 'Profil İsmi'ni değiştirip '+'ya basın. Mevcutu silmek için '-'ye, formu temizlemek için '✨'ye basın.",
-        "add_new_profile_btn": "✨ Yeni Profil Ekle",
-        "compilation": "Birleştirme",
-        "phase4_label": "Aşama 4: Birleştirme",
-        "log_merge_start": "🎬 Video Birleştirme Başlatılıyor...",
-        "log_merge_success": "✅ Uzun video başarıyla oluşturuldu: {path}",
-        "log_merge_fail": "❌ Uzun video oluşturulamadı: {error}",
-        "log_merge_no_files": "⚠️ {path} klasöründe birleştirilecek video bulunamadı.",
-        "reset_chrome_btn": "🧹 Chrome Profilini Sıfırla (Sıfırdan Kur)",
-        "msg_confirm_reset_chrome": "Chrome'u SIFIRLAMAK istediğinize emin misiniz?\n\nBu işlem tarayıcıyı KAPATACAK, mevcut girişlerinizi yedekleyecek ve tamamen TEMİZ bir profil ile başlayacaktır.\n\nSuno/Gemini girişlerini tekrar yapmanız gerekecektir.",
-        "log_chrome_reset_success": "✅ Chrome profili başarıyla sıfırlandı. Bir sonraki açılışta yeni profil oluşturulacak.",
-        "log_chrome_reset_fail": "❌ Chrome profili sıfırlanamadı: {error}",
-        "select_all": "Hepsini Seç",
-        "deselect_all": "Seçimi Kaldır",
-        "active_only": "⚡ Sadece Aktif/Seçili Olanları Göster",
-        "eta_label": "Tahmini Bitiş: {time}",
-        "filter_status": "Durum Filtresi:",
-        "f_all": "Hepsi",
-        "f_done": "Tamamlananlar",
-        "f_pending": "Eksik/Bekleyenler",
-        "f_no_lyrics": "Sözü Olmayanlar",
-        "f_no_music": "Müziği Olmayanlar",
-        "f_no_art": "Kapağı Olmayanlar",
-        "f_no_video": "Videosu Olmayanlar",
-        "video_parallel_label": "Paralel Render Sayısı:",
-        "video_quality_label": "Video Kalitesi ve Performans",
-        "video_selection_label": "Video Seçim Modu:",
-        "v_mode_1": "Sadece _1",
-        "v_mode_2": "Sadece _2",
-        "v_mode_both": "Her İkisi (_1 & _2)",
-        "column_materials": "Materyaller",
-        "f_missing_r": "Eksik Resimler",
-        "f_missing_m1": "Eksik Müzik 1",
-        "f_missing_m2": "Eksik Müzik 2",
-        "video_assets_output_label": "Klasör ve Çıktı Ayarları",
-        "open_project_btn": "📊 Excel Aç",
-        "column_dl_status": "İndirilme Durumu"
-    }
-}
+def _load_translations():
+    """Load translations from JSON files. Falls back to minimal dict if files are missing."""
+    import json as _json
+    import sys as _sys
+    translations = {}
+    
+    # In PyInstaller bundle, the entry script is at sys._MEIPASS root,
+    # but the --add-data 'execution:execution' puts the json files inside 'execution' folder
+    if getattr(_sys, 'frozen', False):
+        _dir = os.path.join(_sys._MEIPASS, "execution")
+    else:
+        _dir = os.path.dirname(os.path.abspath(__file__))
+        
+    for lang, filename in [("English", "translations_en.json"), ("Turkish", "translations_tr.json")]:
+        fpath = os.path.join(_dir, filename)
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                translations[lang] = _json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load {filename} from {fpath}: {e}")
+            translations[lang] = {
+                "title": "MusicBot Pro",
+                "tab_gemini": "Gemini Lyrics",
+                "tab_suno": "Suno Generator",
+                "tab_visual": "Visuals & Video",
+                "tab_batch": "Batch Processing",
+                "tab_settings": "Settings"
+            }
+    return translations
+
+TRANSLATIONS = _load_translations()
 
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, scrolledtext, filedialog
@@ -491,14 +97,14 @@ class GuiLogger(logging.Handler):
                     self.text_widget.insert(tk.END, msg + '\n', record.levelname)
                     self.text_widget.configure(state='disabled')
                     self.text_widget.yview(tk.END)
-            except:
+            except Exception:
                 pass
         
         # Ensure thread safety by scheduling update on main loop
         try:
             if self.text_widget.winfo_exists():
                 self.text_widget.after(0, append)
-        except:
+        except Exception:
             pass
 
 class SettingsDialog(tk.Toplevel):
@@ -719,12 +325,14 @@ class SettingsDialog(tk.Toplevel):
         f_suno.pack(fill="x", padx=10, pady=5)
         
         ttk.Label(f_suno, text=self.app.t("suno_delay_label")).pack(anchor="w")
-        self.entry_delay = ttk.Entry(f_suno)
+        self.entry_delay = tk.Spinbox(f_suno, from_=1, to_=120, width=10)
+        self.entry_delay.delete(0, tk.END)
         self.entry_delay.insert(0, str(config.get("suno_delay", 15)))
         self.entry_delay.pack(fill="x", pady=2)
         
         ttk.Label(f_suno, text=self.app.t("startup_delay_label")).pack(anchor="w")
-        self.entry_startup = ttk.Entry(f_suno)
+        self.entry_startup = tk.Spinbox(f_suno, from_=0, to_=120, width=10)
+        self.entry_startup.delete(0, tk.END)
         self.entry_startup.insert(0, str(config.get("startup_delay", 5)))
         self.entry_startup.pack(fill="x", pady=2)
         
@@ -1112,7 +720,8 @@ class SettingsDialog(tk.Toplevel):
         
         self.presets[alias] = {
             "settings": settings_snapshot,
-            "prompts": prompts
+            "prompts": prompts,
+            "project_file": getattr(self.app, 'project_path', '') or ''
         }
         self.update_preset_combo()
         self.combo_preset_select.set(alias)
@@ -1560,7 +1169,7 @@ class MusicBotGUI:
         self.f_top.pack(fill="x")
         
         ttk.Button(self.f_top, text=self.t("settings"), command=self.open_settings).pack(side="right", padx=5)
-        ttk.Button(self.f_top, text=self.t("refresh"), command=self.load_project_data).pack(side="right", padx=5)
+        ttk.Button(self.f_top, text=self.t("refresh"), command=self._refresh_all).pack(side="right", padx=5)
         
         ttk.Label(self.f_top, text="MusicBot Pro", style="Header.TLabel").pack(side="left", padx=5)
         
@@ -1818,18 +1427,26 @@ class MusicBotGUI:
             self.root.after(100, self.toggle_logs)
 
     def load_settings(self):
-        """Loads settings from settings.json in workspace."""
+        """Loads settings from settings.json or settings.json.bak in workspace."""
         workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
         settings_path = os.path.join(workspace, "settings.json")
-        if os.path.exists(settings_path):
+        backup_path = settings_path + ".bak"
+        
+        # Determine which file to load
+        target_path = settings_path
+        if not os.path.exists(settings_path) and os.path.exists(backup_path):
+            target_path = backup_path
+            logger.info("Main settings not found, attempting to load from backup.")
+            
+        if os.path.exists(target_path):
             try:
-                with open(settings_path, "r", encoding="utf-8") as f:
+                with open(target_path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
                         saved_config = json.loads(content)
                         if isinstance(saved_config, dict):
                             self.config.update(saved_config)
-                            logger.info(self.t("log_settings_loaded"))
+                            logger.info(self.t("log_settings_loaded") + (f" (from backup)" if target_path == backup_path else ""))
                             
                             # Restore last profile
                             last_p = self.config.get("last_active_profile")
@@ -1842,6 +1459,17 @@ class MusicBotGUI:
             except Exception as e:
                 logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
                 # If settings are corrupted, we just continue with defaults
+                # If we failed on the main file, we could try backup as a second pass
+                if target_path == settings_path and os.path.exists(backup_path):
+                    logger.info("Attempting recovery from backup file...")
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as f:
+                            saved_config = json.loads(f.read().strip())
+                            if isinstance(saved_config, dict):
+                                self.config.update(saved_config)
+                                logger.info("✅ Recovered settings from backup.")
+                    except Exception as e2:
+                        logger.error(f"❌ Backup recovery also failed: {e2}")
 
     def save_settings(self, new_config=None):
         """Saves current config to settings.json in workspace."""
@@ -1857,8 +1485,14 @@ class MusicBotGUI:
         workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
         os.makedirs(workspace, exist_ok=True)
         settings_path = os.path.join(workspace, "settings.json")
+        backup_path = settings_path + ".bak"
         
         try:
+            # Create backup of existing config before modifying
+            if os.path.exists(settings_path):
+                import shutil
+                shutil.copy2(settings_path, backup_path)
+                
             # Save last profile for persistence
             if "active_preset" in self.config:
                 self.config["last_active_profile"] = self.config["active_preset"]
@@ -1867,7 +1501,7 @@ class MusicBotGUI:
                 
             with open(settings_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
-            logger.info("✅ Settings saved to settings.json")
+            logger.info("✅ Settings saved to settings.json (backup updated)")
         except Exception as e:
             logger.error(f"Failed to save settings: {e}")
 
@@ -1979,6 +1613,12 @@ class MusicBotGUI:
                 messagebox.showerror(self.t("error"), f"Excel açılamadı: {e}")
         else:
             messagebox.showwarning(self.t("warning"), self.t("msg_load_first"))
+
+    def _refresh_all(self):
+        """Full refresh: reload Excel data + scan filesystem for materials."""
+        self.load_project_data()
+        self.scan_materials()
+        self.apply_filter()
 
     def load_project_data(self, path=None):
         """Loads data from the single project file."""
@@ -2153,7 +1793,7 @@ class MusicBotGUI:
             filled_len = int(10 * current // total)
             bar = "▰" * filled_len + "▱" * (10 - filled_len)
             return f"{bar} {int(percent)}%"
-        except: return "▱▱▱▱▱▱▱▱▱▱ 0%"
+        except Exception: return "▱▱▱▱▱▱▱▱▱▱ 0%"
 
     def apply_filter(self, *args):
         # Debounced Search (300ms)
@@ -2371,7 +2011,7 @@ class MusicBotGUI:
         # Try to sort numerically if possible
         try:
             l.sort(key=lambda x: float(re.sub(r'[^\d.]', '', x[0])), reverse=reverse)
-        except:
+        except (ValueError, TypeError):
             l.sort(reverse=reverse)
 
         # Rearrange items in tree
@@ -2422,43 +2062,99 @@ class MusicBotGUI:
                 self.tree.set(item_id, "sel", "☑️")
 
     def _on_profile_changed(self, event=None):
-        """Instant profile save from dashboard combobox."""
+        """Instant profile switch from dashboard combobox. Loads per-profile settings and Excel."""
         new_profile = self.profile_var.get()
-        if new_profile:
-            self.config["active_preset"] = new_profile
-            from utils import save_config
-            save_config(self.config)
-            logger.info(f"Aktif Profil dönüştürüldü: {new_profile}")
-            self._refresh_profile_badge()
+        if not new_profile:
+            return
+        
+        self.config["active_preset"] = new_profile
+        
+        # Load per-profile settings into global config
+        presets = self.config.get("chrome_presets", {})
+        preset_data = presets.get(new_profile, {})
+        per_settings = preset_data.get("settings", {})
+        
+        # Apply per-profile settings to global config (non-destructive merge)
+        for key, value in per_settings.items():
+            self.config[key] = value
+        
+        self.save_settings()
+        logger.info(f"Aktif Profil dönüştürüldü: {new_profile}")
+        
+        # Auto-load associated Excel project file
+        project_file = preset_data.get("project_file", "")
+        if project_file and os.path.exists(project_file):
+            logger.info(f"Profil ile ilişkili Excel yükleniyor: {project_file}")
+            self.load_project_data(project_file)
+            self.config["last_project"] = project_file
+            self.save_settings()
+        
+        self._refresh_profile_badge()
 
     def _refresh_profile_badge(self):
-        """Reads current config and shows a compact info chip next to the profile combobox."""
+        """Shows a compact info chip with per-profile details from the preset data."""
         try:
             parts = []
-            # Language
-            lang = self.config.get("language", "")
+            
+            # Read from preset's own settings (not global config)
+            presets = self.config.get("chrome_presets", {})
+            active = self.config.get("active_preset", "")
+            preset_data = presets.get(active, {})
+            s = preset_data.get("settings", {})
+            
+            # Fallback to global config if preset has no settings yet
+            if not s:
+                s = self.config
+            
+            # Target Language
+            lang = s.get("target_language", self.config.get("target_language", ""))
             if lang:
                 parts.append(f"🌐 {lang}")
+            
             # Vocal Gender
-            if self.config.get("vocal_gender_enabled", False):
-                gender = self.config.get("vocal_gender", "")
-                if gender:
+            if s.get("vocal_gender_enabled", False):
+                gender = s.get("vocal_gender", "")
+                if gender and gender != "Default":
                     parts.append(f"🎤 {gender}")
+            
+            # Active Persona
+            persona = s.get("suno_active_persona", "")
+            if persona:
+                parts.append(f"👤 {persona}")
+            
+            # Artist Name
+            artist = s.get("artist_name", "")
+            if artist:
+                parts.append(f"🎨 {artist}")
+            
+            # Batch Mode
+            if s.get("suno_batch_mode", False):
+                op = s.get("suno_batch_op_mode", "full")
+                parts.append(f"⚡ Batch:{op}")
+            
             # Lyrics Mode
-            if self.config.get("lyrics_mode_enabled", False):
-                mode = self.config.get("lyrics_mode", "")
-                if mode:
+            if s.get("lyrics_mode_enabled", False):
+                mode = s.get("lyrics_mode", "")
+                if mode and mode != "Default":
                     parts.append(f"📜 {mode}")
+            
             # Weirdness
-            if self.config.get("weirdness_enabled", False):
-                weird = self.config.get("weirdness", "")
-                if weird and weird != "Default":
-                    parts.append(f"☄️ Weird:{weird}")
+            if s.get("weirdness_enabled", False):
+                weird = s.get("weirdness", "")
+                if weird and str(weird) != "Default":
+                    parts.append(f"☄️ W:{weird}")
+            
             # Audio Influence
-            if self.config.get("audio_influence_enabled", False):
-                ai = self.config.get("audio_influence", "")
+            if s.get("audio_influence_enabled", False):
+                ai = s.get("audio_influence", "")
                 if ai:
                     parts.append(f"🔊 AI:{ai}%")
+            
+            # Project file indicator
+            pf = preset_data.get("project_file", "")
+            if pf:
+                parts.append(f"📄 {os.path.basename(pf)}")
+            
             badge_text = "  │  ".join(parts) if parts else "ℹ️ Ayarlar için tıkla"
             self.profile_info_var.set(badge_text)
         except Exception:
@@ -2472,9 +2168,7 @@ class MusicBotGUI:
         self.config["lyrics_mode"] = self.var_lyrics_mode.get()
         self.config["suno_batch_mode"] = self.var_suno_batch.get()
         self.config["suno_batch_op_mode"] = self.var_batch_op.get()
-        
-        from utils import save_config
-        save_config(self.config)
+        self.save_settings()
 
     def play_chime(self):
         """Plays a notification sound based on OS."""
@@ -2484,7 +2178,7 @@ class MusicBotGUI:
             elif sys.platform == "win32":
                 import winsound
                 winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS)
-        except: pass
+        except Exception: pass
 
 
 
@@ -2632,18 +2326,38 @@ class MusicBotGUI:
                 messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
                 return
 
-        # 1. Use manual checkboxes if any
-        target_ids = list(self.selected_songs)
+        # Check for saved session state before taking new selection
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        state_file = os.path.join(workspace, "session_state.json")
+        resumed = False
+        target_ids = []
         
-        # 2. If no checkboxes, use tree selection
-        if not target_ids:
-            selected_items = self.tree.selection()
-            if selected_items:
-                target_ids = list(selected_items)
-            else:
-                # If filter is active and nothing selected, ask to process all filtered
-                if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
-                    target_ids = self.filtered_ids
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+                if state.get("project_file") == getattr(self.app, 'project_path', '') and state.get("target_ids"):
+                    if messagebox.askyesno("Devam Et (Resume)", "Yarıda kalmış bir işlem bulundu. Kaldığınız yerden (önceki seçimlerinizle) devam edilsin mi?\n(Hayır derseniz, sıfırdan başlarsınız.)"):
+                        target_ids = state["target_ids"]
+                        resumed = True
+                    else:
+                        try: os.remove(state_file)
+                        except: pass
+            except: pass
+
+        if not resumed:
+            # 1. Use manual checkboxes if any
+            target_ids = list(self.selected_songs)
+            
+            # 2. If no checkboxes, use tree selection
+            if not target_ids:
+                selected_items = self.tree.selection()
+                if selected_items:
+                    target_ids = list(selected_items)
+                else:
+                    # If filter is active and nothing selected, ask to process all filtered
+                    if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
+                        target_ids = self.filtered_ids
         
         if not target_ids:
             return
@@ -2651,7 +2365,7 @@ class MusicBotGUI:
         # [Requirement 6] Strict Sequential Processing by ID
         try:
             target_ids.sort(key=lambda x: (float(re.sub(r'[^\d.]', '', x)) if re.search(r'\d', x) else 0, x))
-        except:
+        except (ValueError, TypeError):
             target_ids.sort()
 
         self.stop_requested = False
@@ -2666,7 +2380,13 @@ class MusicBotGUI:
             try:
                 self.active_browser.stop()
                 logger.warning(self.t("log_browser_stop"))
-            except: pass
+            except Exception: pass
+        # Safety: guarantee buttons re-enable even if worker thread hangs
+        def _safety_enable():
+            if str(self.btn_run.cget("state")) == "disabled":
+                logger.warning("Safety timer: force-enabling buttons after stop.")
+                self.enable_buttons()
+        self.root.after(5000, _safety_enable)
 
     def _check_existing_data(self, target_ids):
         """Checks if any of the target songs already have data in the requested steps."""
@@ -2750,6 +2470,18 @@ class MusicBotGUI:
                     if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
                         force_update = True
 
+            # Save session state before starting long operation
+            workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+            state_file = os.path.join(workspace, "session_state.json")
+            try:
+                with open(state_file, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "project_file": getattr(self.app, 'project_path', ''),
+                        "target_ids": target_ids
+                    }, f)
+            except Exception as e:
+                logger.error(f"Failed to save session state: {e}")
+
             # Unified Project Path (Profile-based: output_media/[Profile_Name])
             project_file = self.project_path
             profile_name = self.config.get("active_preset", "Default")
@@ -2762,9 +2494,6 @@ class MusicBotGUI:
                     self.status_var.set(text)
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
-
-                    self.active_browser = None
-                
             
             # =================================================================================================
             # DECISION POINT: Batch Mode vs Sequential Mode
@@ -2869,6 +2598,14 @@ class MusicBotGUI:
             logger.error(f"Critical Process Error: {err_msg}")
             self.root.after(0, lambda m=err_msg: messagebox.showerror(self.t("msg_critical_error"), m))
         finally:
+            if not getattr(self, "stop_requested", False):
+                # Process completed normally -> remove state
+                workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+                state_file = os.path.join(workspace, "session_state.json")
+                try: 
+                    if os.path.exists(state_file): os.remove(state_file)
+                except: pass
+            
             self.root.after(0, self.enable_buttons)
             self.load_data()
 
@@ -2895,7 +2632,7 @@ class MusicBotGUI:
                             "lyrics_master_prompt": "Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün...",
                             "art_master_prompt": "Create a high-quality YouTube music thumbnail..."
                         }, f, indent=4)
-                except: pass
+                except Exception: pass
         return prompts_path
 
     def get_data_paths(self):
@@ -3009,7 +2746,7 @@ class MusicBotGUI:
             # First, try to kill any chrome instances for safety
             if self.active_browser:
                 try: self.active_browser.stop()
-                except: pass
+                except Exception: pass
             
             logger.info(f"Resetting Chrome profile at: {profile_path}")
             
@@ -3031,11 +2768,12 @@ class MusicBotGUI:
         self.btn_stop.config(state="normal")
 
     def enable_buttons(self):
+        self.stop_requested = False  # Reset flag so engine can restart
         self.root.after(0, lambda: self.btn_run.config(state="normal"))
         self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
         self.root.after(0, lambda: self.status_var.set(self.t("ready")))
         self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
-        self.root.after(0, lambda: self.load_project_data()) # Auto refresh
+        self.root.after(0, self._refresh_all)  # Auto refresh with full data + materials scan
 
     def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update):
         """Original flow: Process each song 1-by-1 through all selected steps."""
@@ -3186,7 +2924,7 @@ class MusicBotGUI:
                     time.sleep(1)
                     if song_browser:
                         song_browser.stop()
-                except: pass
+                except Exception: pass
                 self.active_browser = None
 
     def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None):
@@ -3217,7 +2955,7 @@ class MusicBotGUI:
             if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
                 if not target_suffix: # Generic file only if 'Both' or no specific suffix requested
                     found_audio.append(f"{song_id}.mp3")
-        except: pass
+        except Exception: pass
         found_audio = sorted(list(set(found_audio)))
         used_in_tasks = []
 
@@ -3414,11 +3152,11 @@ class MusicBotGUI:
 
         except Exception as e:
             logger.error(f"Batch Mode Error: {e}")
-            messagebox.showerror(self.t("error"), str(e))
+            self.root.after(0, lambda m=str(e): messagebox.showerror(self.t("error"), m))
         finally:
             if self.active_browser:
                 try: self.active_browser.stop()
-                except: pass
+                except Exception: pass
                 self.active_browser = None
 
     def load_data(self):

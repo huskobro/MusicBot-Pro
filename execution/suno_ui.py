@@ -9,19 +9,7 @@ import time
 import json
 import logging
 
-from logging.handlers import RotatingFileHandler
-
-os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if not logger.hasHandlers():
-    file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
-    console_handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
 
 
 class SunoUIMixin:
@@ -113,7 +101,7 @@ class SunoUIMixin:
             if switched:
                 logger.info("Handled 'Switch to v5' modal.")
                 time.sleep(2)
-        except: pass
+        except Exception: pass
 
     def _ensure_v5_active(self):
         """Checks if v5 is active, if not, tries to switch."""
@@ -127,7 +115,7 @@ class SunoUIMixin:
                 if v5_option.is_visible():
                     v5_option.click()
                     time.sleep(2)
-        except: pass
+        except Exception: pass
 
     def _setup_lyrics_mode(self):
         if self.lyrics_mode == "Default": return
@@ -138,7 +126,7 @@ class SunoUIMixin:
                 if (target) target.click();
             }}""", self.lyrics_mode)
             time.sleep(1)
-        except: pass
+        except Exception: pass
 
     def _setup_advanced_options(self):
         try:
@@ -383,7 +371,7 @@ class SunoUIMixin:
             try:
                 if self.tab.locator(sel).is_visible(timeout=300):
                     return True
-            except: pass
+            except Exception: pass
         return False
 
     def _play_alert(self):
@@ -394,4 +382,4 @@ class SunoUIMixin:
             elif sys.platform == "win32":
                 import winsound
                 winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
-        except: pass
+        except Exception: pass

@@ -9,19 +9,7 @@ import time
 import logging
 import random
 
-from logging.handlers import RotatingFileHandler
-
-os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if not logger.hasHandlers():
-    file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
-    console_handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
 
 
 class SunoDownloaderMixin:
@@ -67,7 +55,7 @@ class SunoDownloaderMixin:
                     try:
                         target_row.hover()
                         time.sleep(1)
-                    except: pass
+                    except Exception: pass
                     target_more = None
 
                 if not target_more or not target_more.is_visible():
@@ -87,7 +75,7 @@ class SunoDownloaderMixin:
                 if not target_dl.is_visible():
                     logger.warning(f"[_download_from_row] 'Download' not visible for {rid}_{suffix}")
                     try: self.tab.keyboard.press("Escape")
-                    except: pass
+                    except Exception: pass
                     continue
 
                 target_dl.hover()
@@ -111,7 +99,7 @@ class SunoDownloaderMixin:
                 if not target_audio or not target_audio.is_visible():
                     logger.warning(f"[_download_from_row] Format button not found for {rid}_{suffix}")
                     try: self.tab.keyboard.press("Escape")
-                    except: pass
+                    except Exception: pass
                     continue
 
                 ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
@@ -148,7 +136,7 @@ class SunoDownloaderMixin:
                             logger.info(f"[_download_from_row] ✅ Saved {filename}")
 
                             try: self.tab.keyboard.press("Escape")
-                            except: pass
+                            except Exception: pass
                             return True
                     else:
                         logger.warning(f"[_download_from_row] Popup not visible for {rid}_{suffix}, retry {attempt+1}")
@@ -156,7 +144,7 @@ class SunoDownloaderMixin:
                     logger.warning(f"[_download_from_row] Popup error for {rid}_{suffix}: {e}")
 
                 try: self.tab.keyboard.press("Escape")
-                except: pass
+                except Exception: pass
                 time.sleep(2)
 
             logger.warning(f"[_download_from_row] ❌ All attempts failed for {rid}_{suffix}")
@@ -173,7 +161,7 @@ class SunoDownloaderMixin:
         try:
             # SESSION CHECK
             try: self.tab.url
-            except:
+            except Exception:
                 logger.warning(f"Tab crashed before scanning for {rid}. Recovering...")
                 if self.persona_link: self._setup_persona_workflow()
                 else: self.browser.goto(self.base_url, page=self.tab)
@@ -182,7 +170,7 @@ class SunoDownloaderMixin:
             
             # Ensure safe start state - clear any leftover search and escape menus
             try: self.tab.keyboard.press("Escape")
-            except: pass
+            except Exception: pass
             time.sleep(0.3)
             try:
                 search_input = self.tab.locator("input[aria-label='Search clips']").first
@@ -191,7 +179,7 @@ class SunoDownloaderMixin:
                     search_input.fill("")
                     self.tab.keyboard.press("Enter")
                     time.sleep(2)
-            except: pass
+            except Exception: pass
 
             rows = self.tab.locator("div.clip-row")
             count = rows.count()
@@ -261,7 +249,7 @@ class SunoDownloaderMixin:
                                 self.tab.keyboard.press("Enter")
                                 time.sleep(2)
                                 logger.info(f"[_download_specific] Cleared search after failed lookup for {rid}")
-                        except: pass
+                        except Exception: pass
 
             if not target_row:
                 logger.warning(f"[_download_specific] Target row NOT FOUND for {rid}_{suffix}")
@@ -287,6 +275,7 @@ class SunoDownloaderMixin:
             best_index = index
 
             for attempt in range(120):
+                self.browser.ensure_alive()
                 try:
                     rows = self.tab.locator("div.clip-row")
                     count = rows.count()
@@ -424,7 +413,7 @@ class SunoDownloaderMixin:
                     logger.info(f"[_check_if_ready] Matched {rid} in row {i}. FULL TEXT: {repr(row_text)}")
                     if occurrence == target_occur:
                         try: row.hover(timeout=500)
-                        except: pass
+                        except Exception: pass
 
                         is_gen = row.locator("text='Generating'").is_visible(timeout=500)
                         more_btn = row.locator("button[data-context-menu-trigger='true'], button.context-menu-button, [aria-label*='More' i]").first
@@ -436,7 +425,7 @@ class SunoDownloaderMixin:
                         return False
                     occurrence += 1
             return False
-        except: return False
+        except Exception: return False
 
     # ──────────────────────────────────────────────────────────────
     #  Song finding helpers
@@ -456,7 +445,7 @@ class SunoDownloaderMixin:
                     self.tab.mouse.wheel(0, self.config.scroll_distance)
                     time.sleep(self.config.scroll_delay)
             return False
-        except: return False
+        except Exception: return False
 
     def _search_for_song(self, rid, title):
         """Uses the Suno search bar to find a specific song (by ID only)."""
@@ -491,7 +480,7 @@ class SunoDownloaderMixin:
                     self.tab.keyboard.press(f"{self.mod}+A")
                     self.tab.keyboard.press("Backspace")
                     time.sleep(0.2)
-                except: pass
+                except Exception: pass
 
                 search_input.fill("")
                 time.sleep(0.3)
