@@ -470,19 +470,49 @@ class SunoGenerator:
                 
                 logger.info(f"Download queue: {download_queue} ({len(download_queue)} songs)")
                 
-                # Clear search before starting final downloads to ensure clean list view
+                # Clear any leftover search
                 try:
                     search_input = self.tab.locator("input[aria-label='Search clips']").first
-                    if search_input.is_visible():
+                    if search_input.is_visible() and search_input.input_value().strip():
                         search_input.fill("")
                         self.tab.keyboard.press("Enter")
                         time.sleep(2)
                 except: pass
-
+                
+                # ===== PHASE A: FULL WATERFALL SCROLL =====
+                # Scroll through the entire song list to load everything into DOM
+                logger.info("Phase A: Full waterfall scroll to load all songs into DOM...")
+                if progress_callback: progress_callback("global", "Şarkı listesi yükleniyor... ⬇️")
+                try:
+                    for scroll_pass in range(15):  # Up to 15 scroll passes
+                        rows = self.tab.locator("div.clip-row")
+                        current_count = rows.count()
+                        if current_count > 0:
+                            rows.last.scroll_into_view_if_needed()
+                            time.sleep(0.3)
+                            self.tab.mouse.wheel(0, 3000)
+                            time.sleep(1.5)
+                            new_count = self.tab.locator("div.clip-row").count()
+                            logger.info(f"Scroll pass {scroll_pass+1}: {current_count} → {new_count} rows")
+                            if new_count <= current_count:
+                                break  # No more rows loading
+                except Exception as e:
+                    logger.warning(f"Waterfall scroll error: {e}")
+                
+                # Scroll back to top 
+                try:
+                    self.tab.keyboard.press("Home")
+                    time.sleep(1)
+                except: pass
+                
+                # ===== PHASE B: SCAN DOM & DOWNLOAD FOUND SONGS =====
+                logger.info("Phase B: Scanning DOM and downloading found songs...")
+                not_found_ids = []
+                
                 for rid in download_queue:
                     if self.stop_requested: break
                     
-                    # SESSION CHECK: Ensure tab didn't crash before starting a new ID
+                    # SESSION CHECK
                     try: self.tab.url
                     except:
                         logger.warning(f"Tab crashed before downloading {rid}. Recovering...")
@@ -490,34 +520,105 @@ class SunoGenerator:
                         else: self.browser.goto(self.base_url, page=self.tab)
                         time.sleep(5)
                         self._ensure_v5_active()
-
+                    
                     r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
                     if not r_data: continue
                     
                     row_idx = r_data['_row_idx']
-                    
                     title = r_data.get("title", "Song")
                     suno_title = f"{rid}_{title}"
                     
-                    logger.info(f"Attempting download for {rid} ({title})...")
+                    # Find ALL occurrences of this song in current DOM
+                    rows = self.tab.locator("div.clip-row")
+                    occurrences = []
+                    for i in range(rows.count()):
+                        row_text = rows.nth(i).inner_text().lower()
+                        if str(rid).lower() in row_text:
+                            occurrences.append(rows.nth(i))
+                    
+                    if not occurrences:
+                        not_found_ids.append(rid)
+                        logger.info(f"[Phase B] {rid} not found in DOM. Will try search later.")
+                        continue
+                    
+                    logger.info(f"[Phase B] Found {len(occurrences)} occurrences for {rid}. Downloading...")
                     if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
                     
-                    # Persistent _download_specific handles indexing, search fallback, and popup retries
-                    s1 = self._download_specific(suno_title, rid, suffix="1")
-                    s2 = self._download_specific(suno_title, rid, suffix="2")
+                    s1 = self._download_from_row(occurrences[0], suno_title, rid, suffix="1")
+                    s2 = self._download_from_row(occurrences[1], suno_title, rid, suffix="2") if len(occurrences) > 1 else False
                     
                     if s1 or s2:
                         self.update_row_status(row_idx, status="Generated", dl_status="success", dl_attempts=0)
-                        if progress_callback: 
-                             status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
-                             progress_callback(rid, status_txt)
+                        status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
+                        if progress_callback: progress_callback(rid, status_txt)
                         completed_ids.append(rid)
-                        logger.info(f"Download SUCCESS for {rid}: s1={s1}, s2={s2}")
+                        logger.info(f"✅ Download SUCCESS for {rid}: s1={s1}, s2={s2}")
                     else:
                         self.update_row_status(row_idx, dl_status="failed", dl_attempts=1)
                         if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
-                        logger.warning(f"Download FAILED for {rid}: s1={s1}, s2={s2}")
-
+                        logger.warning(f"❌ Download FAILED for {rid}: s1={s1}, s2={s2}")
+                
+                # ===== PHASE C: SEARCH FALLBACK FOR NOT-FOUND SONGS =====
+                if not_found_ids:
+                    logger.info(f"Phase C: Search fallback for {len(not_found_ids)} not-found songs: {not_found_ids}")
+                    if progress_callback: progress_callback("global", f"Arama ile {len(not_found_ids)} şarkı aranıyor... 🔍")
+                    
+                    for rid in not_found_ids:
+                        if self.stop_requested: break
+                        
+                        r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                        if not r_data: continue
+                        
+                        row_idx = r_data['_row_idx']
+                        title = r_data.get("title", "Song")
+                        suno_title = f"{rid}_{title}"
+                        
+                        logger.info(f"[Phase C] Searching for {rid}...")
+                        if progress_callback: progress_callback(rid, f"Aranıyor... 🔍")
+                        
+                        if self._search_for_song(rid, title):
+                            time.sleep(2)
+                            rows = self.tab.locator("div.clip-row")
+                            occurrences = []
+                            for i in range(min(10, rows.count())):
+                                if str(rid).lower() in rows.nth(i).inner_text().lower():
+                                    occurrences.append(rows.nth(i))
+                            
+                            if occurrences:
+                                logger.info(f"[Phase C] Found {len(occurrences)} occurrences for {rid} via search.")
+                                if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
+                                
+                                s1 = self._download_from_row(occurrences[0], suno_title, rid, suffix="1")
+                                s2 = self._download_from_row(occurrences[1], suno_title, rid, suffix="2") if len(occurrences) > 1 else False
+                                
+                                if s1 or s2:
+                                    self.update_row_status(row_idx, status="Generated", dl_status="success", dl_attempts=0)
+                                    status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
+                                    if progress_callback: progress_callback(rid, status_txt)
+                                    completed_ids.append(rid)
+                                    logger.info(f"✅ Download SUCCESS for {rid}: s1={s1}, s2={s2}")
+                                else:
+                                    self.update_row_status(row_idx, dl_status="failed", dl_attempts=1)
+                                    if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
+                                    logger.warning(f"❌ Download FAILED for {rid}")
+                            else:
+                                logger.warning(f"[Phase C] {rid} not found even via search. Skipping.")
+                                if progress_callback: progress_callback(rid, "Bulunamadı ❌")
+                                self.update_row_status(row_idx, dl_status="failed")
+                        else:
+                            logger.warning(f"[Phase C] Search failed for {rid}. Skipping.")
+                            if progress_callback: progress_callback(rid, "Arama Hatası ❌")
+                            self.update_row_status(row_idx, dl_status="failed")
+                        
+                        # Clear search after each song
+                        try:
+                            search_input = self.tab.locator("input[aria-label='Search clips']").first
+                            if search_input.is_visible():
+                                search_input.fill("")
+                                self.tab.keyboard.press("Enter")
+                                time.sleep(2)
+                        except: pass
+                
                 return len(completed_ids)
 
             return 0
@@ -666,6 +767,123 @@ class SunoGenerator:
                     occurrence += 1
             return False
         except: return False
+
+    def _download_from_row(self, target_row, title, rid, suffix="1"):
+        """Downloads a song from an already-found row element. Handles More→Download→Format→Popup→Save."""
+        try:
+            logger.info(f"[_download_from_row] Starting download for {rid}_{suffix}")
+            
+            # Scroll to row and hover to reveal buttons
+            try:
+                target_row.scroll_into_view_if_needed()
+                time.sleep(0.5)
+                target_row.hover()
+                time.sleep(0.5)
+            except Exception as e:
+                logger.warning(f"[_download_from_row] Could not scroll/hover for {rid}_{suffix}: {e}")
+
+            # Find "More" button with retries
+            target_more = None
+            for more_try in range(3):
+                target_more = target_row.locator("button[aria-label*='More' i]").first
+                if target_more.count() > 0 and target_more.is_visible():
+                    break
+                target_more = target_row.locator("button.context-menu-button").last
+                if target_more.count() > 0 and target_more.is_visible():
+                    break
+                try:
+                    target_row.hover()
+                    time.sleep(1)
+                except: pass
+                target_more = None
+
+            if not target_more or not target_more.is_visible():
+                logger.warning(f"[_download_from_row] 'More' button not visible for {rid}_{suffix}")
+                return False
+
+            target_more.scroll_into_view_if_needed()
+            time.sleep(0.5)
+            target_more.click()
+            time.sleep(2)
+            
+            # Find "Download" in dropdown
+            target_dl = self.tab.locator("button:has-text('Download')").first
+            if not target_dl.is_visible():
+                target_dl = self.tab.get_by_text("Download", exact=True).first
+            
+            if not target_dl.is_visible():
+                logger.warning(f"[_download_from_row] 'Download' not visible for {rid}_{suffix}")
+                try: self.tab.keyboard.press("Escape")
+                except: pass
+                return False
+
+            target_dl.hover()
+            time.sleep(1.5)
+            
+            # Find format (WAV/MP3)
+            target_audio = None
+            for _ in range(5):
+                loc = self.tab.locator("button[aria-label*='WAV' i]").first
+                if loc.count() > 0 and loc.is_visible():
+                    target_audio = loc
+                    break
+                time.sleep(1)
+            
+            if not target_audio or not target_audio.is_visible():
+                target_audio = self.tab.locator("button[aria-label*='MP3' i]").first
+            if not target_audio or not target_audio.is_visible():
+                target_audio = self.tab.locator("button:has-text('Audio')").first
+
+            if not target_audio or not target_audio.is_visible():
+                logger.warning(f"[_download_from_row] Format button not found for {rid}_{suffix}")
+                try: self.tab.keyboard.press("Escape")
+                except: pass
+                return False
+
+            ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
+            logger.info(f"[_download_from_row] {ext.upper()} format selected for {rid}_{suffix}")
+            
+            # Click format → popup → confirm download
+            for dl_retry in range(3):
+                target_audio.click()
+                time.sleep(3)
+                
+                try:
+                    popup = self.tab.locator("div[role='dialog'], div.chakra-modal__content").last
+                    if popup.is_visible(timeout=5000):
+                        dl_confirm_btn = popup.locator("button").filter(has_text="Download").last
+                        if not dl_confirm_btn.is_visible():
+                            dl_confirm_btn = popup.locator("button:has-text('Download File')").first
+                        
+                        if dl_confirm_btn.is_visible():
+                            with self.tab.expect_download(timeout=60000) as download_info:
+                                dl_confirm_btn.click()
+                            
+                            download = download_info.value
+                            clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+                            clean_title = re.sub(r'[-\s]+', '_', clean_title)
+                            filename = f"{clean_title}_{suffix}.{ext}"
+                            save_path = os.path.join(self.output_dir, filename)
+                            download.save_as(save_path)
+                            logger.info(f"[_download_from_row] ✅ Saved {filename}")
+                            
+                            try: self.tab.keyboard.press("Escape")
+                            except: pass
+                            return True
+                    else:
+                        logger.warning(f"[_download_from_row] Popup not visible for {rid}_{suffix}, retry {dl_retry+1}")
+                except Exception as e:
+                    logger.warning(f"[_download_from_row] Popup error for {rid}_{suffix}: {e}")
+                
+                try: self.tab.keyboard.press("Escape")
+                except: pass
+                time.sleep(2)
+
+            logger.warning(f"[_download_from_row] ❌ All attempts failed for {rid}_{suffix}")
+            return False
+        except Exception as e:
+            logger.error(f"[_download_from_row] Error for {rid}_{suffix}: {e}")
+            return False
 
     def _download_specific(self, title, rid, suffix="1"):
         """Downloads a specific occurrence of a song title."""
