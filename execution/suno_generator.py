@@ -336,7 +336,7 @@ class SunoGenerator:
                     try:
                         rows = self.tab.locator("div.clip-row")
                         row_count = rows.count()
-                        for i in range(min(150, row_count)):
+                        for i in range(min(300, row_count)):
                             row_text = rows.nth(i).inner_text().lower()
                             for rid in pending_ids:
                                 if str(rid).lower() in row_text:
@@ -680,8 +680,8 @@ class SunoGenerator:
             
             target_row = None
             
-            # 1. INITIAL SCAN (Increased range to 150 to avoid redundant search/scroll)
-            for i in range(min(150, count)): 
+            # 1. INITIAL SCAN (Scan first 300 rows before fallback)
+            for i in range(min(300, count)): 
                 row = rows.nth(i)
                 row_text = row.inner_text().lower()
                 
