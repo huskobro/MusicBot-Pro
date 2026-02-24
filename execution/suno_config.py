@@ -3,6 +3,25 @@ Centralized configuration for SunoGenerator.
 All hardcoded values extracted into a single config dataclass.
 """
 from dataclasses import dataclass, field
+from enum import Enum, auto
+
+class SongState(Enum):
+    QUEUED = auto()
+    SCANNING = auto()
+    FOUND = auto()
+    DOWNLOADING = auto()
+    SAVED = auto()
+    VERIFIED = auto()
+    FAILED = auto()
+
+@dataclass
+class DownloadContext:
+    rid: str
+    title: str
+    row_idx: int
+    suffix: str = "1"
+    state: SongState = SongState.QUEUED
+    retry_count: int = 0
 
 
 @dataclass

@@ -6,14 +6,30 @@ import re
 import json
 from browser_controller import BrowserController
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from logging.handlers import RotatingFileHandler
+
+os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# Clear existing handlers to prevent duplicate logs in case of reload
+if logger.hasHandlers():
+    logger.handlers.clear()
+
+file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+console_handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 from suno_config import SunoConfig
 from suno_excel import SunoExcelMixin
 from suno_downloader import SunoDownloaderMixin
 from suno_ui import SunoUIMixin
+
+class UserStoppedException(Exception):
+    pass
 
 class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
     def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None,
@@ -34,6 +50,11 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         self.base_url = "https://suno.com/create"
         self.stop_requested = False
         self.turbo = turbo
+
+    def _check_stop(self):
+        if self.stop_requested:
+            logger.info("Graceful shutdown requested by user.")
+            raise UserStoppedException("User requested stop")
         
         # Advanced Params
         self.audio_influence = audio_influence
@@ -163,13 +184,14 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         finally:
             logger.info("Suno finished.")
 
-    def run_batch(self, target_ids=None, progress_callback=None, force_update=False, op_mode="full"):
+    def run_batch(self, target_ids=None, progress_callback=None, stats_callback=None, force_update=False, op_mode="full"):
         """
         Orchestrates the BATCH workflow:
         1. Generate ALL requested songs (Phase 1)
         2. Wait for & Download ALL requested songs (Phase 2)
         """
         try:
+            batch_start_time = time.time()
             if not self.browser.context:
                 self.browser.start()
             
@@ -209,6 +231,23 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             
             rows_data = []
             target_ids_set = set(str(t).strip().lower() for t in target_ids) if target_ids else None
+            
+            self._batch_stats = {"total": 0, "success": 0, "failed": 0, "threads": 2}
+            
+            def trigger_dashboard_update():
+                if stats_callback:
+                    elapsed = time.time() - batch_start_time
+                    t_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
+                    stats_callback(
+                        total=self._batch_stats["total"],
+                        success=self._batch_stats["success"],
+                        failed=self._batch_stats["failed"],
+                        time=t_str,
+                        threads=self._batch_stats["threads"]
+                    )
+                    
+            # Initial stats trigger
+            trigger_dashboard_update()
 
             for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 rid_orig = row[headers.get('id', 0)] if 'id' in headers else ""
@@ -235,6 +274,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             if not rows_data:
                 logger.info("Nothing to batch generate.")
                 return 0
+                
+            self._batch_stats["total"] = len(rows_data)
+            trigger_dashboard_update()
 
             generated_ids = []
             
@@ -283,21 +325,24 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 logger.info(f"Batch Generation Phase Complete. {len(generated_ids)} songs queued.")
             
-            # --- PHASE 1.5: Identify Resume Items (For DL Only or Full Resume) ---
-            # If we skipped generation, or if we want to pick up items that are already "Generating..."
-            # Scan rows_data for items with status "Generating..." or "Processing"
+            from suno_config import DownloadContext, SongState
+            download_queue = []
+
+            # --- PHASE 1.5: Identify Resume Items ---
             if op_mode in ["full", "dl_only"]:
                 for row_dict in rows_data:
                     rid = str(row_dict.get('id', ''))
+                    title = str(row_dict.get('title', 'Song'))
                     status = str(row_dict.get('status', '')).lower()
                     
-                    # If it's a target ID, we definitely want it
                     is_target = target_ids and (rid in target_ids)
                     
                     if rid not in generated_ids:
                         if is_target or "generating" in status or "processing" in status or "suno bekleniyor" in status:
                              logger.info(f"Adding {rid} to download queue (is_target: {is_target}, status: {status})")
-                             generated_ids.append(rid)
+                             download_queue.append(DownloadContext(rid=rid, title=title, row_idx=row_dict['_row_idx']))
+                    else:
+                         download_queue.append(DownloadContext(rid=rid, title=title, row_idx=row_dict['_row_idx']))
 
             # --- PHASE 2: BATCH DOWNLOAD ---
             if op_mode in ["full", "dl_only"] and generated_ids:
@@ -359,37 +404,30 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         except Exception as scan_e:
                             logger.debug(f"Scan interrupted: {scan_e}")
 
-                        # 2. DECIDE WHO IS STILL PENDING AND IF WE NEED TO SCROLL
-                        for rid in pending_ids:
-                            if rid in found_this_loop:
-                                missing_counts[rid] = 0 # Reset
-                                if found_this_loop[rid]["ready"]:
-                                    # Extra check for robustness
-                                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                                    suno_title = f"{rid}_{r_data.get('title', 'Song')}"
-                                    if self._check_if_ready(suno_title, rid, suffix="1") and \
-                                       self._check_if_ready(suno_title, rid, suffix="2"):
-                                        logger.info(f"ID {rid} is ready for download phase.")
-                                        if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
-                                    else:
-                                        still_generating.append(rid)
-                                else:
-                                    still_generating.append(rid) # Found but still generating
+                        for ctx in pending_ctxs:
+                            if ctx.state != SongState.QUEUED: continue
+                            
+                            if ctx.rid in found_this_loop:
+                                missing_counts[ctx.rid] = 0
+                                if found_this_loop[ctx.rid]["ready"]:
+                                    suno_title = f"{ctx.rid}_{ctx.title}"
+                                    if self._check_if_ready(suno_title, ctx.rid, suffix="1") and \
+                                       self._check_if_ready(suno_title, ctx.rid, suffix="2"):
+                                        logger.info(f"ID {ctx.rid} is ready for download phase.")
+                                        if progress_callback: progress_callback(ctx.rid, "Hazır! Beklemede... ✅")
+                                        ctx.state = SongState.FOUND
                             else:
-                                # NOT FOUND IN CURRENT VIEW AT ALL
-                                missing_counts[rid] = missing_counts.get(rid, 0) + 1
-                                if missing_counts[rid] > 12: # After ~2.5 minutes of not seeing it
-                                    logger.warning(f"Timeout waiting for {rid} to appear. Skipping.")
-                                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                                    if r_data:
-                                        self.update_row_status(r_data['_row_idx'], status="Failed", dl_status="failed")
-                                    if progress_callback: progress_callback(rid, "Üretilemedi / Bulunamadı ❌")
-                                    # DO NOT append to still_generating so it drops from pending_ids
+                                missing_counts[ctx.rid] = missing_counts.get(ctx.rid, 0) + 1
+                                if missing_counts[ctx.rid] > 12:
+                                    logger.warning(f"Timeout waiting for {ctx.rid} to appear. Skipping.")
+                                    self.update_row_status(ctx.row_idx, status="Failed", dl_status="failed")
+                                    if progress_callback: progress_callback(ctx.rid, "Üretilemedi / Bulunamadı ❌")
+                                    ctx.state = SongState.FAILED
                                 else:
-                                    still_generating.append(rid)
-                                all_targets_found_in_view = False
+                                    all_targets_found_in_view = False
                         
-                        # 3. SMART SCROLLING: Only if someone is missing from view
+                        max_row_reached = max(max_row_reached, current_max_idx)
+
                         if not all_targets_found_in_view:
                             if max_row_reached > 5:
                                 try:
@@ -408,53 +446,37 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         else:
                             logger.debug("All pending songs found in current view. No scrolling needed.")
 
-                        # 4. SEARCH FALLBACK: If missing for too long (e.g. 8+ attempts after scrolling)
                         if not all_targets_found_in_view and loop_count > 8:
-                            missing = [rid for rid in pending_ids if rid not in found_this_loop]
-                            if missing:
-                                target_rid = missing[0]
-                                logger.info(f"Using Search Fallback for missing ID {target_rid}...")
-                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == target_rid), None)
+                            missing_ctxs = [c for c in pending_ctxs if c.state == SongState.QUEUED and c.rid not in found_this_loop]
+                            if missing_ctxs:
+                                target_ctx = missing_ctxs[0]
+                                logger.info(f"Using Search Fallback for missing ID {target_ctx.rid}...")
                                 try:
-                                    if self._search_for_song(target_rid, r_data.get('title', 'Song')):
+                                    if self._search_for_song(target_ctx.rid, target_ctx.title):
                                         time.sleep(3)
-                                        found_it = False
-                                        ready = False
                                         s_rows = self.tab.locator("div.clip-row")
                                         for si in range(min(10, s_rows.count())):
                                             s_text = s_rows.nth(si).inner_text().lower()
-                                            if target_rid in s_text:
-                                                found_it = True
-                                                ready = "generating" not in s_text
+                                            if target_ctx.rid in s_text:
+                                                if "generating" not in s_text:
+                                                    target_ctx.state = SongState.FOUND
+                                                    logger.info(f"Found missing ID {target_ctx.rid} via search!")
                                                 break
-                                        
-                                        if not found_it:
-                                            missing_counts[target_rid] = missing_counts.get(target_rid, 0) + 2
-                                        else:
-                                            missing_counts[target_rid] = 0  # It exists!
-                                            if ready:
-                                                suno_title = f"{target_rid}_{r_data.get('title', 'Song')}"
-                                                if self._check_if_ready(suno_title, target_rid, suffix="1") and \
-                                                   self._check_if_ready(suno_title, target_rid, suffix="2"):
-                                                    if target_rid in still_generating:
-                                                        still_generating.remove(target_rid)
-                                                    if progress_callback: progress_callback(target_rid, "Hazır! Beklemede... ✅")
-                                                    
-                                        # Clear search to restore default view for the next loop
-                                        try:
-                                            search_input = self.tab.locator("input[aria-label='Search clips']").first
-                                            if search_input.is_visible():
-                                                search_input.fill("")
-                                                self.tab.keyboard.press("Enter")
-                                                time.sleep(2)
-                                        except: pass
+                                except Exception as e:
+                                    logger.error(f"Search fallback error: {e}")
+                                
+                                try:
+                                    search_input = self.tab.locator("input[aria-label='Search clips']").first
+                                    if search_input.is_visible():
+                                        search_input.fill("")
+                                        self.tab.keyboard.press("Enter")
+                                        time.sleep(2)
                                 except: pass
 
-                        max_row_reached = max(max_row_reached, current_max_idx)
-                        pending_ids = still_generating
-                        if not pending_ids: break
+                        time.sleep(3)
                         
-                        if progress_callback: progress_callback("global", f"Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
+                        pending_count = len([c for c in pending_ctxs if c.state == SongState.QUEUED])
+                        if progress_callback: progress_callback("global", f"Bekleniyor: {pending_count} şarkı kaldı... ⏳")
                         time.sleep(10)
                         
                         # Periodic reload to refresh state (Every 120-150s)
@@ -469,15 +491,14 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             except Exception as e:
                                 logger.warning(f"Reload failed: {e}")
                 else:
-                    logger.info(f"dl_only mode: Skipping wait phase. Going straight to download for {len(generated_ids)} songs.")
+                    logger.info(f"dl_only mode: Skipping wait phase. Going straight to download for {len(download_queue)} songs.")
 
                 # ACTUAL DOWNLOAD PHASE
                 # Everything is ready, now we execute the persistent download logic
                 # Only exclude songs that were never found (timed out in wait phase)
-                download_queue = [rid for rid in generated_ids if missing_counts.get(rid, 0) <= 12]
                 completed_ids = []
                 
-                logger.info(f"Download queue: {download_queue} ({len(download_queue)} songs)")
+                logger.info(f"Download queue: {[c.rid for c in download_queue if c.state != SongState.FAILED]} ({len([c for c in download_queue if c.state != SongState.FAILED])} songs)")
                 
                 # Clear any leftover search
                 try:
@@ -521,118 +542,167 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 # Step 1: Build index in ONE pass (O(n+m) instead of O(n×m))
                 song_index = {}  # {rid: [row_element_1, row_element_2, ...]}
-                download_set = set(download_queue)  # O(1) lookups
                 
                 rows = self.tab.locator("div.clip-row")
                 total_rows = rows.count()
-                logger.info(f"[Phase B] Indexing {total_rows} DOM rows for {len(download_queue)} target songs...")
+                
+                valid_ctxs = [c for c in download_queue if c.state != SongState.FAILED]
+                logger.info(f"[Phase B] Indexing {total_rows} DOM rows for {len(valid_ctxs)} target songs...")
                 
                 for i in range(total_rows):
                     try:
                         row_text = rows.nth(i).inner_text().lower()
-                        for rid in download_set:
-                            if str(rid).lower() in row_text:
-                                if rid not in song_index:
-                                    song_index[rid] = []
-                                song_index[rid].append(rows.nth(i))
+                        for ctx in valid_ctxs:
+                            if ctx.rid.lower() in row_text:
+                                if ctx.rid not in song_index:
+                                    song_index[ctx.rid] = []
+                                song_index[ctx.rid].append(rows.nth(i))
                     except:
                         continue
                 
                 found_count = len(song_index)
-                not_found_ids = [rid for rid in download_queue if rid not in song_index]
-                logger.info(f"[Phase B] Index complete: {found_count} found, {len(not_found_ids)} not found in {total_rows} rows")
+                not_found_ctxs = [c for c in valid_ctxs if c.rid not in song_index]
+                logger.info(f"[Phase B] Index complete: {found_count} found, {len(not_found_ctxs)} not found in {total_rows} rows")
                 
                 # Step 2: Download from index (no more DOM scanning needed!)
-                for rid in download_queue:
+                for ctx in valid_ctxs:
                     if self.stop_requested: break
-                    if rid not in song_index:
+                    if ctx.rid not in song_index:
                         continue  # Will handle in Phase C
                     
                     # SESSION CHECK
                     try: self.tab.url
                     except:
-                        logger.warning(f"Tab crashed before downloading {rid}. Recovering...")
+                        logger.warning(f"Tab crashed before downloading {ctx.rid}. Recovering...")
                         if self.persona_link: self._setup_persona_workflow()
                         else: self.browser.goto(self.base_url, page=self.tab)
                         time.sleep(5)
                         self._ensure_v5_active()
                     
-                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                    if not r_data: continue
+                    suno_title = f"{ctx.rid}_{ctx.title}"
+                    occurrences = song_index[ctx.rid]
                     
-                    row_idx = r_data['_row_idx']
-                    title = r_data.get("title", "Song")
-                    suno_title = f"{rid}_{title}"
-                    occurrences = song_index[rid]
+                    logger.info(f"[Phase B] Downloading {ctx.rid} ({len(occurrences)} occurrences)...")
+                    if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
+                    ctx.state = SongState.DOWNLOADING
                     
-                    logger.info(f"[Phase B] Downloading {rid} ({len(occurrences)} occurrences)...")
-                    if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
+                    s1, s2 = False, False
                     
-                    s1 = self._download_from_row(occurrences[0], suno_title, rid, suffix="1")
-                    s2 = self._download_from_row(occurrences[1], suno_title, rid, suffix="2") if len(occurrences) > 1 else False
-                    
+                    # Phase 6: Parallelizing the download process via ThreadPoolExecutor.
+                    # Bypassing synchronous blocking for performance improvements.
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        future_s1 = executor.submit(self._download_from_row, occurrences[0], suno_title, ctx.rid, "1")
+                        
+                        future_s2 = None
+                        if len(occurrences) > 1:
+                            future_s2 = executor.submit(self._download_from_row, occurrences[1], suno_title, ctx.rid, "2")
+                            
+                        # Await both sequentially
+                        try:
+                            s1 = future_s1.result(timeout=180) # Prevent permanent blocking
+                            if future_s2:
+                                s2 = future_s2.result(timeout=180)
+                        except Exception as e:
+                            logger.error(f"Thread timeout or failure during download for {ctx.rid}: {e}")
+
                     if s1 or s2:
-                        self.update_row_status(row_idx, status="Generated", dl_status="success", dl_attempts=0)
+                        self._batch_stats["success"] += 1
+                        trigger_dashboard_update()
+                        self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
                         status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
-                        if progress_callback: progress_callback(rid, status_txt)
-                        completed_ids.append(rid)
-                        logger.info(f"✅ Download SUCCESS for {rid}: s1={s1}, s2={s2}")
+                        if progress_callback: progress_callback(ctx.rid, status_txt)
+                        completed_ids.append(ctx.rid)
+                        ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
+                        logger.info(f"✅ Download SUCCESS for {ctx.rid}: s1={s1}, s2={s2}")
                     else:
-                        self.update_row_status(row_idx, dl_status="failed", dl_attempts=1)
-                        if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
-                        logger.warning(f"❌ Download FAILED for {rid}: s1={s1}, s2={s2}")
+                        self._batch_stats["failed"] += 1
+                        trigger_dashboard_update()
+                        self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
+                        if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
+                        ctx.state = SongState.FAILED
+                        logger.warning(f"❌ Download FAILED for {ctx.rid}: s1={s1}, s2={s2}")
                 
                 # ===== PHASE C: SEARCH FALLBACK FOR NOT-FOUND SONGS =====
-                if not_found_ids:
-                    logger.info(f"Phase C: Search fallback for {len(not_found_ids)} not-found songs: {not_found_ids}")
-                    if progress_callback: progress_callback("global", f"Arama ile {len(not_found_ids)} şarkı aranıyor... 🔍")
+                if not_found_ctxs:
+                    logger.info(f"Phase C: Search fallback for {len(not_found_ctxs)} not-found songs: {[c.rid for c in not_found_ctxs]}")
+                    if progress_callback: progress_callback("global", f"Arama ile {len(not_found_ctxs)} şarkı aranıyor... 🔍")
                     
-                    for rid in not_found_ids:
+                    for ctx in not_found_ctxs:
                         if self.stop_requested: break
                         
-                        r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                        if not r_data: continue
+                        # SESSION CHECK
+                        try: self.tab.url
+                        except:
+                            logger.warning(f"Tab crashed before searching {ctx.rid}. Recovering...")
+                            if self.persona_link: self._setup_persona_workflow()
+                            else: self.browser.goto(self.base_url, page=self.tab)
+                            time.sleep(5)
+                            self._ensure_v5_active()
+                            
+                        suno_title = f"{ctx.rid}_{ctx.title}"
                         
-                        row_idx = r_data['_row_idx']
-                        title = r_data.get("title", "Song")
-                        suno_title = f"{rid}_{title}"
+                        logger.info(f"[Phase C] Searching for {ctx.rid}...")
+                        if progress_callback: progress_callback(ctx.rid, f"Aranıyor... 🔍")
                         
-                        logger.info(f"[Phase C] Searching for {rid}...")
-                        if progress_callback: progress_callback(rid, f"Aranıyor... 🔍")
-                        
-                        if self._search_for_song(rid, title):
+                        if self._search_for_song(ctx.rid, ctx.title):
                             time.sleep(2)
                             rows = self.tab.locator("div.clip-row")
                             occurrences = []
                             for i in range(min(10, rows.count())):
-                                if str(rid).lower() in rows.nth(i).inner_text().lower():
+                                if ctx.rid.lower() in rows.nth(i).inner_text().lower():
                                     occurrences.append(rows.nth(i))
                             
                             if occurrences:
-                                logger.info(f"[Phase C] Found {len(occurrences)} occurrences for {rid} via search.")
-                                if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
+                                logger.info(f"[Phase C] Found {len(occurrences)} occurrences for {ctx.rid} via search.")
+                                if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
+                                ctx.state = SongState.DOWNLOADING
                                 
-                                s1 = self._download_from_row(occurrences[0], suno_title, rid, suffix="1")
-                                s2 = self._download_from_row(occurrences[1], suno_title, rid, suffix="2") if len(occurrences) > 1 else False
+                                s1, s2 = False, False
+                                
+                                from concurrent.futures import ThreadPoolExecutor, as_completed
+                                with ThreadPoolExecutor(max_workers=2) as executor:
+                                    future_s1 = executor.submit(self._download_from_row, occurrences[0], suno_title, ctx.rid, "1")
+                                    
+                                    future_s2 = None
+                                    if len(occurrences) > 1:
+                                        future_s2 = executor.submit(self._download_from_row, occurrences[1], suno_title, ctx.rid, "2")
+                                        
+                                    try:
+                                        s1 = future_s1.result(timeout=180)
+                                        if future_s2:
+                                            s2 = future_s2.result(timeout=180)
+                                    except Exception as e:
+                                        logger.error(f"Thread timeout or failure during Phase C download for {ctx.rid}: {e}")
                                 
                                 if s1 or s2:
-                                    self.update_row_status(row_idx, status="Generated", dl_status="success", dl_attempts=0)
+                                    self._batch_stats["success"] += 1
+                                    trigger_dashboard_update()
+                                    self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
                                     status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
-                                    if progress_callback: progress_callback(rid, status_txt)
-                                    completed_ids.append(rid)
-                                    logger.info(f"✅ Download SUCCESS for {rid}: s1={s1}, s2={s2}")
+                                    if progress_callback: progress_callback(ctx.rid, status_txt)
+                                    completed_ids.append(ctx.rid)
+                                    ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
+                                    logger.info(f"✅ Download SUCCESS for {ctx.rid}: s1={s1}, s2={s2}")
                                 else:
-                                    self.update_row_status(row_idx, dl_status="failed", dl_attempts=1)
-                                    if progress_callback: progress_callback(rid, "İndirme Hatası! ❌")
-                                    logger.warning(f"❌ Download FAILED for {rid}")
+                                    self._batch_stats["failed"] += 1
+                                    trigger_dashboard_update()
+                                    self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
+                                    if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
+                                    ctx.state = SongState.FAILED
+                                    logger.warning(f"❌ Download FAILED for {ctx.rid}")
                             else:
-                                logger.warning(f"[Phase C] {rid} not found even via search. Skipping.")
-                                if progress_callback: progress_callback(rid, "Bulunamadı ❌")
-                                self.update_row_status(row_idx, dl_status="failed")
+                                self._batch_stats["failed"] += 1
+                                trigger_dashboard_update()
+                                logger.warning(f"[Phase C] {ctx.rid} not found even via search. Skipping.")
+                                if progress_callback: progress_callback(ctx.rid, "Bulunamadı ❌")
+                                ctx.state = SongState.FAILED
+                                self.update_row_status(ctx.row_idx, dl_status="failed")
                         else:
-                            logger.warning(f"[Phase C] Search failed for {rid}. Skipping.")
-                            if progress_callback: progress_callback(rid, "Arama Hatası ❌")
-                            self.update_row_status(row_idx, dl_status="failed")
+                            logger.warning(f"[Phase C] Search failed for {ctx.rid}. Skipping.")
+                            ctx.state = SongState.FAILED
+                            if progress_callback: progress_callback(ctx.rid, "Arama Hatası ❌")
+                            self.update_row_status(ctx.row_idx, dl_status="failed")
                         
                         # Clear search after each song
                         try:
@@ -733,11 +803,13 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
 
                 # Wait for clip count increase OR "Generating"
                 for i in range(15):
+                    self._check_stop()
                     if self._detect_captcha():
                         logger.warning("CAPTCHA DETECTED DURING BATCH!")
                         if progress_callback: progress_callback(rid, "⚠️ CAPTCHA! Çözün... 🕒")
                         self._play_alert()
-                        while self._detect_captcha() and not self.stop_requested:
+                        while self._detect_captcha():
+                            self._check_stop()
                             time.sleep(3)
                     
                     current_count = self.tab.locator("div.clip-row").count()
@@ -748,6 +820,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     time.sleep(2)
                 
                 return False
+            return False
+        except UserStoppedException:
+            logger.warning(f"Generation aborted by user during {rid}.")
             return False
         except Exception as e:
             logger.error(f"Generate Batch Error {rid}: {e}")

@@ -8,7 +8,19 @@ import re
 import time
 import logging
 
+from logging.handlers import RotatingFileHandler
+
+os.makedirs("logs", exist_ok=True)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.hasHandlers():
+    file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+    console_handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 
 class SunoDownloaderMixin:
@@ -22,79 +34,85 @@ class SunoDownloaderMixin:
         try:
             logger.info(f"[_download_from_row] Starting download for {rid}_{suffix}")
 
-            # Scroll to row and hover to reveal buttons
-            try:
-                target_row.scroll_into_view_if_needed()
-                time.sleep(self.config.short_delay)
-                target_row.hover()
-                time.sleep(self.config.short_delay)
-            except Exception as e:
-                logger.warning(f"[_download_from_row] Could not scroll/hover for {rid}_{suffix}: {e}")
+            max_attempts = self.config.retry_count
+            for attempt in range(max_attempts):
+                if attempt > 0:
+                    backoff = min(5 * (2 ** (attempt - 1)), 60) # 5s, 10s, 20s... max 60s
+                    logger.info(f"[_download_from_row] Retry {attempt}/{max_attempts} for {rid}_{suffix}. Waiting {backoff}s...")
+                    time.sleep(backoff)
+
+                # Scroll to row and hover to reveal buttons
+                try:
+                    target_row.scroll_into_view_if_needed()
+                    time.sleep(self.config.short_delay)
+                    target_row.hover()
+                    time.sleep(self.config.short_delay)
+                except Exception as e:
+                    logger.warning(f"[_download_from_row] Could not scroll/hover for {rid}_{suffix}: {e}")
 
             # Find "More" button with retries
-            target_more = None
-            for more_try in range(self.config.retry_count):
-                target_more = target_row.locator("button[aria-label*='More' i]").first
-                if target_more.count() > 0 and target_more.is_visible():
-                    break
-                target_more = target_row.locator("button.context-menu-button").last
-                if target_more.count() > 0 and target_more.is_visible():
-                    break
-                try:
-                    target_row.hover()
-                    time.sleep(1)
-                except: pass
                 target_more = None
-
-            if not target_more or not target_more.is_visible():
-                logger.warning(f"[_download_from_row] 'More' button not visible for {rid}_{suffix}")
-                return False
-
-            target_more.scroll_into_view_if_needed()
-            time.sleep(self.config.short_delay)
-            target_more.click()
-            time.sleep(2)
-
-            # Find "Download" in dropdown
-            target_dl = self.tab.locator("button:has-text('Download')").first
-            if not target_dl.is_visible():
-                target_dl = self.tab.get_by_text("Download", exact=True).first
-
-            if not target_dl.is_visible():
-                logger.warning(f"[_download_from_row] 'Download' not visible for {rid}_{suffix}")
-                try: self.tab.keyboard.press("Escape")
-                except: pass
-                return False
-
-            target_dl.hover()
-            time.sleep(self.config.medium_delay)
-
-            # Find format (WAV/MP3) — respect config preference order
-            target_audio = None
-            for fmt in self.config.format_preference:
-                for _ in range(5):
-                    loc = self.tab.locator(f"button[aria-label*='{fmt.upper()}' i]").first
-                    if loc.count() > 0 and loc.is_visible():
-                        target_audio = loc
+                for more_try in range(self.config.retry_count):
+                    target_more = target_row.locator("button[aria-label*='More' i]").first
+                    if target_more.count() > 0 and target_more.is_visible():
                         break
-                    time.sleep(1)
-                if target_audio and target_audio.is_visible():
-                    break
+                    target_more = target_row.locator("button.context-menu-button").last
+                    if target_more.count() > 0 and target_more.is_visible():
+                        break
+                    try:
+                        target_row.hover()
+                        time.sleep(1)
+                    except: pass
+                    target_more = None
 
-            if not target_audio or not target_audio.is_visible():
-                target_audio = self.tab.locator("button:has-text('Audio')").first
+                if not target_more or not target_more.is_visible():
+                    logger.warning(f"[_download_from_row] 'More' button not visible for {rid}_{suffix}")
+                    continue
 
-            if not target_audio or not target_audio.is_visible():
-                logger.warning(f"[_download_from_row] Format button not found for {rid}_{suffix}")
-                try: self.tab.keyboard.press("Escape")
-                except: pass
-                return False
+                target_more.scroll_into_view_if_needed()
+                time.sleep(self.config.short_delay)
+                target_more.click()
+                time.sleep(2)
 
-            ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
-            logger.info(f"[_download_from_row] {ext.upper()} format selected for {rid}_{suffix}")
+                # Find "Download" in dropdown
+                target_dl = self.tab.locator("button:has-text('Download')").first
+                if not target_dl.is_visible():
+                    target_dl = self.tab.get_by_text("Download", exact=True).first
 
-            # Click format → popup → confirm download
-            for dl_retry in range(self.config.retry_count):
+                if not target_dl.is_visible():
+                    logger.warning(f"[_download_from_row] 'Download' not visible for {rid}_{suffix}")
+                    try: self.tab.keyboard.press("Escape")
+                    except: pass
+                    continue
+
+                target_dl.hover()
+                time.sleep(self.config.medium_delay)
+
+                # Find format (WAV/MP3) — respect config preference order
+                target_audio = None
+                for fmt in self.config.format_preference:
+                    for _ in range(5):
+                        loc = self.tab.locator(f"button[aria-label*='{fmt.upper()}' i]").first
+                        if loc.count() > 0 and loc.is_visible():
+                            target_audio = loc
+                            break
+                        time.sleep(1)
+                    if target_audio and target_audio.is_visible():
+                        break
+
+                if not target_audio or not target_audio.is_visible():
+                    target_audio = self.tab.locator("button:has-text('Audio')").first
+
+                if not target_audio or not target_audio.is_visible():
+                    logger.warning(f"[_download_from_row] Format button not found for {rid}_{suffix}")
+                    try: self.tab.keyboard.press("Escape")
+                    except: pass
+                    continue
+
+                ext = "wav" if "wav" in (target_audio.get_attribute("aria-label") or "").lower() or "wav" in target_audio.inner_text().lower() else "mp3"
+                logger.info(f"[_download_from_row] {ext.upper()} format selected for {rid}_{suffix}")
+
+                # Click format → popup → confirm download
                 target_audio.click()
                 time.sleep(self.config.long_delay)
 
@@ -128,7 +146,7 @@ class SunoDownloaderMixin:
                             except: pass
                             return True
                     else:
-                        logger.warning(f"[_download_from_row] Popup not visible for {rid}_{suffix}, retry {dl_retry+1}")
+                        logger.warning(f"[_download_from_row] Popup not visible for {rid}_{suffix}, retry {attempt+1}")
                 except Exception as e:
                     logger.warning(f"[_download_from_row] Popup error for {rid}_{suffix}: {e}")
 
@@ -148,6 +166,15 @@ class SunoDownloaderMixin:
     def _download_specific(self, title, rid, suffix="1"):
         """Downloads a specific occurrence of a song title."""
         try:
+            # SESSION CHECK
+            try: self.tab.url
+            except:
+                logger.warning(f"Tab crashed before scanning for {rid}. Recovering...")
+                if self.persona_link: self._setup_persona_workflow()
+                else: self.browser.goto(self.base_url, page=self.tab)
+                time.sleep(5)
+                self._ensure_v5_active()
+            
             # Ensure safe start state - clear any leftover search and escape menus
             try: self.tab.keyboard.press("Escape")
             except: pass
@@ -239,7 +266,8 @@ class SunoDownloaderMixin:
             return self._download_from_row(target_row, title, rid, suffix)
 
         except Exception as e:
-            logger.error(f"Download Specific Error {rid}_{suffix}: {e}")
+            import traceback
+            logger.error(f"Download Specific Error {rid}_{suffix}: {e}\n{traceback.format_exc()}")
             return False
 
     # ──────────────────────────────────────────────────────────────
@@ -364,7 +392,8 @@ class SunoDownloaderMixin:
                 return False
 
         except Exception as e:
-            logger.error(f"Wait and Download Error {rid}: {e}")
+            import traceback
+            logger.error(f"Wait and Download Error {rid}: {e}\n{traceback.format_exc()}")
             return False
 
     # ──────────────────────────────────────────────────────────────

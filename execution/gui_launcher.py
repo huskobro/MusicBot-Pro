@@ -1732,6 +1732,22 @@ class MusicBotGUI:
         self.btn_stop.pack(side="left", fill="x", expand=True, padx=2)
         self.btn_stop.configure(state="disabled")
 
+        # --- STATISTICS DASHBOARD (PHASE 6) ---
+        self.f_stats = ttk.Frame(self.f_bottom)
+        self.f_stats.pack(fill="x", pady=(5, 0))
+        
+        self.var_stat_total = tk.StringVar(value="Total: 0")
+        self.var_stat_success = tk.StringVar(value="Success: 0")
+        self.var_stat_failed = tk.StringVar(value="Failed: 0")
+        self.var_stat_time = tk.StringVar(value="Time: 00:00")
+        self.var_stat_threads = tk.StringVar(value="Threads: 0")
+        
+        ttk.Label(self.f_stats, textvariable=self.var_stat_total, font=("Helvetica", 9, "bold")).pack(side="left", expand=True)
+        ttk.Label(self.f_stats, textvariable=self.var_stat_success, font=("Helvetica", 9), foreground="#2ecc71").pack(side="left", expand=True)
+        ttk.Label(self.f_stats, textvariable=self.var_stat_failed, font=("Helvetica", 9), foreground="#e74c3c").pack(side="left", expand=True)
+        ttk.Label(self.f_stats, textvariable=self.var_stat_time, font=("Helvetica", 9, "bold"), foreground="#4a90e2").pack(side="left", expand=True)
+        ttk.Label(self.f_stats, textvariable=self.var_stat_threads, font=("Helvetica", 9, "italic")).pack(side="left", expand=True)
+
         # --- COLLAPSIBLE LOGS (NEW) ---
         self.f_log_container = ttk.Frame(self.root)
         self.f_log_container.pack(fill="x", side="bottom", padx=10, pady=(0, 5))
@@ -2305,6 +2321,20 @@ class MusicBotGUI:
 
         # Reverse sort next time
         self.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
+
+    def update_dashboard_stats(self, **kwargs):
+        """Updates the Tkinter statistics dashboard."""
+        if "total" in kwargs:
+            self.var_stat_total.set(f"Total: {kwargs['total']}")
+        if "success" in kwargs:
+            self.var_stat_success.set(f"Success: {kwargs['success']}")
+        if "failed" in kwargs:
+            self.var_stat_failed.set(f"Failed: {kwargs['failed']}")
+        if "time" in kwargs:
+            self.var_stat_time.set(f"Time: {kwargs['time']}")
+        if "threads" in kwargs:
+            self.var_stat_threads.set(f"Threads: {kwargs['threads']}")
+        self.root.update_idletasks()
             
     def set_badge(self, text, bg, fg="white"):
         self.lbl_badge.config(text=f" ● {text} ", bg=bg, fg=fg)
@@ -3214,7 +3244,7 @@ class MusicBotGUI:
                 # Use the new Batch Method with OP MODE!
                 op_mode = self.config.get("suno_batch_op_mode", "full")
                 logger.info(f"Batch Suno Op Mode: {op_mode}")
-                suno.run_batch(target_ids=suno_ids, progress_callback=progress_callback, force_update=force_update, op_mode=op_mode)
+                suno.run_batch(target_ids=suno_ids, progress_callback=progress_callback, stats_callback=self.update_dashboard_stats, force_update=force_update, op_mode=op_mode)
 
             # --- PHASE 3: ART (Prompts & Images) ---
             art_p_ids = [id for id in target_ids if get_song_steps(id)[2]] # Step 3 enabled

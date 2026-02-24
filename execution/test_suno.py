@@ -2,6 +2,7 @@ import unittest
 import os
 import shutil
 import openpyxl
+import logging
 
 from suno_config import SunoConfig
 from suno_excel import SunoExcelMixin
