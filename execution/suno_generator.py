@@ -296,165 +296,171 @@ class SunoGenerator:
                 if progress_callback: progress_callback("global", "Toplu İndirme Bekleniyor... ⬇️")
                 
                 # PRE-DOWNLOAD PHASE: SMART WAIT ROOM
-                # We wait until ALL items are ready before we start downloading any
-                pending_ids = list(generated_ids)
-                start_wait = time.time()
-                total_timeout = max(600, len(pending_ids) * 180) 
+                # Only needed when songs are being GENERATED (full mode)
+                # In dl_only mode, songs are already generated - skip straight to download
+                missing_counts = {rid: 0 for rid in generated_ids}
                 
-                logger.info(f"Targeted Batch: Waiting for {len(pending_ids)} songs to complete before download...")
-                
-                max_row_reached = 0
-                loop_count = 0
-                missing_counts = {rid: 0 for rid in pending_ids} # Track missing loops
-                
-                while pending_ids and (time.time() - start_wait < total_timeout):
-                    if self.stop_requested: break
-                    loop_count += 1
+                if op_mode == "full":
+                    pending_ids = list(generated_ids)
+                    start_wait = time.time()
+                    total_timeout = max(600, len(pending_ids) * 180) 
                     
-                    # SESSION HARDENING: Check if tab is alive, if not RECOVER
-                    try:
-                        # Simple check to see if tab is responsive
-                        self.tab.url
-                    except:
-                        logger.warning("Browser tab lost or crashed! Attempting recovery...")
+                    logger.info(f"Targeted Batch: Waiting for {len(pending_ids)} songs to complete before download...")
+                    
+                    max_row_reached = 0
+                    loop_count = 0
+                    missing_counts = {rid: 0 for rid in pending_ids} # Track missing loops
+                    
+                    while pending_ids and (time.time() - start_wait < total_timeout):
+                        if self.stop_requested: break
+                        loop_count += 1
+                        
+                        # SESSION HARDENING: Check if tab is alive, if not RECOVER
                         try:
-                            if self.persona_link: self._setup_persona_workflow(progress_callback)
-                            else: self.browser.goto(self.base_url, page=self.tab)
-                            time.sleep(5)
-                            self._ensure_v5_active()
-                        except Exception as re_e:
-                            logger.error(f"Recovery failed: {re_e}")
-                            time.sleep(10)
-                            continue
+                            # Simple check to see if tab is responsive
+                            self.tab.url
+                        except:
+                            logger.warning("Browser tab lost or crashed! Attempting recovery...")
+                            try:
+                                if self.persona_link: self._setup_persona_workflow(progress_callback)
+                                else: self.browser.goto(self.base_url, page=self.tab)
+                                time.sleep(5)
+                                self._ensure_v5_active()
+                            except Exception as re_e:
+                                logger.error(f"Recovery failed: {re_e}")
+                                time.sleep(10)
+                                continue
 
-                    still_generating = []
-                    current_max_idx = 0
-                    all_targets_found_in_view = True
-                    
-                    # 1. SCAN AND COLLECT STATUS
-                    found_this_loop = {}
-                    try:
-                        rows = self.tab.locator("div.clip-row")
-                        row_count = rows.count()
-                        for i in range(min(300, row_count)):
-                            row_text = rows.nth(i).inner_text().lower()
-                            for rid in pending_ids:
-                                if str(rid).lower() in row_text:
-                                    found_this_loop[rid] = {"index": i, "ready": "generating" not in row_text}
-                                    current_max_idx = max(current_max_idx, i)
-                                    # If any target found in view, we'll track its max index
-                    except Exception as scan_e:
-                        logger.debug(f"Scan interrupted: {scan_e}")
+                        still_generating = []
+                        current_max_idx = 0
+                        all_targets_found_in_view = True
+                        
+                        # 1. SCAN AND COLLECT STATUS
+                        found_this_loop = {}
+                        try:
+                            rows = self.tab.locator("div.clip-row")
+                            row_count = rows.count()
+                            for i in range(min(300, row_count)):
+                                row_text = rows.nth(i).inner_text().lower()
+                                for rid in pending_ids:
+                                    if str(rid).lower() in row_text:
+                                        found_this_loop[rid] = {"index": i, "ready": "generating" not in row_text}
+                                        current_max_idx = max(current_max_idx, i)
+                                        # If any target found in view, we'll track its max index
+                        except Exception as scan_e:
+                            logger.debug(f"Scan interrupted: {scan_e}")
 
-                    # 2. DECIDE WHO IS STILL PENDING AND IF WE NEED TO SCROLL
-                    for rid in pending_ids:
-                        if rid in found_this_loop:
-                            missing_counts[rid] = 0 # Reset
-                            if found_this_loop[rid]["ready"]:
-                                # Extra check for robustness
-                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                                suno_title = f"{rid}_{r_data.get('title', 'Song')}"
-                                if self._check_if_ready(suno_title, rid, suffix="1") and \
-                                   self._check_if_ready(suno_title, rid, suffix="2"):
-                                    logger.info(f"ID {rid} is ready for download phase.")
-                                    if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
+                        # 2. DECIDE WHO IS STILL PENDING AND IF WE NEED TO SCROLL
+                        for rid in pending_ids:
+                            if rid in found_this_loop:
+                                missing_counts[rid] = 0 # Reset
+                                if found_this_loop[rid]["ready"]:
+                                    # Extra check for robustness
+                                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                                    suno_title = f"{rid}_{r_data.get('title', 'Song')}"
+                                    if self._check_if_ready(suno_title, rid, suffix="1") and \
+                                       self._check_if_ready(suno_title, rid, suffix="2"):
+                                        logger.info(f"ID {rid} is ready for download phase.")
+                                        if progress_callback: progress_callback(rid, "Hazır! Beklemede... ✅")
+                                    else:
+                                        still_generating.append(rid)
+                                else:
+                                    still_generating.append(rid) # Found but still generating
+                            else:
+                                # NOT FOUND IN CURRENT VIEW AT ALL
+                                missing_counts[rid] = missing_counts.get(rid, 0) + 1
+                                if missing_counts[rid] > 12: # After ~2.5 minutes of not seeing it
+                                    logger.warning(f"Timeout waiting for {rid} to appear. Skipping.")
+                                    r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
+                                    if r_data:
+                                        self.update_row_status(r_data['_row_idx'], status="Failed", dl_status="failed")
+                                    if progress_callback: progress_callback(rid, "Üretilemedi / Bulunamadı ❌")
+                                    # DO NOT append to still_generating so it drops from pending_ids
                                 else:
                                     still_generating.append(rid)
+                                all_targets_found_in_view = False
+                        
+                        # 3. SMART SCROLLING: Only if someone is missing from view
+                        if not all_targets_found_in_view:
+                            if max_row_reached > 5:
+                                try:
+                                    logger.info(f"Waterfall Scroll: Pushing down from row {max_row_reached} to find missing songs...")
+                                    rows = self.tab.locator("div.clip-row")
+                                    if rows.count() > max_row_reached:
+                                        rows.nth(min(max_row_reached, rows.count()-1)).scroll_into_view_if_needed()
+                                        time.sleep(1)
+                                        self.tab.mouse.wheel(0, 2500)
+                                except: pass
                             else:
-                                still_generating.append(rid) # Found but still generating
-                        else:
-                            # NOT FOUND IN CURRENT VIEW AT ALL
-                            missing_counts[rid] = missing_counts.get(rid, 0) + 1
-                            if missing_counts[rid] > 12: # After ~2.5 minutes of not seeing it
-                                logger.warning(f"Timeout waiting for {rid} to appear. Skipping.")
-                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == rid), None)
-                                if r_data:
-                                    self.update_row_status(r_data['_row_idx'], status="Failed", dl_status="failed")
-                                if progress_callback: progress_callback(rid, "Üretilemedi / Bulunamadı ❌")
-                                # DO NOT append to still_generating so it drops from pending_ids
-                            else:
-                                still_generating.append(rid)
-                            all_targets_found_in_view = False
-                    
-                    # 3. SMART SCROLLING: Only if someone is missing from view
-                    if not all_targets_found_in_view:
-                        if max_row_reached > 5:
-                            try:
-                                logger.info(f"Waterfall Scroll: Pushing down from row {max_row_reached} to find missing songs...")
-                                rows = self.tab.locator("div.clip-row")
-                                if rows.count() > max_row_reached:
-                                    rows.nth(min(max_row_reached, rows.count()-1)).scroll_into_view_if_needed()
+                                try:
+                                    self.tab.mouse.wheel(0, 1500)
                                     time.sleep(1)
-                                    self.tab.mouse.wheel(0, 2500)
-                            except: pass
+                                except: pass
                         else:
+                            logger.debug("All pending songs found in current view. No scrolling needed.")
+
+                        # 4. SEARCH FALLBACK: If missing for too long (e.g. 8+ attempts after scrolling)
+                        if not all_targets_found_in_view and loop_count > 8:
+                            missing = [rid for rid in pending_ids if rid not in found_this_loop]
+                            if missing:
+                                target_rid = missing[0]
+                                logger.info(f"Using Search Fallback for missing ID {target_rid}...")
+                                r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == target_rid), None)
+                                try:
+                                    if self._search_for_song(target_rid, r_data.get('title', 'Song')):
+                                        time.sleep(3)
+                                        found_it = False
+                                        ready = False
+                                        s_rows = self.tab.locator("div.clip-row")
+                                        for si in range(min(10, s_rows.count())):
+                                            s_text = s_rows.nth(si).inner_text().lower()
+                                            if target_rid in s_text:
+                                                found_it = True
+                                                ready = "generating" not in s_text
+                                                break
+                                        
+                                        if not found_it:
+                                            missing_counts[target_rid] = missing_counts.get(target_rid, 0) + 2
+                                        else:
+                                            missing_counts[target_rid] = 0  # It exists!
+                                            if ready:
+                                                suno_title = f"{target_rid}_{r_data.get('title', 'Song')}"
+                                                if self._check_if_ready(suno_title, target_rid, suffix="1") and \
+                                                   self._check_if_ready(suno_title, target_rid, suffix="2"):
+                                                    if target_rid in still_generating:
+                                                        still_generating.remove(target_rid)
+                                                    if progress_callback: progress_callback(target_rid, "Hazır! Beklemede... ✅")
+                                                    
+                                        # Clear search to restore default view for the next loop
+                                        try:
+                                            search_input = self.tab.locator("input[aria-label='Search clips']").first
+                                            if search_input.is_visible():
+                                                search_input.fill("")
+                                                self.tab.keyboard.press("Enter")
+                                                time.sleep(2)
+                                        except: pass
+                                except: pass
+
+                        max_row_reached = max(max_row_reached, current_max_idx)
+                        pending_ids = still_generating
+                        if not pending_ids: break
+                        
+                        if progress_callback: progress_callback("global", f"Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
+                        time.sleep(10)
+                        
+                        # Periodic reload to refresh state (Every 120-150s)
+                        if (time.time() - start_wait) > 30 and (time.time() - start_wait) % 150 < 15:
                             try:
-                                self.tab.mouse.wheel(0, 1500)
+                                logger.info("Periodic reload to refresh state...")
+                                self.tab.keyboard.press("Escape")
                                 time.sleep(1)
-                            except: pass
-                    else:
-                        logger.debug("All pending songs found in current view. No scrolling needed.")
-
-                    # 4. SEARCH FALLBACK: If missing for too long (e.g. 8+ attempts after scrolling)
-                    if not all_targets_found_in_view and loop_count > 8:
-                        missing = [rid for rid in pending_ids if rid not in found_this_loop]
-                        if missing:
-                            target_rid = missing[0]
-                            logger.info(f"Using Search Fallback for missing ID {target_rid}...")
-                            r_data = next((r for r in rows_data if str(r.get('id', '')).strip().lower() == target_rid), None)
-                            try:
-                                if self._search_for_song(target_rid, r_data.get('title', 'Song')):
-                                    time.sleep(3)
-                                    found_it = False
-                                    ready = False
-                                    s_rows = self.tab.locator("div.clip-row")
-                                    for si in range(min(10, s_rows.count())):
-                                        s_text = s_rows.nth(si).inner_text().lower()
-                                        if target_rid in s_text:
-                                            found_it = True
-                                            ready = "generating" not in s_text
-                                            break
-                                    
-                                    if not found_it:
-                                        missing_counts[target_rid] = missing_counts.get(target_rid, 0) + 2
-                                    else:
-                                        missing_counts[target_rid] = 0  # It exists!
-                                        if ready:
-                                            suno_title = f"{target_rid}_{r_data.get('title', 'Song')}"
-                                            if self._check_if_ready(suno_title, target_rid, suffix="1") and \
-                                               self._check_if_ready(suno_title, target_rid, suffix="2"):
-                                                if target_rid in still_generating:
-                                                    still_generating.remove(target_rid)
-                                                if progress_callback: progress_callback(target_rid, "Hazır! Beklemede... ✅")
-                                                
-                                    # Clear search to restore default view for the next loop
-                                    try:
-                                        search_input = self.tab.locator("input[aria-label='Search clips']").first
-                                        if search_input.is_visible():
-                                            search_input.fill("")
-                                            self.tab.keyboard.press("Enter")
-                                            time.sleep(2)
-                                    except: pass
-                            except: pass
-
-                    max_row_reached = max(max_row_reached, current_max_idx)
-                    pending_ids = still_generating
-                    if not pending_ids: break
-                    
-                    if progress_callback: progress_callback("global", f"Bekleniyor: {len(pending_ids)} şarkı kaldı... ⏳")
-                    time.sleep(10)
-                    
-                    # Periodic reload to refresh state (Every 120-150s)
-                    if (time.time() - start_wait) > 30 and (time.time() - start_wait) % 150 < 15:
-                        try:
-                            logger.info("Periodic reload to refresh state...")
-                            self.tab.keyboard.press("Escape")
-                            time.sleep(1)
-                            self.tab.reload(timeout=60000)
-                            time.sleep(5)
-                            self._ensure_v5_active()
-                        except Exception as e:
-                            logger.warning(f"Reload failed: {e}")
+                                self.tab.reload(timeout=60000)
+                                time.sleep(5)
+                                self._ensure_v5_active()
+                            except Exception as e:
+                                logger.warning(f"Reload failed: {e}")
+                else:
+                    logger.info(f"dl_only mode: Skipping wait phase. Going straight to download for {len(generated_ids)} songs.")
 
                 # ACTUAL DOWNLOAD PHASE
                 # Everything is ready, now we execute the persistent download logic
