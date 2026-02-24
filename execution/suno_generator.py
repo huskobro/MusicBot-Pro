@@ -505,12 +505,39 @@ class SunoGenerator:
                     time.sleep(1)
                 except: pass
                 
-                # ===== PHASE B: SCAN DOM & DOWNLOAD FOUND SONGS =====
-                logger.info("Phase B: Scanning DOM and downloading found songs...")
-                not_found_ids = []
+                # ===== PHASE B: SINGLE-PASS INDEX & DOWNLOAD =====
+                # ONE scan of DOM → index ALL songs → then download from index
+                logger.info("Phase B: Single-pass DOM indexing...")
+                if progress_callback: progress_callback("global", "DOM taranıyor... 🔍")
                 
+                # Step 1: Build index in ONE pass (O(n+m) instead of O(n×m))
+                song_index = {}  # {rid: [row_element_1, row_element_2, ...]}
+                download_set = set(download_queue)  # O(1) lookups
+                
+                rows = self.tab.locator("div.clip-row")
+                total_rows = rows.count()
+                logger.info(f"[Phase B] Indexing {total_rows} DOM rows for {len(download_queue)} target songs...")
+                
+                for i in range(total_rows):
+                    try:
+                        row_text = rows.nth(i).inner_text().lower()
+                        for rid in download_set:
+                            if str(rid).lower() in row_text:
+                                if rid not in song_index:
+                                    song_index[rid] = []
+                                song_index[rid].append(rows.nth(i))
+                    except:
+                        continue
+                
+                found_count = len(song_index)
+                not_found_ids = [rid for rid in download_queue if rid not in song_index]
+                logger.info(f"[Phase B] Index complete: {found_count} found, {len(not_found_ids)} not found in {total_rows} rows")
+                
+                # Step 2: Download from index (no more DOM scanning needed!)
                 for rid in download_queue:
                     if self.stop_requested: break
+                    if rid not in song_index:
+                        continue  # Will handle in Phase C
                     
                     # SESSION CHECK
                     try: self.tab.url
@@ -527,21 +554,9 @@ class SunoGenerator:
                     row_idx = r_data['_row_idx']
                     title = r_data.get("title", "Song")
                     suno_title = f"{rid}_{title}"
+                    occurrences = song_index[rid]
                     
-                    # Find ALL occurrences of this song in current DOM
-                    rows = self.tab.locator("div.clip-row")
-                    occurrences = []
-                    for i in range(rows.count()):
-                        row_text = rows.nth(i).inner_text().lower()
-                        if str(rid).lower() in row_text:
-                            occurrences.append(rows.nth(i))
-                    
-                    if not occurrences:
-                        not_found_ids.append(rid)
-                        logger.info(f"[Phase B] {rid} not found in DOM. Will try search later.")
-                        continue
-                    
-                    logger.info(f"[Phase B] Found {len(occurrences)} occurrences for {rid}. Downloading...")
+                    logger.info(f"[Phase B] Downloading {rid} ({len(occurrences)} occurrences)...")
                     if progress_callback: progress_callback(rid, f"İndiriliyor... ⬇️")
                     
                     s1 = self._download_from_row(occurrences[0], suno_title, rid, suffix="1")
@@ -1788,6 +1803,9 @@ class SunoGenerator:
 
     def update_row_status(self, row_idx, status=None, dl_status=None, dl_attempts=None):
         try:
+            # Auto-backup before write (keep last 3 versions)
+            self._backup_excel()
+            
             wb = openpyxl.load_workbook(self.metadata_path)
             ws = wb.active
             headers = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
@@ -1815,10 +1833,76 @@ class SunoGenerator:
                     ws.cell(row=1, column=col, value="dl_attempts")
                     headers["dl_attempts"] = col
                 ws.cell(row=row_idx, column=col, value=dl_attempts)
-                
-            wb.save(self.metadata_path)
+            
+            # ATOMIC WRITE: Write to temp file, then rename
+            # This prevents corruption if the process is killed mid-write
+            temp_path = self.metadata_path + ".tmp"
+            wb.save(temp_path)
+            
+            import shutil
+            shutil.move(temp_path, self.metadata_path)
+            
         except Exception as e:
             logger.error(f"Failed to update Excel status: {e}")
+            # If main file is corrupted, try to recover from backup
+            if "not a zip file" in str(e).lower() or "BadZipFile" in str(e):
+                self._recover_excel_from_backup()
+
+    def _backup_excel(self):
+        """Keep rotating backups of the Excel file (last 3 versions). Throttled to every 30s."""
+        try:
+            if not os.path.exists(self.metadata_path):
+                return
+            
+            # Throttle: only backup every 30 seconds
+            now = time.time()
+            last_backup = getattr(self, '_last_backup_time', 0)
+            if now - last_backup < 30:
+                return
+            self._last_backup_time = now
+            
+            import shutil
+            backup_dir = os.path.join(os.path.dirname(self.metadata_path), ".backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            base = os.path.basename(self.metadata_path)
+            
+            # Rotate: .bak3 → delete, .bak2 → .bak3, .bak1 → .bak2, current → .bak1
+            for i in range(3, 1, -1):
+                old = os.path.join(backup_dir, f"{base}.bak{i-1}")
+                new = os.path.join(backup_dir, f"{base}.bak{i}")
+                if os.path.exists(old):
+                    shutil.copy2(old, new)
+            
+            shutil.copy2(self.metadata_path, os.path.join(backup_dir, f"{base}.bak1"))
+            logger.debug(f"Excel backup created (.bak1)")
+                
+        except Exception as e:
+            logger.debug(f"Backup failed (non-critical): {e}")
+
+    def _recover_excel_from_backup(self):
+        """Attempt to recover Excel file from the most recent valid backup."""
+        try:
+            import shutil
+            backup_dir = os.path.join(os.path.dirname(self.metadata_path), ".backups")
+            base = os.path.basename(self.metadata_path)
+            
+            for i in range(1, 4):
+                backup_path = os.path.join(backup_dir, f"{base}.bak{i}")
+                if os.path.exists(backup_path):
+                    try:
+                        openpyxl.load_workbook(backup_path)  # Verify it's valid
+                        shutil.copy2(backup_path, self.metadata_path)
+                        logger.info(f"✅ Excel recovered from backup .bak{i}")
+                        return True
+                    except:
+                        continue
+            
+            logger.error("❌ No valid Excel backup found for recovery!")
+            return False
+        except Exception as e:
+            logger.error(f"Recovery failed: {e}")
+            return False
 
     def _scroll_to_find_song(self, rid, title):
         """Gradually scrolls the SPECIFIC song list container to find a song."""
