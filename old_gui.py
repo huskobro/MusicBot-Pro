@@ -340,12 +340,7 @@ class SettingsDialog(tk.Toplevel):
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
         ttk.Label(f_lang, text=self.app.t("target_lang_label")).pack(anchor="w")
-        self.combo_lang = ttk.Combobox(f_lang, values=[
-            "Turkish", "English", "German", "French", "Spanish", 
-            "Italian", "Portuguese", "Thai", "Hindi", "Mexican Spanish",
-            "Arabic", "Afro", "Japanese", "Balkan", "UK", "Indian",
-            "Caribbean", "Nordic", "African"
-        ], state="readonly")
+        self.combo_lang = ttk.Combobox(f_lang, values=["Turkish", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Thai", "Hindi", "Mexican Spanish"], state="readonly")
         self.combo_lang.set(config.get("target_language", "Turkish"))
         self.combo_lang.pack(fill="x", pady=2)
 
@@ -1118,9 +1113,9 @@ class MusicBotGUI:
 
         # Standard Text Operations Fix (Global for Mac)
         if sys.platform == "darwin":
-            # Removed redundant manual <Command-c>, <Command-v>, <Command-x> bindings
-            # because Tkinter on macOS handles these natively for Entry and Text widgets,
-            # and manual generation causes the "double paste" bug.
+            self.root.bind_all("<Command-c>", lambda e: e.widget.event_generate("<<Copy>>") if hasattr(e.widget, 'event_generate') else None)
+            self.root.bind_all("<Command-v>", lambda e: e.widget.event_generate("<<Paste>>") if hasattr(e.widget, 'event_generate') else None)
+            self.root.bind_all("<Command-x>", lambda e: e.widget.event_generate("<<Cut>>") if hasattr(e.widget, 'event_generate') else None)
             # Cmd+A is handled by handle_ctrl_a at root level, but bind_all is safer for deep widgets
             self.root.bind_all("<Command-a>", self.handle_ctrl_a)
         else:
@@ -2341,7 +2336,7 @@ class MusicBotGUI:
             try:
                 with open(state_file, "r", encoding="utf-8") as f:
                     state = json.load(f)
-                if state.get("project_file") == getattr(self, 'project_path', '') and state.get("target_ids"):
+                if state.get("project_file") == getattr(self.app, 'project_path', '') and state.get("target_ids"):
                     if messagebox.askyesno("Devam Et (Resume)", "Yarıda kalmış bir işlem bulundu. Kaldığınız yerden (önceki seçimlerinizle) devam edilsin mi?\n(Hayır derseniz, sıfırdan başlarsınız.)"):
                         target_ids = state["target_ids"]
                         resumed = True
@@ -2373,34 +2368,9 @@ class MusicBotGUI:
         except (ValueError, TypeError):
             target_ids.sort()
 
-        # --- Evaluate Re-generation (Main Thread) ---
-        force_update = False
-        any_gemini_requested = False
-        for rid in target_ids:
-            s_steps = self.song_steps.get(rid)
-            if s_steps is None:
-                s_steps = [
-                    self.var_run_lyrics.get(),
-                    self.var_run_music.get(),
-                    self.var_run_art_prompt.get(),
-                    self.var_run_art_image.get(),
-                    self.var_run_video.get()
-                ]
-            
-            if s_steps[0] or s_steps[2]:
-                any_gemini_requested = True
-                break
-
-        if any_gemini_requested:
-            has_data = self._check_existing_data(target_ids)
-            if has_data:
-                # Ask user if they want to re-generate (Must be on main thread!)
-                if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
-                    force_update = True
-
         self.stop_requested = False
         self.disable_buttons()
-        threading.Thread(target=self.run_process, args=(target_ids, force_update), daemon=True).start()
+        threading.Thread(target=self.run_process, args=(target_ids,), daemon=True).start()
 
     def stop_process(self):
         self.stop_requested = True
@@ -2467,19 +2437,46 @@ class MusicBotGUI:
             logger.error(f"Error checking existing data: {e}")
             return False
 
-    def run_process(self, target_ids, force_update=False):
+    def run_process(self, target_ids):
         start_time = time.time()
         total_songs = len(target_ids)
         self.video_render_queue = [] # Fixed: Always initialize at start
         
         try:
+            # Check for existing data if we are running Gemini steps
+            force_update = False
+            # We must check if ANY of the target songs have s_steps[0] (Purple) or s_steps[2] (Yellow) enabled
+            # before calling _check_existing_data
+            any_gemini_requested = False
+            for rid in target_ids:
+                s_steps = self.song_steps.get(rid)
+                if s_steps is None:
+                    s_steps = [
+                        self.var_run_lyrics.get(),
+                        self.var_run_music.get(),
+                        self.var_run_art_prompt.get(),
+                        self.var_run_art_image.get(),
+                        self.var_run_video.get()
+                    ]
+                
+                if s_steps[0] or s_steps[2]:
+                    any_gemini_requested = True
+                    break
+
+            if any_gemini_requested:
+                has_data = self._check_existing_data(target_ids)
+                if has_data:
+                    # Ask user if they want to re-generate
+                    if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
+                        force_update = True
+
             # Save session state before starting long operation
             workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
             state_file = os.path.join(workspace, "session_state.json")
             try:
                 with open(state_file, "w", encoding="utf-8") as f:
                     json.dump({
-                        "project_file": getattr(self, 'project_path', ''),
+                        "project_file": getattr(self.app, 'project_path', ''),
                         "target_ids": target_ids
                     }, f)
             except Exception as e:
