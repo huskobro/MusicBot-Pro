@@ -757,8 +757,22 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         
                         # Clear search after each song
                         try:
-                            search_input = self.tab.locator("input[placeholder='Search'], input[aria-label='Search clips']").first
-                            if search_input.is_visible():
+                            search_selectors = [
+                                "input[placeholder='Search']",
+                                "input[aria-label='Search clips']",
+                                "input[aria-label='Search']",
+                                "input[type='search']",
+                                ".search-input"
+                            ]
+                            
+                            search_input = None
+                            for selector in search_selectors:
+                                loc = self.tab.locator(selector).first
+                                if loc.is_visible(timeout=500):
+                                    search_input = loc
+                                    break
+                                    
+                            if search_input:
                                 search_input.fill("")
                                 self.tab.keyboard.press("Escape")
                                 time.sleep(1)

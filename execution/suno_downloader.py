@@ -455,7 +455,9 @@ class SunoDownloaderMixin:
             search_selectors = [
                 "input[placeholder='Search']",
                 "input[aria-label='Search clips']",
-                "input[aria-label='Search']"
+                "input[aria-label='Search']",
+                "input[type='search']",
+                ".search-input"
             ]
 
             search_input = None
