@@ -329,6 +329,20 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     else:
                          download_queue.append(DownloadContext(rid=rid, title=title, row_idx=row_dict['_row_idx']))
 
+            # --- PHASE 1.9: Pre-flight Search Check ---
+            if op_mode in ["full", "dl_only"] and download_queue:
+                # [NEW] Pre-flight check to verify search clips locator is visible on the current page
+                logger.info("Arama motoru (Search clips) kontrol ediliyor...")
+                search_ready = False
+                search_selectors = ["input[aria-label='Search clips']", "input[placeholder='Search']"]
+                for sel in search_selectors:
+                    if self.tab.locator(sel).first.is_visible(timeout=3000):
+                        search_ready = True; break
+                
+                if not search_ready:
+                    logger.warning("DİKKAT: Arama kutusu (Search clips) bulunamadı! Arama gerektiren şarkılar indirilemeyebilir.")
+                    if progress_callback: progress_callback("global", "Uyarı: Arama kutusu bulunamadı! ⚠️")
+
             # --- PHASE 2: BATCH DOWNLOAD ---
             if op_mode in ["full", "dl_only"] and download_queue:
                 logger.info("--- Toplu İndirme Aşaması Başlıyor ---")
@@ -678,8 +692,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         # Clear search after each song
                         try:
                             search_selectors = [
-                                "input[placeholder='Search']",
                                 "input[aria-label='Search clips']",
+                                "input[placeholder='Search']",
                                 "input[aria-label='Search']",
                                 "input[type='search']",
                                 ".search-input"

@@ -452,9 +452,10 @@ class SunoDownloaderMixin:
         query = str(rid)
         logger.info(f"Searching for song ID: {query}")
         try:
+            # Prioritize 'Search clips' which is specific to the song list on /create and /me
             search_selectors = [
-                "input[placeholder='Search']",
                 "input[aria-label='Search clips']",
+                "input[placeholder='Search']",
                 "input[aria-label='Search']",
                 "input[type='search']",
                 ".search-input"
