@@ -18,7 +18,7 @@ else
     git clone https://github.com/huskobro/MusicBot-Pro.git
     cd MusicBot-Pro
 fi
-勾
+
 # 2. Python Ortami
 echo "Python sanal ortami hazirlaniyor..."
 python3 -m venv .venv
