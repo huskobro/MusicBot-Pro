@@ -1150,6 +1150,37 @@ class MusicBotGUI:
         self.setup_styles()
         
         # --- STYLES ---
+    def _is_id_match(self, filename, song_id, variant=None):
+        """
+        Robustly checks if a filename matches a song_id, regardless of RTL/LTI rendering order.
+        Example: 1051_Title.mp3, Title_1051.mp3, 1051_2.mp3
+        """
+        if not filename or not song_id: return False
+        fn_lower = filename.lower()
+        sid_lower = str(song_id).lower()
+        
+        # 1. Direct Match (Exact)
+        name_no_ext = os.path.splitext(fn_lower)[0]
+        if name_no_ext == sid_lower: return True
+        
+        # 2. Regex Match (Word boundary or delimiter)
+        # Matches ID if it is a standalone segment delimited by _, -, ., space or start/end
+        # e.g., "1051_Song.mp3" -> Matches, "11051.mp3" -> No
+        pattern = rf"(^|[ _\.\-])({re.escape(sid_lower)})([ _\.\-]|$)"
+        match = re.search(pattern, fn_lower)
+        
+        if not match: return False
+        
+        # 3. Variant Check (Optional)
+        if variant:
+            v_str = str(variant)
+            # Check if variant exists in the name, usually as _1, _2 or at the end
+            # We look for the variant as a standalone token near the end or following a delimiter
+            v_pattern = rf"([ _\.\-]){re.escape(v_str)}($|[ _\.\-])"
+            return bool(re.search(v_pattern, name_no_ext))
+            
+        return True
+
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use("clam") # Clam supports color customization better
@@ -1742,7 +1773,7 @@ class MusicBotGUI:
             # 1. Check Video Status
             has_v = False
             for vf in video_files:
-                if vf.startswith(f"{rid_l}_") or vf == f"{rid_l}.mp4":
+                if self._is_id_match(vf, rid_l):
                     has_v = True; break
             s["video_exists"] = has_v
 
@@ -1754,25 +1785,20 @@ class MusicBotGUI:
             # 2. Check Materials (R, M1, M2)
             has_r = False
             for rf in all_files:
-                if rf == f"{rid_l}.png" or rf == f"{rid_l}.jpg" or rf == f"{rid_l}.jpeg":
-                    has_r = True; break
-                # Also check sequence patterns or files starting with ID_
-                if rf.startswith(f"{rid_l}_") and rf.split(".")[-1] in ["png", "jpg", "jpeg"]:
+                if self._is_id_match(rf, rid_l) and rf.split(".")[-1] in ["png", "jpg", "jpeg"]:
                     has_r = True; break
 
             has_m1 = False
             has_m2 = False
             for af in all_files:
-                # Check exact matches or files starting with ID_ and ending with _1/_2
-                if af == f"{rid_l}.mp3" or af == f"{rid_l}.wav": 
-                    has_m1 = True
-                
-                if af.startswith(f"{rid_l}_") and af.lower().endswith((".mp3", ".wav")):
-                    name_no_ext = os.path.splitext(af)[0]
-                    if name_no_ext.endswith("_1") or name_no_ext == f"{rid_l}_1":
+                if self._is_id_match(af, rid_l) and af.lower().endswith((".mp3", ".wav")):
+                    name_no_ext = os.path.splitext(af.lower())[0]
+                    # If it's the exact ID.mp3, count as M1
+                    if name_no_ext == rid_l:
                         has_m1 = True
-                    if name_no_ext.endswith("_2") or name_no_ext == f"{rid_l}_2":
-                        has_m2 = True
+                    # Check variants
+                    if self._is_id_match(af, rid_l, variant="1"): has_m1 = True
+                    if self._is_id_match(af, rid_l, variant="2"): has_m2 = True
             
             status_parts = []
             if not has_r: status_parts.append("R")
@@ -3007,16 +3033,27 @@ class MusicBotGUI:
             target_suffix = suffix_map.get(selection_mode)
 
             for f in os.listdir(output_media):
-                if f.startswith(f"{song_id}_") or f.startswith(f"{song_id}."):
-                    if f.lower().endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
+                f_l = f.lower()
+                if self._is_id_match(f_l, song_id):
+                    if f_l.endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
                         all_materials.append(f)
                         
-                if f.startswith(f"{song_id}_") and f.lower().endswith((".mp3", ".wav")):
+                if self._is_id_match(f_l, song_id) and f_l.endswith((".mp3", ".wav")):
                     # Filter by selection mode if applicable
-                    if not target_suffix or f.lower().endswith(f"{target_suffix.lower()}.mp3") or f.lower().endswith(f"{target_suffix.lower()}.wav"):
+                    is_match = False
+                    if not target_suffix:
+                        is_match = True
+                    else:
+                        variant = target_suffix.replace("_", "")
+                        if self._is_id_match(f_l, song_id, variant=variant):
+                            is_match = True
+                            
+                    if is_match:
                         found_audio.append(f)
+            
+            # Robust fallback for exact ID.mp3
             if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
-                if not target_suffix: # Generic file only if 'Both' or no specific suffix requested
+                if not target_suffix:
                     found_audio.append(f"{song_id}.mp3")
         except Exception: pass
         found_audio = sorted(list(set(found_audio)))
@@ -3053,13 +3090,27 @@ class MusicBotGUI:
                 search_dirs.append(output_media) 
                 
                 for s_dir in search_dirs:
-                    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
-                        if os.path.exists(os.path.join(s_dir, f"{aud_base}{ext}")):
-                            img_path = os.path.join(s_dir, f"{aud_base}{ext}"); break
-                        if seq_name and os.path.exists(os.path.join(s_dir, f"{seq_name}{ext}")):
-                            img_path = os.path.join(s_dir, f"{seq_name}{ext}"); break
-                        if os.path.exists(os.path.join(s_dir, f"{song_id}{ext}")):
-                            img_path = os.path.join(s_dir, f"{song_id}{ext}"); break
+                    if not os.path.exists(s_dir): continue
+                    
+                    # SCAN directory for ANY image matching this ID/AudBase
+                    for f in os.listdir(s_dir):
+                        f_l = f.lower()
+                        if not f_l.endswith((".png", ".jpg", ".jpeg")): continue
+                        
+                        # 1. Try exact AudBase match (e.g., ID_Title.png matching ID_Title.mp3)
+                        # We extract the variant from the audio if exists
+                        aud_variant = None
+                        if "_1" in aud_base.lower(): aud_variant = "1"
+                        elif "_2" in aud_base.lower(): aud_variant = "2"
+                        
+                        # Match logic
+                        if self._is_id_match(f_l, song_id, variant=aud_variant):
+                            img_path = os.path.join(s_dir, f); break
+                        
+                        # Fallback to general ID match
+                        if self._is_id_match(f_l, song_id):
+                            img_path = os.path.join(s_dir, f); break
+                            
                     if img_path: break
                 
                 if img_path:
