@@ -208,5 +208,22 @@
     "f_missing_m2": "Eksik Müzik 2",
     "video_assets_output_label": "Klasör ve Çıktı Ayarları",
     "open_project_btn": "📊 Excel Aç",
-    "column_dl_status": "İndirilme Durumu"
+    "column_dl_status": "İndirilme Durumu",
+    "video_engine_label": "Video Motoru:",
+    "gemini_chat_mode_label": "Gemini Sohbet Tipi:",
+    "gemini_mode_new": "Yeni Sohbet",
+    "gemini_mode_temp": "Geçici Sohbet",
+    "bass_pulse": "Vuruş Ritmi (Bass Pulse)",
+    "log_gemini_wait": "Gemini yanıtı bekleniyor (Zaman aşımı: {timeout}sn)...",
+    "log_gemini_stuck": "Gemini takılma tespiti: {elapsed}sn içinde yanıt başlamadı.",
+    "log_gemini_started": "Gemini yanıt vermeye başladı ({elapsed}sn).",
+    "log_gemini_finished": "Yanıt tamamlandı ve stabilize oldu. Uzunluk: {length}",
+    "log_gemini_timeout": "Gemini yanıtı zaman aşımına uğradı ({timeout}sn).",
+    "log_gemini_error_trigger": "Gemini sayfa hatası verdi. Sohbet sıfırlanıyor...",
+    "log_gemini_yarim": "Sözler Yarım (Outro Yok) ⚠️",
+    "log_gemini_lyrics_saved": "Sözler Kaydedildi! ✅",
+    "log_gemini_visual_saved": "Görsel Prompt Hazır! ✅",
+    "log_gemini_video_saved": "Video Prompt Hazır! ✅",
+    "log_gemini_no_input": "Gemini giriş kutusu bulunamadı!",
+    "log_gemini_injecting": "Prompt Gemini'ye aktarılıyor..."
 }

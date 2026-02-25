@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class GeminiPrompter:
     def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
-                 language="Turkish", browser=None):
+                 language="Turkish", browser=None, chat_mode="New Chat"):
         self.project_file = project_file
         self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
         # Backward compatibility for internal methods
@@ -26,13 +26,41 @@ class GeminiPrompter:
         self.generate_style = generate_style
         self.startup_delay = startup_delay
         self.language = language
+        self.chat_mode = chat_mode
         self.browser = browser if browser else BrowserController(headless=headless)
-        self.tab = self.browser.get_page("gemini")
+        self.tab = self.browser.get_page("default")
         self.base_url = "https://gemini.google.com/app"
         
         # Load Prompts
         self.prompts_path = os.path.join(os.path.dirname(self.metadata_path), "prompts.json")
         self.load_prompts()
+        self.load_translations()
+
+    def load_translations(self):
+        import json
+        import sys
+        t_file = "translations_tr.json" if self.language == "Turkish" else "translations_en.json"
+        
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.join(sys._MEIPASS, "execution")
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+        t_path = os.path.join(base_dir, t_file)
+        self.translations = {}
+        if os.path.exists(t_path):
+            try:
+                with open(t_path, "r", encoding="utf-8") as f:
+                    self.translations = json.load(f)
+            except Exception as e: 
+                logger.error(f"Gemini translations load error: {e}")
+        else:
+            logger.error(f"Translation file not found at: {t_path}")
+
+    def t(self, key, default="", **kwargs):
+        val = self.translations.get(key, default or key)
+        try: return val.format(**kwargs)
+        except Exception: return val
 
     def load_prompts(self):
         import json
@@ -72,7 +100,38 @@ Main title: “{title}”
              self.video_master_prompt = ""
              self.art_master_prompt = default_art
 
+    def _start_new_chat(self):
+        try:
+            logger.info(f"Starting Gemini Chat Mode: {self.chat_mode}")
+            
+            if "Geçici" in self.chat_mode or "Temp" in self.chat_mode:
+                self.browser.goto(self.base_url, page=self.tab)
+                time.sleep(3)
+            else:
+                try:
+                    new_chat_btn = self.tab.locator("a[href*='/app'], a[aria-label*='New chat' i], a[aria-label*='Yeni sohbet' i]").first
+                    if new_chat_btn.is_visible(timeout=2000):
+                        new_chat_btn.click()
+                        time.sleep(2)
+                    else:
+                        self.browser.goto(self.base_url, page=self.tab)
+                        time.sleep(3)
+                except Exception:
+                    self.browser.goto(self.base_url, page=self.tab)
+                    time.sleep(3)
+            time.sleep(1)
+        except Exception as e:
+            logger.warning(f"Failed to start new chat smoothly, doing hard reload: {e}")
+            try:
+                self.browser.ensure_alive("default")
+                self.tab = self.browser.get_page("default")
+                self.browser.goto(self.base_url, page=self.tab)
+                time.sleep(3)
+            except Exception as severe_e:
+                logger.error(f"Severe navigation failure in chat start: {severe_e}")
+
     def run(self, max_count=None, target_ids=None, progress_callback=None, force_update=False):
+        self.progress_callback_internal = progress_callback
         try:
             if not self.browser.context:
                 self.browser.start()
@@ -192,6 +251,19 @@ Main title: “{title}”
                     
                     logger.info(f"[Pass {pass_num}] Processing Song {i+1}/{len(rows)} ID: {row_id}")
                     
+                    # Prevent crashes: Ensure browser is still alive before processing
+                    try:
+                        is_alive = self.browser.ensure_alive("default")
+                        if not is_alive: raise Exception("ensure_alive returned False")
+                        self.tab = self.browser.get_page("default")
+                    except Exception as e:
+                        logger.error(f"Browser recovery failed for song {row_id}, skipping: {e}")
+                        failed_ids.append(rowdata)
+                        continue
+
+                    # Refresh Chat State based on Settings before starting a song
+                    self._start_new_chat()
+                    
                     # --- Step 1: Lyrics ---
                     final_title = ""
                     final_style = style_init
@@ -203,23 +275,34 @@ Main title: “{title}”
                             output_payload = lyrics_res.copy()
                             if "style" in lyrics_res:
                                 output_payload["suno_style"] = lyrics_res["style"]
+                            
                             self.update_output_data(row_id, output_payload)
+                            
                             final_title = lyrics_res.get("title", "")
                             final_style = lyrics_res.get("style", style_init)
-                            if progress_callback: progress_callback(row_id, "Lyrics Saved! ✅")
+                            
+                            if lyrics_res.get("status") == "YARIM":
+                                logger.warning(f"Song {row_id} lyrics missing Outro. Marked as YARIM.")
+                                if progress_callback: progress_callback(row_id, self.t("log_gemini_yarim"))
+                                failed_ids.append(rowdata) # Append to failed list so Pass 2 will auto-retry
+                            else:
+                                if progress_callback: progress_callback(row_id, self.t("log_gemini_lyrics_saved"))
                         else:
-                            if progress_callback: progress_callback(row_id, "Gemini Hata: Yanıt Yok ❌ (Tarayıcı Kapatılıyor)")
-                            logger.error(f"Gemini failed to respond for {row_id} after timeout. Closing browser to prevent further hangs.")
+                            if progress_callback: progress_callback(row_id, self.t("log_gemini_timeout", timeout=120))
+                            logger.error(f"Gemini failed to respond for {row_id} after timeout. Forcing Hard Reset and continuing.")
                             failed_ids.append(rowdata)
                             
-                            # User requested to close the browser when Gemini doesn't respond for 1 min
+                            # Force a strict hard reset so the broken context doesn't infect the next song
                             try:
                                 self.browser.stop()
-                                logger.info("Browser stopped due to Gemini failure.")
+                                time.sleep(2)
+                                self.browser.start()
+                                self.tab = self.browser.get_page("default")
                             except Exception as e:
-                                logger.error(f"Failed to stop browser: {e}")
+                                logger.error(f"Failed to hard reset browser: {e}")
                             
-                            return failed_ids # Return early, effectively stopping this pass and pass 2
+                            time.sleep(2)
+                            continue # Move to next song safely instead of crashing batch
                     else:
                         logger.info(f"   -> Lyrics already exist for {row_id}, skipping to prompt design.")
                         final_title = theme # Fallback
@@ -231,7 +314,7 @@ Main title: “{title}”
                         if vis_res:
                             vis_res = vis_res.replace("**", "").replace("__", "").strip()
                             self.update_output_data(row_id, {"visual_prompt": vis_res})
-                            if progress_callback: progress_callback(row_id, "Visual Ready! ✅")
+                            if progress_callback: progress_callback(row_id, self.t("log_gemini_visual_saved"))
                         else:
                             if progress_callback: progress_callback(row_id, "Visual Failed ❌")
 
@@ -242,7 +325,7 @@ Main title: “{title}”
                         if vid_res:
                             vid_res = vid_res.replace("**", "").replace("__", "").strip()
                             self.update_output_data(row_id, {"video_prompt": vid_res})
-                            if progress_callback: progress_callback(row_id, "Video Ready! ✅")
+                            if progress_callback: progress_callback(row_id, self.t("log_gemini_video_saved"))
                         else:
                             if progress_callback: progress_callback(row_id, "Video Failed ❌")
 
@@ -281,6 +364,7 @@ Main title: “{title}”
             
             if not input_box: 
                 logger.error("Could not find Gemini input box.")
+                if self.progress_callback_internal: self.progress_callback_internal("global", self.t("log_gemini_no_input"))
                 return None
 
             # Using .replace() instead of .format() for better robustness against unknown braces in template
@@ -290,7 +374,29 @@ Main title: “{title}”
             if style:
                 full_prompt += f"\n\n[IMPORTANT] Target Music Style: {style}\nPlease ensure all outputs (lyrics, art, video, style) follow this style precisely."
 
+            # Error detection - If Gemini has a visible error toast, the textbox might be stuck.
+            # We try to clear it before injecting.
+            error_selectors = [".error-message", "div[role='alert']", ".error-toast"]
+            has_error = False
+            for es in error_selectors:
+                if self.tab.locator(es).is_visible(timeout=500):
+                    has_error = True; break
+            
+            if has_error:
+                logger.warning("Gemini page error detected. Attempting to scroll/clear.")
+                if self.progress_callback_internal: self.progress_callback_internal("global", self.t("log_gemini_error_trigger"))
+                self._start_new_chat() # Reset chat state
+                time.sleep(2)
+
             logger.info("Injecting prompt into Gemini (Instant Block Mode)...")
+            if self.progress_callback_internal: self.progress_callback_internal("global", self.t("log_gemini_injecting"))
+            
+            # CRITICAL WAIT: Give the new chat's DOM a chance to attach fully and settle
+            try:
+                self.tab.locator(input_box).wait_for(state="attached", timeout=5000)
+                time.sleep(2.0)
+            except Exception: pass
+            
             self.tab.click(input_box)
             time.sleep(1)
             
@@ -374,6 +480,12 @@ Main title: “{title}”
             
             if current_section: result[current_section] = "\n".join(buffer).strip()
             
+            # Check for Outro (YARIM Status trigger)
+            if "lyrics" in result:
+                l_text = result["lyrics"].lower()
+                if "[outro]" not in l_text and "outro" not in l_text[-150:]:
+                    result["status"] = "YARIM"
+
             # Unify art prompt naming
             if "visual_prompt" in result:
                 result["cover_art_prompt"] = result["visual_prompt"]
@@ -394,6 +506,12 @@ Main title: “{title}”
 
             full_prompt = template.replace("{title}", str(title)).replace("{style}", str(style))
             
+            # CRITICAL WAIT: Give the DOM a chance to settle
+            try:
+                self.tab.locator(input_box_selector).wait_for(state="attached", timeout=5000)
+                time.sleep(2.0)
+            except Exception: pass
+            
             self.tab.click(input_box_selector)
             time.sleep(1)
             self.browser.fill(input_box_selector, full_prompt, page=self.tab)
@@ -408,6 +526,9 @@ Main title: “{title}”
     def _wait_for_response(self, timeout=120):
         """Helper to wait for Gemini response to appear and stabilize."""
         logger.info(f"Waiting for Gemini response (Global Timeout: {timeout}s)...")
+        if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+            self.progress_callback_internal("global", self.t("log_gemini_wait", timeout=timeout))
+        
         start_time = time.time()
         
         # Capture initial state
@@ -425,7 +546,20 @@ Main title: “{title}”
             # 1. Stuck Detection: If after 60 seconds (User requested 1 min) we still have no new message content, fail early
             if not has_started and elapsed > 60:
                 logger.error(f"Gemini stuck detection: No response started after {elapsed:.1f}s. Failing early.")
+                if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+                    self.progress_callback_internal("global", self.t("log_gemini_stuck", elapsed=int(elapsed)))
                 return None
+
+            # 1.1 Error Detection during wait
+            error_selectors = [".error-message", "div[role='alert']", ".error-toast", ".toast-container"]
+            for es in error_selectors:
+                try:
+                    if self.tab.locator(es).is_visible(timeout=200):
+                        logger.error(f"Gemini reported an error during generation: {es}")
+                        if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+                             self.progress_callback_internal("global", self.t("log_gemini_error_trigger"))
+                        return None
+                except Exception: pass
 
             # 2. Check for 'Stop generating' button
             stop_btn_visible = False
@@ -449,6 +583,8 @@ Main title: “{title}”
 
                 if not has_started:
                     logger.info(f"Gemini started responding after {elapsed:.1f}s.")
+                    if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+                        self.progress_callback_internal("global", self.t("log_gemini_started", elapsed=int(elapsed)))
                     has_started = True
 
                 if current_text == last_text:
@@ -456,6 +592,8 @@ Main title: “{title}”
                         stable_count += 1
                         if stable_count >= 2: # 4 seconds of stability
                             logger.info(f"Response finished and stabilized. Length: {len(current_text)}")
+                            if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+                                self.progress_callback_internal("global", self.t("log_gemini_finished", length=len(current_text)))
                             return current_text
                     else:
                         logger.info("Text is stable but 'Stop' button is still visible. Gemini might be thinking...")

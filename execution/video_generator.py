@@ -15,7 +15,7 @@ class VideoGenerator:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50, progress_callback=None, threads=1):
+    def generate_video(self, audio_path, image_path, output_filename, effect_types=None, fps=24, resolution="Vertical (Shorts - 1080x1920)", intensity=50, progress_callback=None, threads=1, video_engine="MoviePy"):
         """
         Generates an MP4 video by combining audio and image with optional multiple effects.
         """
@@ -61,6 +61,46 @@ class VideoGenerator:
             }
             target_res = res_map.get(resolution, (1080, 1920))
             
+            output_path = os.path.join(self.output_dir, output_filename)
+            temp_audio_path = os.path.join(self.output_dir, f"temp_{rid}.m4a")
+
+            if "FFmpeg" in video_engine:
+                import subprocess
+                w, h = target_res
+                vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+                
+                has_pulse = any(e in effect_types for e in ["Bass Pulse", "Vuruş Ritmi (Bass Pulse)"])
+                has_kb = any(e in effect_types for e in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"])
+                
+                if has_kb:
+                    vf += f",zoompan=z='min(zoom+0.0005,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
+                elif has_pulse:
+                    pulse_amt = 0.03 * (intensity / 50)
+                    vf += f",zoompan=z='1+{pulse_amt}*sin(2*PI*t*130/60)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
+                    
+                if any(e in effect_types for e in ["Vignette", "Köşe Karartma (Vignette)"]):
+                    vf += ",vignette=a=PI/4"
+                    
+                cmd = [
+                    "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
+                    "-vf", vf, "-c:v", "h264_videotoolbox", "-c:a", "aac", "-b:a", "192k",
+                    "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
+                ]
+                
+                if progress_callback: progress_callback(rid, "FFmpeg Motoru Başlıyor... 🚀")
+                try:
+                    res_run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    if res_run.returncode == 0 and os.path.exists(output_path):
+                        return True
+                    else:
+                        if progress_callback: progress_callback(rid, "FFmpeg H264 Yok, Yazılım Render'ı (libx264)... ⚙️")
+                        cmd[cmd.index("h264_videotoolbox")] = "libx264"
+                        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        return os.path.exists(output_path)
+                except Exception as e:
+                    logger.error(f"FFmpeg error: {e}")
+                    return False
+            
             # 1. Load Audio
             if not os.path.exists(audio_path):
                 logger.error(f"Audio file not found: {audio_path}")
@@ -95,6 +135,11 @@ class VideoGenerator:
             if any(eff in effect_types for eff in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"]):
                 zoom_speed = 0.05 * (intensity / 50)
                 current_clip = base_clip.resized(lambda t: 1 + zoom_speed * t)
+
+            # Bass Pulse Effect
+            if any(eff in effect_types for eff in ["Bass Pulse", "Vuruş Ritmi (Bass Pulse)"]):
+                pulse_amt = 0.03 * (intensity / 50)
+                current_clip = current_clip.resized(lambda t: 1.0 + pulse_amt * np.sin(2 * np.pi * t * (130/60)))
             
             # Collect procedural overlay effects
             overlay_clips = []
@@ -113,11 +158,6 @@ class VideoGenerator:
             
             # 4. Set Audio and Write
             final_clip = final_clip.with_audio(audio)
-            
-            output_path = os.path.join(self.output_dir, output_filename)
-            temp_audio_path = os.path.join(self.output_dir, f"temp_{rid}.m4a")
-            
-            logger.info(f"Targeting: {output_path}")
             
             # Final Write
             final_clip.write_videofile(
@@ -308,10 +348,15 @@ class VideoGenerator:
             
             # Extract mono audio array
             try:
-                # Get audio array (handle potential multi-channel by taking mean)
                 audio_array = audio_clip.to_soundarray(fps=audio_fps)
                 if audio_array.ndim > 1:
                     audio_array = np.mean(audio_array, axis=1)
+                
+                # SMOOTHING - Envelopes audio to remove jitter for a premium smooth visualizer
+                smooth_window = int(audio_fps * 0.15) # 150ms kernel
+                kernel = np.ones(smooth_window) / smooth_window
+                audio_array = np.convolve(np.abs(audio_array), kernel, mode='same')
+
             except Exception as e:
                 logger.error(f"Failed to extract audio array for visualizer: {e}")
                 return None
@@ -342,7 +387,7 @@ class VideoGenerator:
                 if start_idx >= total_samples:
                     return frame # Audio ended
                     
-                window = np.abs(audio_array[start_idx:end_idx])
+                window = audio_array[start_idx:end_idx] # Already absolute and smoothed
                 
                 if len(window) == 0:
                     return frame

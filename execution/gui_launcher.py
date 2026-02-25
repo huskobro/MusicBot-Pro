@@ -507,7 +507,7 @@ class SettingsDialog(tk.Toplevel):
         f_v_effects.pack(fill="x", padx=10, pady=5)
         
         self.effect_vars = {}
-        effects = ["Snow", "Rain", "Particles", "Glitch", "Ken Burns", "Vignette", "Audio Visualizer"]
+        effects = ["Snow", "Rain", "Particles", "Glitch", "Ken Burns", "Vignette", "Audio Visualizer", "Bass Pulse"]
         saved_effects = config.get("video_effects", [config.get("video_effect", "None")])
         
         for i, eff in enumerate(effects):
@@ -550,6 +550,12 @@ class SettingsDialog(tk.Toplevel):
         self.scale_intensity = tk.Scale(f_v_quality, from_=0.1, to_=2.0, resolution=0.1, orient="horizontal")
         self.scale_intensity.set(config.get("video_intensity", 1.0))
         self.scale_intensity.grid(row=4, column=1, sticky="ew", padx=5, pady=5)
+
+        # Render Engine (NEW)
+        ttk.Label(f_v_quality, text=self.app.t("video_engine_label")).grid(row=5, column=0, sticky="w", pady=5)
+        self.combo_video_engine = ttk.Combobox(f_v_quality, values=["MoviePy", "FFmpeg"], state="readonly", width=10)
+        self.combo_video_engine.set(config.get("video_engine", "FFmpeg"))
+        self.combo_video_engine.grid(row=5, column=1, sticky="w", padx=5, pady=5)
 
         # 3. Assets & Output
         f_v_assets = ttk.LabelFrame(v_scroll_frame, text=self.app.t("video_assets_output_label"), padding=10)
@@ -594,6 +600,14 @@ class SettingsDialog(tk.Toplevel):
         p_canvas.pack(side="left", fill="both", expand=True)
         p_scrollbar.pack(side="right", fill="y")
         
+        # Gemini Chat Mode
+        f_gemini_mode = ttk.Frame(p_scroll_frame)
+        f_gemini_mode.pack(fill="x", padx=10, pady=(5,0))
+        ttk.Label(f_gemini_mode, text=self.app.t("gemini_chat_mode_label")).pack(side="left", padx=(0, 10))
+        self.combo_gemini_mode = ttk.Combobox(f_gemini_mode, values=[self.app.t("gemini_mode_new"), self.app.t("gemini_mode_temp")], state="readonly", width=20)
+        self.combo_gemini_mode.set(config.get("gemini_chat_mode", self.app.t("gemini_mode_new")))
+        self.combo_gemini_mode.pack(side="left")
+
         # Lyrics
         ttk.Label(p_scroll_frame, text=self.app.t("lyrics_master_label"), font=("Helvetica", 10, "bold")).pack(anchor="w", padx=10, pady=(10,0))
         self.txt_lyrics = scrolledtext.ScrolledText(p_scroll_frame, height=8, wrap=tk.WORD, font=("Consolas", 10))
@@ -713,6 +727,8 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_video_custom_path: settings_snapshot["video_custom_output_path"] = self.ent_video_custom_path.get()
         if self.combo_parallel_render: settings_snapshot["video_parallel_count"] = int(self.combo_parallel_render.get())
         if self.combo_video_selection: settings_snapshot["video_selection_mode"] = self.combo_video_selection.get()
+        if hasattr(self, 'combo_video_engine') and self.combo_video_engine: settings_snapshot["video_engine"] = self.combo_video_engine.get()
+        if hasattr(self, 'combo_gemini_mode') and self.combo_gemini_mode: settings_snapshot["gemini_chat_mode"] = self.combo_gemini_mode.get()
         
         # Humanizer
         if self.var_humanizer_enabled: settings_snapshot["humanizer_enabled"] = self.var_humanizer_enabled.get()
@@ -817,6 +833,8 @@ class SettingsDialog(tk.Toplevel):
             self.ent_video_custom_path.insert(0, settings.get("video_custom_output_path", ""))
         if self.combo_parallel_render: self.combo_parallel_render.set(str(settings.get("video_parallel_count", 1)))
         if self.combo_video_selection: self.combo_video_selection.set(settings.get("video_selection_mode", self.app.t("v_mode_both")))
+        if hasattr(self, 'combo_video_engine') and self.combo_video_engine: self.combo_video_engine.set(settings.get("video_engine", "FFmpeg"))
+        if hasattr(self, 'combo_gemini_mode') and self.combo_gemini_mode: self.combo_gemini_mode.set(settings.get("gemini_chat_mode", self.app.t("gemini_mode_new")))
         
         # Humanizer
         if self.var_humanizer_enabled: self.var_humanizer_enabled.set(settings.get("humanizer_enabled", True))
@@ -1931,8 +1949,12 @@ class MusicBotGUI:
             s = self.all_songs[rid]
             
             # Re-calculate display values to be safe
-            s_lyrics = "✅" if s["lyrics"] else "⚪"
-            s_music = "✅" if s["music"] else "⚪"
+            if str(s.get("status", "")).upper() == "YARIM":
+                s_lyrics = "⚠️"
+            else:
+                s_lyrics = "✅" if s.get("lyrics") else "⚪"
+                
+            s_music = "✅" if s.get("music") else "⚪"
             s_art = "✅" if s["art"] else "⚪"
             
             s_dl_val = s.get("dl_status", "").lower()
@@ -2373,6 +2395,19 @@ class MusicBotGUI:
                     if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
                         target_ids = self.filtered_ids
         
+        
+        # --- GLOBAL YARIM AUTO-SCAN ---
+        # Irrespective of selection, if there are songs marked as YARIM (Incomplete),
+        # we append them to the execution queue automatically at the end.
+        yarim_ids = []
+        for rid, sdata in self.all_songs.items():
+            if str(sdata.get("status", "")).upper() == "YARIM" and rid not in target_ids:
+                yarim_ids.append(rid)
+        
+        if yarim_ids:
+            logger.info(f"Auto-Retry: Found {len(yarim_ids)} YARIM items. Appending to target list.")
+            target_ids.extend(yarim_ids)
+
         if not target_ids:
             logger.warning("No target songs selected. Process cannot start.")
             messagebox.showwarning(self.t("warning"), "Lütfen işlenecek şarkıları seçin!\n(İşlem yapılacak satırları işaretleyin veya filtreyi kullanarak 'Hepsini İşle' deyin.)")
@@ -2881,7 +2916,8 @@ class MusicBotGUI:
                         generate_video=self.config.get("gemini_video", False),
                         generate_style=self.config.get("gemini_style", False),
                         startup_delay=self.config.get("startup_delay", 5),
-                        language=self.config.get("target_language", "Turkish")
+                        language=self.config.get("target_language", "Turkish"),
+                        chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
                     )
                     gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                 
@@ -2915,7 +2951,8 @@ class MusicBotGUI:
                         output_dir=output_media,
                         browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
                         startup_delay=self.config.get("startup_delay", 5),
-                        language=self.config.get("target_language", "Turkish")
+                        language=self.config.get("target_language", "Turkish"),
+                        chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
                     )
                     
                     if s_steps[2] and not self.stop_requested and song_browser:
@@ -3092,7 +3129,8 @@ class MusicBotGUI:
                     generate_video=self.config.get("gemini_video", False),
                     generate_style=self.config.get("gemini_style", False),
                     startup_delay=self.config.get("startup_delay", 5),
-                    language=self.config.get("target_language", "Turkish")
+                    language=self.config.get("target_language", "Turkish"),
+                    chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
                 )
                 # Gemini doesn't have internal batch support yet, so we loop but REUSE browser
                 for idx, song_id in enumerate(gemini_ids):
@@ -3138,7 +3176,8 @@ class MusicBotGUI:
                     output_dir=output_media,
                     browser=batch_browser, 
                     startup_delay=self.config.get("startup_delay", 5),
-                    language=self.config.get("target_language", "Turkish")
+                    language=self.config.get("target_language", "Turkish"),
+                    chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
                 )
                 
                 # Prompts via Browser

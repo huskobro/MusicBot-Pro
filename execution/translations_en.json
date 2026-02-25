@@ -208,5 +208,22 @@
     "rain": "Rain",
     "particles": "Particles",
     "level_high": "HIGH",
-    "msg_persona_loaded": "'{alias}' loaded for editing.\nMake changes and press '+' to save."
+    "msg_persona_loaded": "'{alias}' loaded for editing.\nMake changes and press '+' to save.",
+    "video_engine_label": "Video Engine:",
+    "gemini_chat_mode_label": "Gemini Chat Mode:",
+    "gemini_mode_new": "New Chat",
+    "gemini_mode_temp": "Temporary Chat",
+    "bass_pulse": "Bass Pulse",
+    "log_gemini_wait": "Waiting for Gemini response (Timeout: {timeout}s)...",
+    "log_gemini_stuck": "Gemini stuck detection: No response started after {elapsed}s.",
+    "log_gemini_started": "Gemini started responding after {elapsed}s.",
+    "log_gemini_finished": "Response finished and stabilized. Length: {length}",
+    "log_gemini_timeout": "Gemini response timed out after {timeout}s.",
+    "log_gemini_error_trigger": "Gemini reported a page error. Resetting chat...",
+    "log_gemini_yarim": "Lyrics Incomplete (No Outro) ⚠️",
+    "log_gemini_lyrics_saved": "Lyrics Saved! ✅",
+    "log_gemini_visual_saved": "Visual Prompt Ready! ✅",
+    "log_gemini_video_saved": "Video Prompt Ready! ✅",
+    "log_gemini_no_input": "Could not find Gemini input box!",
+    "log_gemini_injecting": "Injecting prompt into Gemini..."
 }

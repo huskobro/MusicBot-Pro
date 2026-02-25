@@ -262,10 +262,20 @@ class BrowserController:
             return True
         except Exception as e:
             logger.error(f"Browser health check failed: {e}. Attempting full restart...")
-            self.stop()
-            self.start()
-            self.get_page(name)
-            return True
+            # Complete teardown required for "Event loop is closed"
+            try: self.stop()
+            except Exception: pass
+            
+            # Additional safety: Give playwright time to actually wipe context
+            time.sleep(2)
+            
+            try:
+                self.start()
+                self.get_page(name)
+                return True
+            except Exception as start_err:
+                logger.error(f"Failed to cleanly recover browser loop: {start_err}")
+                return False
 
     @property
     def page(self):
@@ -273,12 +283,15 @@ class BrowserController:
         return self.get_page("default")
 
     def stop(self):
-        """Closes the browser and context."""
+        """Closes the browser and context completely and resets state."""
         if self.context:
             self.context.close()
+            self.context = None
         if self.playwright:
             self.playwright.stop()
-        logger.info("Browser stopped.")
+            self.playwright = None
+        self.pages = {}
+        logger.info("Browser stopped and state cleared.")
 
     @r_try()
     def goto(self, url, page=None):
