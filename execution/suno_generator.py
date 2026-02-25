@@ -507,10 +507,13 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
 
                 # ===== PHASE A: FULL WATERFALL SCROLL =====
                 # Scroll through the entire song list to load everything into DOM
-                logger.info("Aşama A: Tüm şarkıları DOM'a yüklemek için şelale kaydırması yapılıyor...")
+                # Dynamically calculate passes based on queue size (approx 15-20 songs per scroll)
+                target_passes = max(5, int(len(download_queue) / 10) + 2)
+                
+                logger.info(f"Aşama A: {len(download_queue)} şarkı için {target_passes} denemelik şelale kaydırması yapılıyor...")
                 if progress_callback: progress_callback("global", "Şarkı listesi yükleniyor... ⬇️")
                 try:
-                    for scroll_pass in range(5):  # Reduced from 15 to 5 passes
+                    for scroll_pass in range(target_passes):
                         rows = self.tab.locator("div.clip-row")
                         current_count = rows.count()
                         if current_count > 0:
