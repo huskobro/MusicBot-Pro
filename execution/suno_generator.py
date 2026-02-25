@@ -617,57 +617,6 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 not_found_ctxs = [c for c in valid_ctxs if c.rid not in song_index]
                 logger.info(f"[Aşama B] Hazırlık tamamlandı. İndeks: {found_count} bulundu, {len(not_found_ctxs)} bulunamadı.")
                 
-                # Step 2: Download from index (no more DOM scanning needed!)
-                for ctx in valid_ctxs:
-                    if self.stop_requested: break
-                    if ctx.rid not in song_index:
-                        continue  # Will handle in Phase C
-                    
-                    # SESSION CHECK
-                    try: self.tab.url
-                    except Exception:
-                        logger.warning(f"Tab crashed before downloading {ctx.rid}. Recovering...")
-                        if self.persona_link: self._setup_persona_workflow()
-                        else: self.browser.goto(self.base_url, page=self.tab)
-                        time.sleep(5)
-                        self._ensure_v5_active()
-                    
-                    suno_title = f"{ctx.rid}_{ctx.title}"
-                    occurrences = song_index[ctx.rid]
-                    
-                    logger.info(f"[Aşama B] {ctx.rid} ID'li şarkı indiriliyor ({len(occurrences)} versiyon bulundu)...")
-                    if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
-                    ctx.state = SongState.DOWNLOADING
-                    
-                    s1, s2 = False, False
-                    
-                    # Playwright is strictly single-threaded per page/context. 
-                    # Using ThreadPoolExecutor causes 'greenlet' thread-switch crashes.
-                    # Execute sequentially instead.
-                    try:
-                        s1 = self._download_from_row(occurrences[0], suno_title, ctx.rid, "1")
-                        if len(occurrences) > 1:
-                            s2 = self._download_from_row(occurrences[1], suno_title, ctx.rid, "2")
-                    except Exception as e:
-                        logger.error(f"Sequential download failure for {ctx.rid}: {e}")
-
-                    if s1 or s2:
-                        self._batch_stats["success"] += 1
-                        trigger_dashboard_update()
-                        self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
-                        status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
-                        if progress_callback: progress_callback(ctx.rid, status_txt)
-                        completed_ids.append(ctx.rid)
-                        ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
-                        logger.info(f"✅ İndirme BAŞARILI ({ctx.rid}): s1={s1}, s2={s2}")
-                    else:
-                        self._batch_stats["failed"] += 1
-                        trigger_dashboard_update()
-                        self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
-                        if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
-                        ctx.state = SongState.FAILED
-                        logger.warning(f"❌ İndirme BAŞARISIZ ({ctx.rid}): s1={s1}, s2={s2}")
-                
                 # ===== PHASE C: SEARCH FALLBACK FOR NOT-FOUND SONGS =====
                 if not_found_ctxs:
                     logger.info(f"Aşama C: Sayfada bulunamayan {len(not_found_ctxs)} şarkı için arama motoru deneniyor: {[c.rid for c in not_found_ctxs]}")
@@ -685,8 +634,6 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             time.sleep(5)
                             self._ensure_v5_active()
                             
-                        suno_title = f"{ctx.rid}_{ctx.title}"
-                        
                         logger.info(f"[Aşama C] {ctx.rid} ID'li şarkı aranıyor...")
                         if progress_callback: progress_callback(ctx.rid, f"Aranıyor... 🔍")
                         
@@ -714,34 +661,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             
                             if occurrences:
                                 logger.info(f"[Aşama C] Arama ile {ctx.rid} ID'li şarkıdan {len(occurrences)} versiyon bulundu.")
-                                if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
-                                ctx.state = SongState.DOWNLOADING
-                                
-                                s1, s2 = False, False
-                                # Execute sequentially.
-                                try:
-                                    s1 = self._download_from_row(occurrences[0], suno_title, ctx.rid, "1")
-                                    if len(occurrences) > 1:
-                                        s2 = self._download_from_row(occurrences[1], suno_title, ctx.rid, "2")
-                                except Exception as e:
-                                    logger.error(f"Aşama C sırasında indirme işleminde hata ({ctx.rid}): {e}")
-                                
-                                if s1 or s2:
-                                    self._batch_stats["success"] += 1
-                                    trigger_dashboard_update()
-                                    self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
-                                    status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
-                                    if progress_callback: progress_callback(ctx.rid, status_txt)
-                                    completed_ids.append(ctx.rid)
-                                    ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
-                                    logger.info(f"✅ İndirme BAŞARILI ({ctx.rid}): s1={s1}, s2={s2}")
-                                else:
-                                    self._batch_stats["failed"] += 1
-                                    trigger_dashboard_update()
-                                    self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
-                                    if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
-                                    ctx.state = SongState.FAILED
-                                    logger.warning(f"❌ İndirme BAŞARISIZ ({ctx.rid})")
+                                song_index[ctx.rid] = occurrences
                             else:
                                 self._batch_stats["failed"] += 1
                                 trigger_dashboard_update()
@@ -778,6 +698,58 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                 time.sleep(1)
                                 self.tab.keyboard.press("Escape")
                         except Exception: pass
+
+                # ===== PHASE D: FINAL DOWNLOAD LOOP =====
+                # Step 2: Download from index (no more DOM scanning needed!)
+                for ctx in valid_ctxs:
+                    if self.stop_requested: break
+                    if ctx.rid not in song_index:
+                        continue  # Was already marked as failed in Phase C
+                    
+                    # SESSION CHECK
+                    try: self.tab.url
+                    except Exception:
+                        logger.warning(f"Tab crashed before downloading {ctx.rid}. Recovering...")
+                        if self.persona_link: self._setup_persona_workflow()
+                        else: self.browser.goto(self.base_url, page=self.tab)
+                        time.sleep(5)
+                        self._ensure_v5_active()
+                    
+                    suno_title = f"{ctx.rid}_{ctx.title}"
+                    occurrences = song_index[ctx.rid]
+                    
+                    logger.info(f"[Aşama D] {ctx.rid} ID'li şarkı indiriliyor ({len(occurrences)} versiyon bulundu)...")
+                    if progress_callback: progress_callback(ctx.rid, f"İndiriliyor... ⬇️")
+                    ctx.state = SongState.DOWNLOADING
+                    
+                    s1, s2 = False, False
+                    
+                    # Playwright is strictly single-threaded per page/context. 
+                    # Using ThreadPoolExecutor causes 'greenlet' thread-switch crashes.
+                    # Execute sequentially instead.
+                    try:
+                        s1 = self._download_from_row(occurrences[0], suno_title, ctx.rid, "1")
+                        if len(occurrences) > 1:
+                            s2 = self._download_from_row(occurrences[1], suno_title, ctx.rid, "2")
+                    except Exception as e:
+                        logger.error(f"Sequential download failure for {ctx.rid}: {e}")
+
+                    if s1 or s2:
+                        self._batch_stats["success"] += 1
+                        trigger_dashboard_update()
+                        self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
+                        status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
+                        if progress_callback: progress_callback(ctx.rid, status_txt)
+                        completed_ids.append(ctx.rid)
+                        ctx.state = SongState.VERIFIED if self.config.verify_downloads else SongState.SAVED
+                        logger.info(f"✅ İndirme BAŞARILI ({ctx.rid}): s1={s1}, s2={s2}")
+                    else:
+                        self._batch_stats["failed"] += 1
+                        trigger_dashboard_update()
+                        self.update_row_status(ctx.row_idx, dl_status="failed", dl_attempts=1)
+                        if progress_callback: progress_callback(ctx.rid, "İndirme Hatası! ❌")
+                        ctx.state = SongState.FAILED
+                        logger.warning(f"❌ İndirme BAŞARISIZ ({ctx.rid}): s1={s1}, s2={s2}")
                 
                 return len(completed_ids)
 
