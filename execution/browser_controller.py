@@ -92,36 +92,43 @@ class BrowserController:
                 # Use pkill with full command line matching to catch long paths
                 safe_path = self.user_data_dir.replace("'", "'\\''")
                 subprocess.run(f"pkill -9 -f '{safe_path}'", shell=True, stderr=subprocess.DEVNULL)
-                time.sleep(1) # Give OS time to close tracked files
+                
+                # Broad kill to ensure no other Chrome instance is holding the profile
+                if platform.system() == "Darwin":
+                    subprocess.run("killall -9 'Google Chrome' 2>/dev/null || true", shell=True)
+                    subprocess.run("killall -9 'Google Chrome for Testing' 2>/dev/null || true", shell=True)
+                
+                subprocess.run("pkill -9 -f playwright 2>/dev/null || true", shell=True)
+                time.sleep(2) # Vital wait for OS to release file handles
             except Exception as e:
-                logger.warning(f"Process cleanup warning: {e}")
+                logger.warning(f"Process cleanup error: {e}")
                 
         # Handle iCloud sync conflict files & broken symlinks
-        singleton_files = glob.glob(os.path.join(self.user_data_dir, "Singleton*"))
-        for path in singleton_files:
-            try:
-                logger.info(f"Removing stale lock file: {path}")
-                os.remove(path)
-            except Exception as e:
-                logger.warning(f"Failed to remove lock file {path}: {e}")
+        search_dirs = [self.user_data_dir, os.path.join(self.user_data_dir, "Default")]
+        for directory in search_dirs:
+            if not os.path.isdir(directory): continue
+            
+            # Remove all Singleton files (lock, socket, cookie)
+            singleton_files = glob.glob(os.path.join(directory, "Singleton*"))
+            for path in singleton_files:
+                try:
+                    logger.info(f"Removing stale lock file: {path}")
+                    if os.path.islink(path) or os.path.isfile(path):
+                        os.remove(path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove lock file {path}: {e}")
         
-        # Clean iCloud-duplicated DB files inside Default/ that corrupt the profile
-        # These are files like "DIPS-wal 2", "SharedStorage-wal 3", "LOG 5", etc.
-        default_dir = os.path.join(self.user_data_dir, "Default")
-        if os.path.isdir(default_dir):
+            # Clean iCloud-duplicated DB files inside Default/ that corrupt the profile
             conflict_patterns = ["DIPS-wal [0-9]*", "SharedStorage-wal [0-9]*", 
                                  "LOG [0-9]*", "LOG [0-9]*.old",
-                                 "BrowserMetrics-spare [0-9]*"]
+                                 "BrowserMetrics-spare [0-9]*", "Local State [0-9]*",
+                                 "Preferences [0-9]*", "* [0-9]*"] # Broad check for (2), (3) etc
             for pattern in conflict_patterns:
-                for path in glob.glob(os.path.join(default_dir, pattern)):
+                for path in glob.glob(os.path.join(directory, pattern)):
                     try:
-                        os.remove(path)
+                        if os.path.isfile(path):
+                            os.remove(path)
                     except Exception: pass
-            # Also clean top-level iCloud conflicts
-            for path in glob.glob(os.path.join(self.user_data_dir, "BrowserMetrics-spare [0-9]*")):
-                try:
-                    os.remove(path)
-                except Exception: pass
 
     def start(self):
         """Starts the Playwright persistent context with mandatory compatibility flags."""
@@ -129,56 +136,56 @@ class BrowserController:
             logger.info("Browser already running.")
             return
 
-        self._cleanup_locks()
+        last_err = None
+        for attempt in range(1, 4):
+            try:
+                self._cleanup_locks()
+                
+                if not self.playwright:
+                    self.playwright = sync_playwright().start()
 
-        # Windows-specific: Wait a moment for native Chrome to fully release the folder
-        if platform.system() == "Windows":
-             time.sleep(1.5)
+                logger.info(f"Starting browser (Attempt {attempt}/3) at: {self.user_data_dir}")
+                
+                self.context = self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=self.user_data_dir,
+                    headless=self.headless,
+                    channel="chrome",
+                    user_agent=self.user_agent,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "--lang=tr-TR",
+                        "--profile-directory=Default"
+                    ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                    ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
+                    viewport=None, 
+                    device_scale_factor=1,
+                    locale="tr-TR",
+                    timezone_id="Europe/Istanbul"
+                )
 
-        logger.info(f"Starting browser with persistent profile at: {self.user_data_dir}")
-        self.playwright = sync_playwright().start()
+                # Standard Stealth only
+                Stealth().apply_stealth_sync(self.context)
+                
+                if self.context.pages:
+                    self.pages["default"] = self.context.pages[0]
+                else:
+                    self.pages["default"] = self.context.new_page()
+                
+                logger.info("Browser started successfully.")
+                return # SUCCESS
+                
+            except Exception as e:
+                last_err = e
+                logger.error(f"Launch attempt {attempt} failed: {e}")
+                self.stop()
+                time.sleep(2)
         
-        try:
-            # --- Mandatory Google Login Fix ---
-            # Using the exact minimal set for maximum compatibility
-            
-            # THE FIX: Chrome with --user-data-dir uses a 'Default' subfolder by default.
-            # We must ensure Playwright also uses/sees the same structure.
-            self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=self.user_data_dir,
-                headless=self.headless,
-                channel="chrome",
-                user_agent=self.user_agent,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--lang=tr-TR",
-                    "--profile-directory=Default"
-                ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
-                ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
-                viewport=None, 
-                device_scale_factor=1,
-                locale="tr-TR",
-                timezone_id="Europe/Istanbul"
-            )
-
-            # Standard Stealth only, no over-the-top scripts that break context
-            Stealth().apply_stealth_sync(self.context)
-            
-            if self.context.pages:
-                self.pages["default"] = self.context.pages[0]
-            else:
-                self.pages["default"] = self.context.new_page()
-            
-            logger.info("Browser started successfully (Compatibility Mode).")
-            
-        except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
-            self.stop()
-            raise e
+        if last_err:
+            raise last_err
 
     def launch_native_chrome(self, urls=["https://suno.com/create", "https://gemini.google.com/app"]):
         """
