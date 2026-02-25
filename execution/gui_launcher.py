@@ -2395,20 +2395,7 @@ class MusicBotGUI:
                     if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
                         target_ids = self.filtered_ids
         
-        
-        # --- GLOBAL YARIM AUTO-SCAN ---
-        # Irrespective of selection, if there are songs marked as YARIM (Incomplete),
-        # we append them to the execution queue automatically at the end.
-        yarim_ids = []
-        for rid, sdata in self.all_songs.items():
-            if str(sdata.get("status", "")).upper() == "YARIM" and rid not in target_ids:
-                yarim_ids.append(rid)
-        
-        if yarim_ids:
-            logger.info(f"Auto-Retry: Found {len(yarim_ids)} YARIM items. Appending to target list.")
-            target_ids.extend(yarim_ids)
-
-        if not target_ids:
+        if not target_ids and not any(str(s.get("status", "")).upper() == "YARIM" for s in self.all_songs.values()):
             logger.warning("No target songs selected. Process cannot start.")
             messagebox.showwarning(self.t("warning"), "Lütfen işlenecek şarkıları seçin!\n(İşlem yapılacak satırları işaretleyin veya filtreyi kullanarak 'Hepsini İşle' deyin.)")
             return
@@ -2418,6 +2405,31 @@ class MusicBotGUI:
             target_ids.sort(key=lambda x: (float(re.sub(r'[^\d.]', '', x)) if re.search(r'\d', x) else 0, x))
         except (ValueError, TypeError):
             target_ids.sort()
+
+        # --- GLOBAL YARIM AUTO-SCAN (POST-SORT) ---
+        # Irrespective of selection, if there are songs marked as YARIM (Incomplete),
+        # we append them to the execution queue automatically at the very end.
+        yarim_ids = []
+        for rid, sdata in self.all_songs.items():
+            if str(sdata.get("status", "")).upper() == "YARIM" and rid not in target_ids:
+                yarim_ids.append(rid)
+                
+                # Ensure the GUI's "Lyrics" step is forcefully enabled for this appended item
+                s_steps = self.song_steps.get(rid)
+                if s_steps is None:
+                    s_steps = [
+                        self.var_run_lyrics.get(),
+                        self.var_run_music.get(),
+                        self.var_run_art_prompt.get(),
+                        self.var_run_art_image.get(),
+                        self.var_run_video.get()
+                    ]
+                s_steps[0] = True # Force Lyrics Generation
+                self.song_steps[rid] = s_steps
+        
+        if yarim_ids:
+            logger.info(f"Auto-Retry: Found {len(yarim_ids)} YARIM items. Appending to the end of target list with Lyrics phase forced ON.")
+            target_ids.extend(yarim_ids)
 
         # --- Evaluate Re-generation (Main Thread) ---
         force_update = False

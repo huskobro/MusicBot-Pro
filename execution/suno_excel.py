@@ -10,11 +10,15 @@ import openpyxl
 
 from logging.handlers import RotatingFileHandler
 
-os.makedirs("logs", exist_ok=True)
+workspace_dir = os.path.expanduser("~/Documents/MusicBot_Workspace")
+log_dir = os.path.join(workspace_dir, "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "suno_musicbot.log")
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 if not logger.hasHandlers():
-    file_handler = RotatingFileHandler("logs/musicbot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+    file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
     console_handler = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)

@@ -453,9 +453,9 @@ class SunoDownloaderMixin:
         logger.info(f"Searching for song ID: {query}")
         try:
             search_selectors = [
+                "input[placeholder='Search']",
                 "input[aria-label='Search clips']",
-                "input[aria-label='Search']",
-                "input[placeholder*='Search']"
+                "input[aria-label='Search']"
             ]
 
             search_input = None
@@ -466,11 +466,12 @@ class SunoDownloaderMixin:
                     break
 
             if not search_input:
-                search_btn = self.tab.locator("button:has([aria-label*='Search' i]), button.search-toggle").first
+                # Highly specific toggle button to avoid broad matches like 'Workspaces'
+                search_btn = self.tab.locator("button[aria-label='Search'], button.search-toggle").first
                 if search_btn.is_visible():
                     search_btn.click()
                     time.sleep(1)
-                    search_input = self.tab.locator("input[aria-label='Search clips'], input[placeholder='Search']").first
+                    search_input = self.tab.locator("input[placeholder='Search']").first
 
             if search_input and search_input.is_visible():
                 search_input.click()

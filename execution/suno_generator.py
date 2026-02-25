@@ -20,10 +20,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
     def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None,
                  audio_influence=25, vocal_gender="Default", lyrics_mode="Default", 
                  weirdness=50, style_influence=50, persona_link="", turbo=False):
-        self.config = SunoConfig(
-            delay=delay,
-            startup_delay=startup_delay
-        )
+        self.config = SunoConfig()
         self.project_file = project_file
         self.metadata_path = project_file # Backward compat
         
@@ -35,11 +32,6 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         self.base_url = "https://suno.com/create"
         self.stop_requested = False
         self.turbo = turbo
-
-    def _check_stop(self):
-        if self.stop_requested:
-            logger.info("Kullanıcı tarafından durdurma isteği alındı.")
-            raise UserStoppedException("User requested stop")
         
         # Advanced Params
         self.audio_influence = audio_influence
@@ -51,6 +43,11 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         
         import sys
         self.mod = "Meta" if sys.platform == "darwin" else "Control"
+
+    def _check_stop(self):
+        if self.stop_requested:
+            logger.info("Kullanıcı tarafından durdurma isteği alındı.")
+            raise UserStoppedException("User requested stop")
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -333,7 +330,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                          download_queue.append(DownloadContext(rid=rid, title=title, row_idx=row_dict['_row_idx']))
 
             # --- PHASE 2: BATCH DOWNLOAD ---
-            if op_mode in ["full", "dl_only"] and generated_ids:
+            if op_mode in ["full", "dl_only"] and download_queue:
                 logger.info("--- Toplu İndirme Aşaması Başlıyor ---")
                 if progress_callback: progress_callback("global", "Toplu İndirme Bekleniyor... ⬇️")
                 
@@ -497,19 +494,31 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         time.sleep(2)
                 except Exception: pass
                 
+                # ===== PRE-PHASE A: REFRESH STATE =====
+                # Force a reload to guarantee the DOM isn't stale before we start scraping
+                logger.info("Taze veri çekmek için arayüz yenileniyor...")
+                if progress_callback: progress_callback("global", "Sayfa yenileniyor... 🔄")
+                try:
+                    self.tab.reload(timeout=45000)
+                    time.sleep(6)
+                    self._ensure_v5_active()
+                except Exception as e:
+                    logger.warning(f"Aşama A öncesi yenileme hatası: {e}")
+
                 # ===== PHASE A: FULL WATERFALL SCROLL =====
                 # Scroll through the entire song list to load everything into DOM
                 logger.info("Aşama A: Tüm şarkıları DOM'a yüklemek için şelale kaydırması yapılıyor...")
                 if progress_callback: progress_callback("global", "Şarkı listesi yükleniyor... ⬇️")
                 try:
-                    for scroll_pass in range(15):  # Up to 15 scroll passes
+                    for scroll_pass in range(5):  # Reduced from 15 to 5 passes
                         rows = self.tab.locator("div.clip-row")
                         current_count = rows.count()
                         if current_count > 0:
-                            rows.last.scroll_into_view_if_needed()
-                            time.sleep(0.3)
+                            # Use locator.nth() and .scroll_into_view_if_needed() safely
+                            rows.nth(current_count - 1).scroll_into_view_if_needed()
+                            time.sleep(0.5)
                             self.tab.mouse.wheel(0, 3000)
-                            time.sleep(1.5)
+                            time.sleep(2) # Give it slightly more time to load
                             new_count = self.tab.locator("div.clip-row").count()
                             logger.info(f"Kaydırma geçişi {scroll_pass+1}: {current_count} → {new_count} satır")
                             if new_count <= current_count:
@@ -523,34 +532,85 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     time.sleep(1)
                 except Exception: pass
                 
-                # ===== PHASE B: SINGLE-PASS INDEX & DOWNLOAD =====
-                # ONE scan of DOM → index ALL songs → then download from index
-                logger.info("Aşama B: Tek geçişli (Single-pass) DOM indeksleme...")
-                if progress_callback: progress_callback("global", "DOM taranıyor... 🔍")
+                # ===== PHASE B: HYBRID WAIT ROOM & SINGLE-PASS INDEX =====
+                # Poll DOM for song readiness, log detailed metrics, and index loaded ones
+                logger.info("Aşama B: Akıllı Bekleme Odası & Tek Geçişli İndeksleme...")
+                if progress_callback: progress_callback("global", "Şarkıların hazır olması bekleniyor... ⏳")
                 
-                # Step 1: Build index in ONE pass (O(n+m) instead of O(n×m))
                 song_index = {}  # {rid: [row_element_1, row_element_2, ...]}
-                
-                rows = self.tab.locator("div.clip-row")
-                total_rows = rows.count()
-                
                 valid_ctxs = [c for c in download_queue if c.state != SongState.FAILED]
-                logger.info(f"[Aşama B] {len(valid_ctxs)} hedef şarkı için {total_rows} DOM satırı indeksleniyor...")
+                pending_ctxs = list(valid_ctxs)
+                seen_ctx_rids = set()
+                wait_loop_count = 0
                 
-                for i in range(total_rows):
+                start_wait = time.time()
+                total_timeout = max(600, len(pending_ctxs) * 180)
+                
+                while pending_ctxs and (time.time() - start_wait < total_timeout):
+                    if self.stop_requested: break
+                    still_generating = []
+                    wait_loop_count += 1
+                    
+                    rows = self.tab.locator("div.clip-row")
+                    count = rows.count()
+                    
+                    for i in range(count):
+                        try:
+                            row = rows.nth(i)
+                            row.scroll_into_view_if_needed()
+                            row_text = row.inner_text().lower()
+                            
+                            is_gen = row.locator("text='Generating'").is_visible()
+                            duration_loc = row.locator("text=/\\d{1,2}:\\d{2}/")
+                            duration = duration_loc.first.inner_text().strip() if duration_loc.count() > 0 and duration_loc.first.is_visible() else "Mevcut Değil"
+                            
+                            for ctx in pending_ctxs:
+                                # Loose match: "1234_" or both ID and title
+                                if (ctx.rid.lower() + "_" in row_text) or (ctx.rid.lower() in row_text and str(ctx.title).lower() in row_text):
+                                    seen_ctx_rids.add(ctx.rid)
+                                    logger.info(f"[Aşama B Bekleme Odası] ID: {ctx.rid} | Başlık: {ctx.title} | Satır: {i} | Süre: {duration} | Üretiliyor: {is_gen}")
+                                    
+                                    if not is_gen and duration != "Mevcut Değil":
+                                        if ctx.rid not in song_index:
+                                            song_index[ctx.rid] = []
+                                        song_index[ctx.rid].append(row)
+                                        if progress_callback: progress_callback(ctx.rid, "Hazır! Beklemede... ✅")
+                                        
+                        except Exception as parse_e:
+                            logger.debug(f"Row {i} parse error in wait room: {parse_e}")
+                            pass
+                            
+                    # Any ctx that is completely in the index is done waiting
+                    for ctx in pending_ctxs:
+                        if ctx.rid not in song_index:
+                            if wait_loop_count > 2 and ctx.rid not in seen_ctx_rids:
+                                logger.warning(f"[Aşama B] {ctx.rid} {wait_loop_count} şelale denemesi içinde bulunamadı, arama kutusuna gönderiliyor.")
+                            else:
+                                still_generating.append(ctx)
+                            
+                    pending_ctxs = still_generating
+                    if not pending_ctxs:
+                         break
+                         
+                    if progress_callback: progress_callback("global", f"Üretim Bekleniyor: {len(pending_ctxs)} şarkı kaldı... ⏳")
+                    
                     try:
-                        row_text = rows.nth(i).inner_text().lower()
-                        for ctx in valid_ctxs:
-                            if ctx.rid.lower() in row_text:
-                                if ctx.rid not in song_index:
-                                    song_index[ctx.rid] = []
-                                song_index[ctx.rid].append(rows.nth(i))
-                    except Exception:
-                        continue
-                
+                        self.tab.mouse.wheel(0, 3000)
+                    except Exception: pass
+                    time.sleep(15)
+                    
+                    # Refresh occasionally
+                    if (time.time() - start_wait) % 90 < 15:
+                        logger.info("Refreshing page in wait room to rehydrate DOM elements...")
+                        try:
+                            self.tab.reload()
+                            time.sleep(5)
+                            self._ensure_v5_active()
+                        except Exception: pass
+                        
                 found_count = len(song_index)
                 not_found_ctxs = [c for c in valid_ctxs if c.rid not in song_index]
-                logger.info(f"[Aşama B] İndeksleme tamamlandı: {total_rows} satırda {found_count} tane bulundu, {len(not_found_ctxs)} bulunamadı")
+                logger.info(f"[Aşama B] Hazırlık tamamlandı. İndeks: {found_count} bulundu, {len(not_found_ctxs)} bulunamadı.")
                 
                 # Step 2: Download from index (no more DOM scanning needed!)
                 for ctx in valid_ctxs:
@@ -576,23 +636,15 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     
                     s1, s2 = False, False
                     
-                    # Phase 6: Parallelizing the download process via ThreadPoolExecutor.
-                    # Bypassing synchronous blocking for performance improvements.
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-                    with ThreadPoolExecutor(max_workers=2) as executor:
-                        future_s1 = executor.submit(self._download_from_row, occurrences[0], suno_title, ctx.rid, "1")
-                        
-                        future_s2 = None
+                    # Playwright is strictly single-threaded per page/context. 
+                    # Using ThreadPoolExecutor causes 'greenlet' thread-switch crashes.
+                    # Execute sequentially instead.
+                    try:
+                        s1 = self._download_from_row(occurrences[0], suno_title, ctx.rid, "1")
                         if len(occurrences) > 1:
-                            future_s2 = executor.submit(self._download_from_row, occurrences[1], suno_title, ctx.rid, "2")
-                            
-                        # Await both sequentially
-                        try:
-                            s1 = future_s1.result(timeout=180) # Prevent permanent blocking
-                            if future_s2:
-                                s2 = future_s2.result(timeout=180)
-                        except Exception as e:
-                            logger.error(f"Thread timeout or failure during download for {ctx.rid}: {e}")
+                            s2 = self._download_from_row(occurrences[1], suno_title, ctx.rid, "2")
+                    except Exception as e:
+                        logger.error(f"Sequential download failure for {ctx.rid}: {e}")
 
                     if s1 or s2:
                         self._batch_stats["success"] += 1
@@ -635,11 +687,21 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         
                         if self._search_for_song(ctx.rid, ctx.title):
                             time.sleep(2)
+                            # Ensure we are fully scrolled to top in the search results
+                            try:
+                                self.tab.keyboard.press("Home")
+                                time.sleep(1)
+                            except Exception: pass
+                            
                             rows = self.tab.locator("div.clip-row")
                             occurrences = []
-                            for i in range(min(10, rows.count())):
-                                if ctx.rid.lower() in rows.nth(i).inner_text().lower():
-                                    occurrences.append(rows.nth(i))
+                            for i in range(rows.count()):
+                                try:
+                                    # Force visible via scroll into view block check
+                                    r = rows.nth(i)
+                                    if ctx.rid.lower() in r.inner_text().lower():
+                                        occurrences.append(r)
+                                except Exception: pass
                             
                             if occurrences:
                                 logger.info(f"[Aşama C] Arama ile {ctx.rid} ID'li şarkıdan {len(occurrences)} versiyon bulundu.")
@@ -647,21 +709,13 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                 ctx.state = SongState.DOWNLOADING
                                 
                                 s1, s2 = False, False
-                                
-                                from concurrent.futures import ThreadPoolExecutor, as_completed
-                                with ThreadPoolExecutor(max_workers=2) as executor:
-                                    future_s1 = executor.submit(self._download_from_row, occurrences[0], suno_title, ctx.rid, "1")
-                                    
-                                    future_s2 = None
+                                # Execute sequentially.
+                                try:
+                                    s1 = self._download_from_row(occurrences[0], suno_title, ctx.rid, "1")
                                     if len(occurrences) > 1:
-                                        future_s2 = executor.submit(self._download_from_row, occurrences[1], suno_title, ctx.rid, "2")
-                                        
-                                    try:
-                                        s1 = future_s1.result(timeout=180)
-                                        if future_s2:
-                                            s2 = future_s2.result(timeout=180)
-                                    except Exception as e:
-                                        logger.error(f"Aşama C sırasında indirme işleminde zaman aşımı veya hata ({ctx.rid}): {e}")
+                                        s2 = self._download_from_row(occurrences[1], suno_title, ctx.rid, "2")
+                                except Exception as e:
+                                    logger.error(f"Aşama C sırasında indirme işleminde hata ({ctx.rid}): {e}")
                                 
                                 if s1 or s2:
                                     self._batch_stats["success"] += 1
@@ -682,23 +736,24 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             else:
                                 self._batch_stats["failed"] += 1
                                 trigger_dashboard_update()
-                                logger.warning(f"[Aşama C] {ctx.rid} arama sonucunda bile bulunamadı. Atlanıyor.")
-                                if progress_callback: progress_callback(ctx.rid, "Bulunamadı ❌")
+                                logger.warning(f"[Aşama C] {ctx.rid} arama sonucunda bile bulunamadı (Üretilemedi). Atlanıyor.")
+                                if progress_callback: progress_callback(ctx.rid, "Üretilemedi ❌")
                                 ctx.state = SongState.FAILED
-                                self.update_row_status(ctx.row_idx, dl_status="failed")
+                                self.update_row_status(ctx.row_idx, dl_status="failed", status="Üretilemedi")
                         else:
-                            logger.warning(f"[Phase C] Search failed for {ctx.rid}. Skipping.")
+                            logger.warning(f"[Phase C] Search failed for {ctx.rid} (Üretilemedi). Skipping.")
                             ctx.state = SongState.FAILED
-                            if progress_callback: progress_callback(ctx.rid, "Arama Hatası ❌")
-                            self.update_row_status(ctx.row_idx, dl_status="failed")
+                            if progress_callback: progress_callback(ctx.rid, "Üretilemedi ❌")
+                            self.update_row_status(ctx.row_idx, dl_status="failed", status="Üretilemedi")
                         
                         # Clear search after each song
                         try:
-                            search_input = self.tab.locator("input[aria-label='Search clips']").first
+                            search_input = self.tab.locator("input[placeholder='Search'], input[aria-label='Search clips']").first
                             if search_input.is_visible():
                                 search_input.fill("")
-                                self.tab.keyboard.press("Enter")
-                                time.sleep(2)
+                                self.tab.keyboard.press("Escape")
+                                time.sleep(1)
+                                self.tab.keyboard.press("Escape")
                         except Exception: pass
                 
                 return len(completed_ids)
