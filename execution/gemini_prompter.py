@@ -439,7 +439,7 @@ Main title: “{title}”
                 logger.warning("Send button not active/visible, trying Enter key fallback.")
                 self.tab.keyboard.press("Enter")
             
-            response_text = self._wait_for_response()
+            response_text = self._wait_for_response(input_box=input_box)
             if not response_text:
                 # Backup: Try to find any message that looks like a response if count logic failed
                 candidates = self.tab.locator("message-content").all()
@@ -535,12 +535,12 @@ Main title: “{title}”
             time.sleep(2)
             self.tab.keyboard.press("Enter")
             
-            return self._wait_for_response()
+            return self._wait_for_response(input_box=input_box_selector)
         except Exception as e:
             logger.error(f"Gemini {ptype} Step Error: {e}")
             return None
 
-    def _wait_for_response(self, timeout=120):
+    def _wait_for_response(self, timeout=120, input_box=None):
         """Helper to wait for Gemini response to appear and stabilize."""
         logger.info(f"Waiting for Gemini response (Global Timeout: {timeout}s)...")
         if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
@@ -575,6 +575,17 @@ Main title: “{title}”
                         logger.error(f"Gemini reported an error during generation: {es}")
                         if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
                              self.progress_callback_internal("global", self.t("log_gemini_error_trigger"))
+                        return None
+                except Exception: pass
+            
+            # 1.2 Text Box Re-dump Detection (Gemini "Bir hata oluştu" invisible failure check)
+            if input_box and has_started and elapsed > 5:
+                try:
+                    box_text = self.tab.locator(input_box).inner_text(timeout=500).strip()
+                    if len(box_text) > 20: # If prompt is spat back out
+                        logger.error("Gemini crashed and dumped prompt back into input box. Failing early.")
+                        if hasattr(self, "progress_callback_internal") and self.progress_callback_internal:
+                             self.progress_callback_internal("global", "Gemini Hatası (Erken İptal) ❌")
                         return None
                 except Exception: pass
 
