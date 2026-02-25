@@ -343,9 +343,15 @@ Main title: “{title}”
             failed_in_pass1 = process_pending(pending_rows, pass_num=1)
             
             # PASS 2 (Retry failed ones)
+            failed_in_pass2 = []
             if failed_in_pass1:
                 logger.info(f"Retrying {len(failed_in_pass1)} failed songs in Pass 2...")
-                process_pending(failed_in_pass1, pass_num=2)
+                failed_in_pass2 = process_pending(failed_in_pass1, pass_num=2)
+            
+            # PASS 3 (Final Attempt)
+            if failed_in_pass2:
+                logger.info(f"Retrying {len(failed_in_pass2)} failed songs in Pass 3 (Final)...")
+                process_pending(failed_in_pass2, pass_num=3)
             
             return processed_count
 
@@ -903,13 +909,12 @@ Main title: “{title}”
             
             fill_new = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
             
-            # Helper to update cell if empty or force update(though we default to skip if exists)
+            # Helper to update cell (Now always overwrites to allow retries to fix YARIM data)
             def update_cell(col_name, new_value):
                 if col_name in col_map:
                     cell = ws.cell(row=target_row, column=col_map[col_name])
-                    if not cell.value: # Only update if empty
-                        cell.value = new_value
-                        cell.fill = fill_new
+                    cell.value = new_value
+                    cell.fill = fill_new
             
             ws.cell(row=target_row, column=col_map["id"], value=row_id)
             
@@ -921,6 +926,7 @@ Main title: “{title}”
             if self.generate_video and "video_prompt" in data: update_cell("video_prompt", data["video_prompt"])
             if "cover_art_prompt" in data: update_cell("cover_art_prompt", data["cover_art_prompt"])
             if "cover_art_path" in data: update_cell("cover_art_path", data["cover_art_path"])
+            if "status" in data: update_cell("status", data["status"])
             
             wb.save(self.output_path)
         except Exception as e:
