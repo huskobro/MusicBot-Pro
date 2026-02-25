@@ -265,7 +265,6 @@ Main title: “{title}”
 
                     # Refresh Chat State based on Settings before starting a song
                     self._start_new_chat()
-                    self._lyrics_injected_successful = False
                     
                     # --- Step 1: Lyrics ---
                     final_title = ""
@@ -358,10 +357,14 @@ Main title: “{title}”
 
     def generate_content(self, theme, style=None):
         try:
-            if getattr(self, "_lyrics_injected_successful", False) and getattr(self, "_prompt_injected_for_row_id", ""):
-                logger.warning("Lyrics prompt already injected for this song! Preventing double injection loop.")
-                if self.progress_callback_internal: self.progress_callback_internal("global", "Double injection prevented 🛡️")
-                return None
+            if getattr(self, "_page_injected", False):
+                logger.warning("Prompt injected in this tab already. Forcing a page refresh for clean state...")
+                if self.progress_callback_internal: self.progress_callback_internal("global", "Sayfa yenileniyor (Temizleme) 🔄")
+                try:
+                    self.browser.goto(self.base_url, page=self.tab)
+                except Exception: pass
+                self._page_injected = False
+                time.sleep(3)
 
             input_box = None
             # Gemini uses Quill editor (ql-editor) which is a div contenteditable
@@ -412,7 +415,7 @@ Main title: “{title}”
             # BYPASS HUMANIZER: Use self.tab.fill for instant injection as requested by user.
             # This ensures Gemini sees the entire prompt as a single unit.
             self.tab.fill(input_box, full_prompt)
-            self._lyrics_injected_successful = True
+            self._page_injected = True
             
             # Dispatch events to ensure Quill editor internal state updates correctly
             self.tab.evaluate(f"""(sel) => {{
