@@ -101,6 +101,7 @@ Main title: “{title}”
              self.art_master_prompt = default_art
 
     def _start_new_chat(self):
+        self._lyrics_injected_in_current_page = False
         try:
             logger.info(f"Starting Gemini Chat Mode: {self.chat_mode}")
             
@@ -250,6 +251,7 @@ Main title: “{title}”
                     style_init = rowdata['style']
                     
                     logger.info(f"[Pass {pass_num}] Processing Song {i+1}/{len(rows)} ID: {row_id}")
+                    self._prompt_injected_for_row_id = row_id
                     
                     # Prevent crashes: Ensure browser is still alive before processing
                     try:
@@ -263,6 +265,7 @@ Main title: “{title}”
 
                     # Refresh Chat State based on Settings before starting a song
                     self._start_new_chat()
+                    self._lyrics_injected_successful = False
                     
                     # --- Step 1: Lyrics ---
                     final_title = ""
@@ -298,6 +301,7 @@ Main title: “{title}”
                                 time.sleep(2)
                                 self.browser.start()
                                 self.tab = self.browser.get_page("default")
+                                self._lyrics_injected_in_current_page = False
                             except Exception as e:
                                 logger.error(f"Failed to hard reset browser: {e}")
                             
@@ -354,6 +358,11 @@ Main title: “{title}”
 
     def generate_content(self, theme, style=None):
         try:
+            if getattr(self, "_lyrics_injected_successful", False) and getattr(self, "_prompt_injected_for_row_id", ""):
+                logger.warning("Lyrics prompt already injected for this song! Preventing double injection loop.")
+                if self.progress_callback_internal: self.progress_callback_internal("global", "Double injection prevented 🛡️")
+                return None
+
             input_box = None
             # Gemini uses Quill editor (ql-editor) which is a div contenteditable
             possible_selectors = ["div.ql-editor", "div[contenteditable='true']", "textarea[aria-label*='prompt']", "textarea"]
@@ -403,6 +412,7 @@ Main title: “{title}”
             # BYPASS HUMANIZER: Use self.tab.fill for instant injection as requested by user.
             # This ensures Gemini sees the entire prompt as a single unit.
             self.tab.fill(input_box, full_prompt)
+            self._lyrics_injected_successful = True
             
             # Dispatch events to ensure Quill editor internal state updates correctly
             self.tab.evaluate(f"""(sel) => {{
@@ -480,10 +490,14 @@ Main title: “{title}”
             
             if current_section: result[current_section] = "\n".join(buffer).strip()
             
-            # Check for Outro (YARIM Status trigger)
+            # Check for Outro (YARIM Status trigger) + Ensure Style is generated
             if "lyrics" in result:
                 l_text = result["lyrics"].lower()
-                if "[outro]" not in l_text and "outro" not in l_text[-150:]:
+                has_outro = "[outro]" in l_text or "outro" in l_text[-150:]
+                has_style = "style" in result and len(result["style"]) > 3
+                
+                if not has_outro or not has_style:
+                    logger.warning(f"Song marked as YARIM. Outro found: {has_outro}, Style found: {has_style}")
                     result["status"] = "YARIM"
 
             # Unify art prompt naming
