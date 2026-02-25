@@ -570,7 +570,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                                     seen_ctx_rids.add(ctx.rid)
                                     logger.info(f"[Aşama B Bekleme Odası] ID: {ctx.rid} | Başlık: {ctx.title} | Satır: {i} | Süre: {duration} | Üretiliyor: {is_gen}")
                                     
-                                    if not is_gen and duration != "Mevcut Değil":
+                                    # If it's NOT generating anymore, it's done enough to click. 
+                                    # Don't require duration string to be perfect to avoid endless loop.
+                                    if not is_gen:
                                         if ctx.rid not in song_index:
                                             song_index[ctx.rid] = []
                                         song_index[ctx.rid].append(row)
@@ -686,9 +688,13 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         if progress_callback: progress_callback(ctx.rid, f"Aranıyor... 🔍")
                         
                         if self._search_for_song(ctx.rid, ctx.title):
-                            time.sleep(2)
-                            # Ensure we are fully scrolled to top in the search results
+                            # Explicitly force lazy loading for search results
                             try:
+                                time.sleep(2)
+                                self.tab.keyboard.press("Home")
+                                time.sleep(1)
+                                self.tab.mouse.wheel(0, 3000)
+                                time.sleep(2)
                                 self.tab.keyboard.press("Home")
                                 time.sleep(1)
                             except Exception: pass
