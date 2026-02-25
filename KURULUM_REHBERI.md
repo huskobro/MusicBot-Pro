@@ -58,6 +58,7 @@ Botun otomatik işlem yapabilmesi için Chrome profillerinizin açık olması ge
 ## ⚠️ 3. Sıkça Sorulan Sorular ve Çözümler
 
 - **"Arama kutusu bulunamadı" uyarısı:** Suno sayfasında giriş yapmamış olabilirsiniz veya internet yavaş geldiği için sayfa tam yüklenmemiş olabilir. Sayfayı yenileyip girişinizi kontrol edin.
+- **Mac'te "The default interactive shell is now zsh" uyarısı:** Bu bir hata değildir. Apple, yeni Mac'lerde varsayılan terminal dilini değiştirdiği için bu uyarıyı verir. Bu mesajı görmezden gelip komutu yapıştırmaya devam edebilirsiniz; kurulum normal şekilde sürecektir.
 - **Mac'te "Hasarlı/Damarlı" Dosya Hatası:** Eğer `.app` dosyasını çalıştıramazsanız Terminal'e şunu yazın: `xattr -cr dist/MusicBot.app`
 - **Video Üretimi Çok Yavaş:** Ayarlardan "Video Render Motoru"nu **FFmpeg** olarak seçtiğinizden emin olun (FFmpeg yüklü olmalıdır).
 
