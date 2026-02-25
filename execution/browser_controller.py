@@ -157,9 +157,9 @@ class BrowserController:
                         "--disable-dev-shm-usage",
                         "--no-first-run",
                         "--no-default-browser-check",
-                        "--lang=tr-TR",
-                        "--profile-directory=Default"
-                    ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                        "--lang=tr-TR"
+                    ] + (["--profile-directory=Default"] if attempt == 1 else []) + # Try without specific profile dir if it fails
+                      (["--password-store=basic"] if platform.system() == "Darwin" else []),
                     ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                     viewport=None, 
                     device_scale_factor=1,

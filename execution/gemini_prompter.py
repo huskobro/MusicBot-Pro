@@ -294,15 +294,23 @@ Main title: “{title}”
                             logger.error(f"Gemini failed to respond for {row_id} after timeout. Forcing Hard Reset and continuing.")
                             failed_ids.append(rowdata)
                             
-                            # Force a strict hard reset so the broken context doesn't infect the next song
+                            # RELIABILITY FIX: Instead of hard reset (which closes window), just refresh page
                             try:
-                                self.browser.stop()
-                                time.sleep(2)
-                                self.browser.start()
-                                self.tab = self.browser.get_page("default")
+                                logger.warning("Gemini timeout! Performing soft refresh instead of hard reset to preserve window.")
+                                if progress_callback: progress_callback(row_id, "Gemini Takıldı (Yenileniyor) 🔄")
+                                self.browser.goto(self.base_url, page=self.tab)
                                 self._lyrics_injected_in_current_page = False
+                                time.sleep(5)
                             except Exception as e:
-                                logger.error(f"Failed to hard reset browser: {e}")
+                                logger.error(f"Soft refresh failed, only then trying hard reset: {e}")
+                                # Fallback to hard reset only if absolutely necessary
+                                try:
+                                    self.browser.stop()
+                                    time.sleep(3)
+                                    self.browser.start()
+                                    self.tab = self.browser.get_page("default")
+                                    self._lyrics_injected_in_current_page = False
+                                except Exception: pass
                             
                             time.sleep(2)
                             continue # Move to next song safely instead of crashing batch
