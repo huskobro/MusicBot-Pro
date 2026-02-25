@@ -1,57 +1,69 @@
-# MusicBot Pro - Kurulum ve Kullanım Rehberi
+# MusicBot Pro — Kurulum ve Kullanım Rehberi
 
-MusicBot Pro'yu başka bir bilgisayara en güncel haliyle kurmak için aşağıdaki yöntemlerden birini seçebilirsiniz.
-
----
-
-## 🚀 Yöntem 1: GitHub'dan Otomatik Kurulum (Önerilen)
-
-Hiçbir şey kopyalamadan, tek bir komutla en güncel sürümü indirip kurabilirsiniz.
-
-### 🍎 macOS İçin:
-1. **Terminal**'i açın.
-2. Şu komutu yapıştırın (bu komut uygulamayı **İndirilenler (Downloads)** klasörüne kurar):
-```bash
-cd ~/Downloads && if [ -d "MusicBot-Pro" ]; then cd MusicBot-Pro && git pull; else git clone https://github.com/huskobro/MusicBot-Pro.git && cd MusicBot-Pro; fi && bash mac_install.sh
-```
-勾
-
-### 🪟 Windows İçin:
-1. **PowerShell**'i açın.
-2. Şu komutu yapıştırın (bu komut uygulamayı **İndirilenler (Downloads)** klasörüne kurar):
-```powershell
-cd $env:USERPROFILE\Downloads; if (Test-Path "MusicBot-Pro") { cd MusicBot-Pro; git pull } else { git clone https://github.com/huskobro/MusicBot-Pro.git; cd MusicBot-Pro }; .\win_install.bat
-```
-勾
+MusicBot Pro'yu yeni bir bilgisayara kurmak ve sorunsuz çalıştırmak için aşağıdaki adımları izleyin.
 
 ---
 
-## 🛠️ Yöntem 2: Manuel Paketleme (Kodlar Elinizdeyse)
+## �️ Ön Gereksinimler (Tüm Sistemler İçin)
 
-Eğer dosyalar zaten bilgisayarınızdaysa:
+Uygulamanın çalışması için aşağıdaki yazılımların bilgisayarınızda yüklü olması şarttır:
 
-### macOS:
-Klasör içinde `bash build_app.sh` komutunu çalıştırın. `dist/MusicBot.app` hazır olacaktır.
-
-### Windows:
-Klasör içindeki `build_windows.bat` dosyasına çift tıklayın. `dist/MusicBotPro.exe` hazır olacaktır.
-
----
-
-## 📂 Ortak Gereksinimler (Tüm Cihazlar İçin)
-
-Uygulamanın çalışması için bilgisayarda şunların olması gerekir:
-
-1.  **Google Chrome:** Uygulama otomasyon için yüklü olan Chrome'u kullanır.
-2.  **Git & Python:** Otomatik kurulum ve çalışma için gereklidir.
+1.  **Google Chrome:** Güncel sürüm kurulu olmalıdır.
+2.  **FFmpeg (Önerilir):** Donanım hızlandırmalı hızlı video üretimi için gereklidir.
+    -   *Mac:* `brew install ffmpeg` komutuyla kurabilirsiniz.
+    -   *Windows:* `ffmpeg.org` sitesinden indirip sistem PATH'ine eklemelisiniz.
+3.  **Python 3.10+:** Bilgisayarınızda Python yüklü olmalıdır.
 
 ---
 
-## 🚀 Hızlı Başlangıç
+## 🚀 1. Kurulum Adımları
 
-1.  Uygulamayı çalıştırın.
-2.  `⚙️ Ayarlar` kısmına gidin ve `UI Language` kısmından **Turkish** seçip kaydedin. Uygulamayı kapatıp açın.
-3.  `✨ Yeni Proje` butonuna basarak bir Excel dosyası oluşturun.
-4.  Şarkı listenizi Excel'e ekleyin ve `▶ MOTORU BAŞLAT` butonuna basın.
+### 🍎 MacBook (macOS) İçin
+1.  **Terminal** uygulamasını açın.
+2.  Uygulamayı indirmek ve kurmak için şu komutu yapıştırıp Enter'a basın:
+    ```bash
+    cd ~/Downloads && git clone https://github.com/huskobro/MusicBot-Pro.git && cd MusicBot-Pro && bash mac_install.sh
+    ```
+3.  **Uygulamayı Paketlemek (App Sunumu için):**
+    Uygulamayı bir `.app` dosyasına çevirmek isterseniz:
+    ```bash
+    bash build_app.sh
+    ```
+    Bu komut sonunda `dist/MusicBot.app` dosyası oluşacaktır.
+
+### 🪟 Windows İçin
+1.  **PowerShell** uygulamasını açın.
+2.  Şu komutu yapıştırıp Enter'a basın:
+    ```powershell
+    cd $env:USERPROFILE\Downloads; git clone https://github.com/huskobro/MusicBot-Pro.git; cd MusicBot-Pro; .\win_install.bat
+    ```
+3.  **Uygulamayı Paketlemek (EXE Sunumu için):**
+    `build_windows.bat` dosyasına çift tıklayın. `dist/MusicBot.exe` dosyanız hazır olacaktır.
 
 ---
+
+## � 2. Tarayıcı ve Oturum Hazırlığı (Suno & Gemini)
+
+Botun otomatik işlem yapabilmesi için Chrome profillerinizin açık olması gerekir:
+
+1.  Uygulamayı açın ve **Settings (Ayarlar)** sekmesine gidin.
+2.  **Chrome Profiles** listesinden bir profil seçin veya yeni bir isimle (Örn: `Lina_Zahara`) oluşturun.
+3.  **"Open Chrome to Login"** (veya benzeri bir isimdeki butona) basın.
+4.  Açılan tarayıcıda `suno.com` ve `gemini.google.com` adreslerine gidip hesaplarınıza **el ile giriş yapın.**
+5.  **ÖNEMLİ:** Suno'da `/create` sayfasına girdiğinizde sağ taraftaki şarkı listesinin üzerinde **"Search clips"** yazan arama kutusunun göründüğünden emin olun. Bot bu kutuyu kullanarak şarkıları bulur.
+6.  Giriş yaptıktan sonra o tarayıcıyı kapatın ve bot üzerinden **Motoru Başlat** deyin.
+
+---
+
+## ⚠️ 3. Sıkça Sorulan Sorular ve Çözümler
+
+- **"Arama kutusu bulunamadı" uyarısı:** Suno sayfasında giriş yapmamış olabilirsiniz veya internet yavaş geldiği için sayfa tam yüklenmemiş olabilir. Sayfayı yenileyip girişinizi kontrol edin.
+- **Mac'te "Hasarlı/Damarlı" Dosya Hatası:** Eğer `.app` dosyasını çalıştıramazsanız Terminal'e şunu yazın: `xattr -cr dist/MusicBot.app`
+- **Video Üretimi Çok Yavaş:** Ayarlardan "Video Render Motoru"nu **FFmpeg** olarak seçtiğinizden emin olun (FFmpeg yüklü olmalıdır).
+
+---
+
+## 📈 4. Hızlı Kullanım Döngüsü
+1.  **Excel Hazırla:** `Yeni Proje` butonuyla bir template oluşturun ve şarkılarınızı içine yazın.
+2.  **Şarkı Seç:** Listeden işlem yapmak istediğiniz şarkıları seçin.
+3.  **Başlat:** `MOTORU BAŞLAT` butonuna basın ve botun Gemini ile söz yazıp Suno'dan indirmesini izleyin!
