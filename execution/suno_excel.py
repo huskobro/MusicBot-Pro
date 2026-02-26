@@ -30,7 +30,7 @@ if not logger.hasHandlers():
 class SunoExcelMixin:
     """Excel file management: status updates, atomic writes, backup & recovery."""
 
-    def update_row_status(self, row_idx, status=None, dl_status=None, dl_attempts=None):
+    def update_row_status(self, row_idx, **kwargs):
         """Updates status in memory cache. Flushes to disk periodically."""
         if not hasattr(self, "_excel_cache"):
             self._excel_cache = {}
@@ -39,12 +39,9 @@ class SunoExcelMixin:
         if row_idx not in self._excel_cache:
             self._excel_cache[row_idx] = {}
             
-        if status is not None:
-            self._excel_cache[row_idx]["status"] = status
-        if dl_status is not None:
-            self._excel_cache[row_idx]["dl_status"] = dl_status
-        if dl_attempts is not None:
-            self._excel_cache[row_idx]["dl_attempts"] = dl_attempts
+        for key, val in kwargs.items():
+            if val is not None:
+                self._excel_cache[row_idx][key] = val
             
         # Flush if 15 seconds have passed
         if time.time() - getattr(self, "_last_flush", 0) > 15:
@@ -55,6 +52,14 @@ class SunoExcelMixin:
         if not hasattr(self, "_excel_cache") or not self._excel_cache:
             return
             
+        # Multi-concurrent safety
+        if hasattr(self, "xlsx_lock") and self.xlsx_lock:
+            with self.xlsx_lock:
+                self._flush_excel_cache_internal()
+        else:
+            self._flush_excel_cache_internal()
+
+    def _flush_excel_cache_internal(self):
         try:
             self._backup_excel()
 
@@ -63,29 +68,13 @@ class SunoExcelMixin:
             headers = {str(cell.value).lower(): cell.column for cell in ws[1] if cell.value}
 
             for row_idx, updates in self._excel_cache.items():
-                if "status" in updates:
-                    col = headers.get("status")
+                for key, val in updates.items():
+                    col = headers.get(key)
                     if not col:
                         col = ws.max_column + 1
-                        ws.cell(row=1, column=col, value="status")
-                        headers["status"] = col
-                    ws.cell(row=row_idx, column=col, value=updates["status"])
-
-                if "dl_status" in updates:
-                    col = headers.get("dl_status")
-                    if not col:
-                        col = ws.max_column + 1
-                        ws.cell(row=1, column=col, value="dl_status")
-                        headers["dl_status"] = col
-                    ws.cell(row=row_idx, column=col, value=updates["dl_status"])
-
-                if "dl_attempts" in updates:
-                    col = headers.get("dl_attempts")
-                    if not col:
-                        col = ws.max_column + 1
-                        ws.cell(row=1, column=col, value="dl_attempts")
-                        headers["dl_attempts"] = col
-                    ws.cell(row=row_idx, column=col, value=updates["dl_attempts"])
+                        ws.cell(row=1, column=col, value=key)
+                        headers[key] = col
+                    ws.cell(row=row_idx, column=col, value=val)
 
             temp_path = self.metadata_path + ".tmp"
             wb.save(temp_path)

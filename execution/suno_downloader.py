@@ -134,6 +134,10 @@ class SunoDownloaderMixin:
                                     # Keep the file but warn — don't delete, user may want to inspect
 
                             logger.info(f"[_download_from_row] ✅ Saved {filename}")
+                            
+                            # Update download status in Excel
+                            try: self.update_row_status(rid, dl_status="İndirildi")
+                            except Exception: pass
 
                             try: self.tab.keyboard.press("Escape")
                             except Exception: pass

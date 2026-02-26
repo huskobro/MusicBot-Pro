@@ -19,14 +19,20 @@ class UserStoppedException(Exception):
 class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
     def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None,
                  audio_influence=25, vocal_gender="Default", lyrics_mode="Default", 
-                 weirdness=50, style_influence=50, persona_link="", turbo=False):
+                 weirdness=50, style_influence=50, persona_link="", turbo=False, xlsx_lock=None):
+        self.xlsx_lock = xlsx_lock
         self.config = SunoConfig()
         self.project_file = project_file
         self.metadata_path = project_file # Backward compat
         
         self.output_dir = output_dir
-        self.delay = delay
-        self.startup_delay = startup_delay
+        try:
+            self.delay = int(delay)
+            self.startup_delay = int(startup_delay)
+        except (ValueError, TypeError):
+            self.delay = 10
+            self.startup_delay = 5
+            
         self.browser = browser or BrowserController()
         self.tab = self.browser.page
         self.base_url = "https://suno.com/create"
@@ -34,11 +40,17 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         self.turbo = turbo
         
         # Advanced Params
-        self.audio_influence = audio_influence
+        try:
+            self.audio_influence = int(audio_influence)
+            self.weirdness = int(weirdness)
+            self.style_influence = int(style_influence)
+        except (ValueError, TypeError):
+            self.audio_influence = 25
+            self.weirdness = 50
+            self.style_influence = 50
+            
         self.vocal_gender = vocal_gender
         self.lyrics_mode = lyrics_mode
-        self.weirdness = weirdness
-        self.style_influence = style_influence
         self.persona_link = str(persona_link).strip()
         
         import sys
@@ -304,7 +316,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     success = self._generate_single_no_wait(row_dict, progress_callback)
                     if success:
                         generated_ids.append(rid)
-                        self.update_row_status(row_dict['_row_idx'], "Generating...") 
+                        self.update_row_status(row_dict['_row_idx'], "Generating...", music_status="Sıraya Alındı") 
                     else:
                         self.update_row_status(row_dict['_row_idx'], "Failed")
                 
@@ -751,7 +763,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     if s1 or s2:
                         self._batch_stats["success"] += 1
                         trigger_dashboard_update()
-                        self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0)
+                        self.update_row_status(ctx.row_idx, status="Generated", dl_status="success", dl_attempts=0, music_status="İndirildi")
                         status_txt = f"{'1&2' if (s1 and s2) else ('1' if s1 else '2')} İndirildi! ✅"
                         if progress_callback: progress_callback(ctx.rid, status_txt)
                         completed_ids.append(ctx.rid)
@@ -852,6 +864,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             if create_btn.is_enabled():
                 create_btn.click()
                 time.sleep(1 if self.turbo else 2) 
+                # Update status in Excel
+                try: self.update_row_status(rid, status="Sıraya Alındı")
+                except Exception: pass
 
                 # Wait for clip count increase OR "Generating"
                 for i in range(15):
@@ -1023,6 +1038,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 logger.info(f"Clicking Create for: {suno_title}")
                 create_btn.click()
                 time.sleep(2) 
+                # Update status in Excel
+                try: self.update_row_status(rid, status="Sıraya Alındı")
+                except Exception: pass
 
                 # [Requirement 7 + CAPTCHA Alert]
                 new_clip_appeared = False

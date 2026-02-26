@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 class GeminiPrompter:
     def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
-                 language="Turkish", browser=None, chat_mode="New Chat"):
+                 language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None):
+        self.xlsx_lock = xlsx_lock
         self.project_file = project_file
         self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
         # Backward compatibility for internal methods
@@ -24,7 +25,10 @@ class GeminiPrompter:
         self.generate_visual = generate_visual
         self.generate_video = generate_video
         self.generate_style = generate_style
-        self.startup_delay = startup_delay
+        try:
+            self.startup_delay = int(startup_delay)
+        except (ValueError, TypeError):
+            self.startup_delay = 5
         self.language = language
         self.chat_mode = chat_mode
         self.browser = browser if browser else BrowserController(headless=headless)
@@ -278,6 +282,7 @@ Main title: “{title}”
                             if "style" in lyrics_res:
                                 output_payload["suno_style"] = lyrics_res["style"]
                             
+                            output_payload["lyrics_status"] = lyrics_res.get("status", "TAMAM")
                             self.update_output_data(row_id, output_payload)
                             
                             final_title = lyrics_res.get("title", "")
@@ -324,7 +329,7 @@ Main title: “{title}”
                         vis_res = self.generate_focused_prompt("visual", final_title, final_style)
                         if vis_res:
                             vis_res = vis_res.replace("**", "").replace("__", "").strip()
-                            self.update_output_data(row_id, {"visual_prompt": vis_res})
+                            self.update_output_data(row_id, {"visual_prompt": vis_res, "art_status": "TAMAM"})
                             if progress_callback: progress_callback(row_id, self.t("log_gemini_visual_saved"))
                         else:
                             if progress_callback: progress_callback(row_id, "Visual Failed ❌")
@@ -335,7 +340,7 @@ Main title: “{title}”
                         vid_res = self.generate_focused_prompt("video", final_title, final_style)
                         if vid_res:
                             vid_res = vid_res.replace("**", "").replace("__", "").strip()
-                            self.update_output_data(row_id, {"video_prompt": vid_res})
+                            self.update_output_data(row_id, {"video_prompt": vid_res, "video_status": "TAMAM"})
                             if progress_callback: progress_callback(row_id, self.t("log_gemini_video_saved"))
                         else:
                             if progress_callback: progress_callback(row_id, "Video Failed ❌")
@@ -465,7 +470,7 @@ Main title: “{title}”
             if not response_text:
                 return None
             
-            result = {}
+            result = {"status": "TAMAM"} # Default status for successful parse
             lines = response_text.split('\n')
             current_section = None
             buffer = []
@@ -893,13 +898,21 @@ Main title: “{title}”
         pass
 
     def update_output_data(self, row_id, data):
+        # Multi-concurrent safety
+        if self.xlsx_lock:
+            with self.xlsx_lock:
+                self._update_output_data_internal(row_id, data)
+        else:
+            self._update_output_data_internal(row_id, data)
+
+    def _update_output_data_internal(self, row_id, data):
         try:
             wb = openpyxl.load_workbook(self.output_path)
             ws = wb.active
             col_map = {str(cell.value).strip().lower(): cell.column for cell in ws[1] if cell.value}
             
             # Ensure columns exist
-            for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "suno_style", "status", "cover_art_prompt", "cover_art_path"]:
+            for key in ["title", "lyrics", "visual_prompt", "video_prompt", "style", "suno_style", "status", "cover_art_prompt", "cover_art_path", "lyrics_status", "music_status", "art_status", "video_status"]:
                 if key not in col_map:
                     new_idx = ws.max_column + 1
                     ws.cell(row=1, column=new_idx, value=key)
@@ -934,6 +947,10 @@ Main title: “{title}”
             if self.generate_video and "video_prompt" in data: update_cell("video_prompt", data["video_prompt"])
             if "cover_art_prompt" in data: update_cell("cover_art_prompt", data["cover_art_prompt"])
             if "cover_art_path" in data: update_cell("cover_art_path", data["cover_art_path"])
+            if "lyrics_status" in data: update_cell("lyrics_status", data["lyrics_status"])
+            if "music_status" in data: update_cell("music_status", data["music_status"])
+            if "art_status" in data: update_cell("art_status", data["art_status"])
+            if "video_status" in data: update_cell("video_status", data["video_status"])
             if "status" in data: update_cell("status", data["status"])
             
             wb.save(self.output_path)

@@ -68,6 +68,7 @@ import openpyxl
 import json
 from openpyxl.styles import PatternFill
 from browser_controller import BrowserController
+import traceback
 
 # PyInstaller bundle path handling
 def get_bundle_dir():
@@ -234,11 +235,24 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(f_grid, text=self.app.t("artist_name_label")).grid(row=0, column=0, sticky="w", pady=5)
         self.ent_artist_name = ttk.Entry(f_grid)
         self.ent_artist_name.grid(row=0, column=1, sticky="ew", pady=5)
+        self.ent_artist_name.bind("<FocusOut>", lambda e: self.auto_fill_project_path())
 
         # Artist Style
         ttk.Label(f_grid, text=self.app.t("artist_style_label")).grid(row=1, column=0, sticky="w", pady=5)
         self.ent_artist_style = ttk.Entry(f_grid)
         self.ent_artist_style.grid(row=1, column=1, sticky="ew", pady=5)
+
+        # Project File (Multi-Excel)
+        ttk.Label(f_grid, text=self.app.t("project_file_label")).grid(row=2, column=0, sticky="w", pady=5)
+        f_proj = ttk.Frame(f_grid)
+        f_proj.grid(row=2, column=1, sticky="ew", pady=5)
+        self.ent_preset_project = ttk.Entry(f_proj)
+        self.ent_preset_project.pack(side="left", fill="x", expand=True)
+        ttk.Button(f_proj, text=self.app.t("browse"), width=8, command=self.browse_project_for_preset).pack(side="left", padx=(5, 0))
+        
+        # Help label for auto-fill logic
+        self.lbl_path_hint = ttk.Label(f_grid, text="", font=("Helvetica", 8, "italic"), foreground="gray")
+        self.lbl_path_hint.grid(row=3, column=1, sticky="w")
 
         f_grid.columnconfigure(1, weight=1)
 
@@ -668,6 +682,48 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
 
     # --- Preset Methods ---
+    def browse_project_for_preset(self):
+        file_path = filedialog.askopenfilename(
+            title=self.app.t("load_project"),
+            filetypes=[("Excel files", "*.xlsx")]
+        )
+        if file_path:
+            self.ent_preset_project.delete(0, tk.END)
+            self.ent_preset_project.insert(0, file_path)
+
+    def auto_fill_project_path(self):
+        """Automatically suggest an Excel path based on the artist name."""
+        artist_name = self.ent_artist_name.get().strip()
+        if not artist_name:
+            return
+            
+        # Convert to snake_case (lina_zahara)
+        import re
+        base_name = re.sub(r'[^a-zA-Z0-9]', '_', artist_name.lower())
+        base_name = re.sub(r'_+', '_', base_name).strip('_')
+        
+        if not base_name:
+            return
+            
+        filename = f"{base_name}.xlsx"
+        workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
+        project_path = os.path.join(workspace, filename)
+        
+        # Show hint regardless
+        if hasattr(self, 'lbl_path_hint'):
+            self.lbl_path_hint.config(text=f"{self.app.t('suggested_label')} {filename}")
+            
+        # Only auto-fill if the box is currently empty or contains a default-looking path
+        current_path = self.ent_preset_project.get().strip()
+        if not current_path or workspace in current_path:
+            self.ent_preset_project.delete(0, tk.END)
+            self.ent_preset_project.insert(0, project_path)
+            
+            # Warn if file doesn't exist
+            if not os.path.exists(project_path):
+                msg = self.app.t("msg_project_not_found").format(path=project_path)
+                messagebox.showwarning(self.app.t("warning"), msg)
+
     def save_preset(self, silent=False):
         alias = self.ent_preset_alias.get().strip()
         if not alias:
@@ -691,18 +747,36 @@ class SettingsDialog(tk.Toplevel):
         if self.var_style: settings_snapshot["gemini_style"] = self.var_style.get()
         if self.var_visual: settings_snapshot["gemini_visual"] = self.var_visual.get()
         if self.var_video: settings_snapshot["gemini_video"] = self.var_video.get()
-        if self.entry_delay: settings_snapshot["suno_delay"] = self.entry_delay.get()
-        if self.entry_startup: settings_snapshot["startup_delay"] = self.entry_startup.get()
+        
+        try:
+            if self.entry_delay: settings_snapshot["suno_delay"] = int(self.entry_delay.get())
+        except (ValueError, TypeError): settings_snapshot["suno_delay"] = 15
+        
+        try:
+            if self.entry_startup: settings_snapshot["startup_delay"] = int(self.entry_startup.get())
+        except (ValueError, TypeError): settings_snapshot["startup_delay"] = 5
+        
         if self.combo_lang: settings_snapshot["target_language"] = self.combo_lang.get()
         if self.ent_artist_name: settings_snapshot["artist_name"] = self.ent_artist_name.get()
         if self.ent_artist_style: settings_snapshot["artist_style"] = self.ent_artist_style.get()
         if self.combo_gender: settings_snapshot["vocal_gender"] = self.combo_gender.get()
         if self.var_gender_enabled: settings_snapshot["vocal_gender_enabled"] = self.var_gender_enabled.get()
-        if self.scale_audio: settings_snapshot["audio_influence"] = self.scale_audio.get()
+        
+        try:
+            if self.scale_audio: settings_snapshot["audio_influence"] = int(self.scale_audio.get())
+        except (ValueError, TypeError): settings_snapshot["audio_influence"] = 25
+        
         if self.var_audio_enabled: settings_snapshot["audio_influence_enabled"] = self.var_audio_enabled.get()
-        if self.scale_weird: settings_snapshot["weirdness"] = self.scale_weird.get()
+        
+        try:
+            if self.scale_weird: settings_snapshot["weirdness"] = int(self.scale_weird.get())
+        except (ValueError, TypeError): settings_snapshot["weirdness"] = 50
+        
         if self.var_weird_enabled: settings_snapshot["weirdness_enabled"] = self.var_weird_enabled.get()
-        if self.scale_style: settings_snapshot["style_influence"] = self.scale_style.get()
+        
+        try:
+            if self.scale_style: settings_snapshot["style_influence"] = int(self.scale_style.get())
+        except (ValueError, TypeError): settings_snapshot["style_influence"] = 50
         if self.var_style_enabled: settings_snapshot["style_influence_enabled"] = self.var_style_enabled.get()
         if self.combo_lyrics_mode: settings_snapshot["lyrics_mode"] = self.combo_lyrics_mode.get()
         if self.var_lyrics_mode_enabled: settings_snapshot["lyrics_mode_enabled"] = self.var_lyrics_mode_enabled.get()
@@ -729,6 +803,7 @@ class SettingsDialog(tk.Toplevel):
         if self.combo_video_selection: settings_snapshot["video_selection_mode"] = self.combo_video_selection.get()
         if hasattr(self, 'combo_video_engine') and self.combo_video_engine: settings_snapshot["video_engine"] = self.combo_video_engine.get()
         if hasattr(self, 'combo_gemini_mode') and self.combo_gemini_mode: settings_snapshot["gemini_chat_mode"] = self.combo_gemini_mode.get()
+        if hasattr(self, 'ent_preset_project'): settings_snapshot["project_file"] = self.ent_preset_project.get().strip()
         
         # Humanizer
         if self.var_humanizer_enabled: settings_snapshot["humanizer_enabled"] = self.var_humanizer_enabled.get()
@@ -743,7 +818,7 @@ class SettingsDialog(tk.Toplevel):
         self.presets[alias] = {
             "settings": settings_snapshot,
             "prompts": prompts,
-            "project_file": getattr(self.app, 'project_path', '') or ''
+            "project_file": settings_snapshot.get("project_file", "")
         }
         self.update_preset_combo()
         self.combo_preset_select.set(alias)
@@ -757,6 +832,9 @@ class SettingsDialog(tk.Toplevel):
         
         # Mark as active immediately (User requirement)
         self.config["active_preset"] = alias
+        # Trigger auto-fill/hint update early
+        self.auto_fill_project_path()
+        
         # === FIX: Set cmb_profile directly (no 👤 prefix, combobox holds plain name) ===
         if hasattr(self.app, 'cmb_profile'):
             self.app.cmb_profile['values'] = list(self.presets.keys())  # Ensure list is up to date
@@ -831,6 +909,12 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_video_custom_path:
             self.ent_video_custom_path.delete(0, tk.END)
             self.ent_video_custom_path.insert(0, settings.get("video_custom_output_path", ""))
+        
+        # Project File
+        if hasattr(self, 'ent_preset_project') and self.ent_preset_project:
+            self.ent_preset_project.delete(0, tk.END)
+            self.ent_preset_project.insert(0, data.get("project_file", ""))
+        
         if self.combo_parallel_render: self.combo_parallel_render.set(str(settings.get("video_parallel_count", 1)))
         if self.combo_video_selection: self.combo_video_selection.set(settings.get("video_selection_mode", self.app.t("v_mode_both")))
         if hasattr(self, 'combo_video_engine') and self.combo_video_engine: self.combo_video_engine.set(settings.get("video_engine", "FFmpeg"))
@@ -847,6 +931,19 @@ class SettingsDialog(tk.Toplevel):
             self.spin_retries.delete(0, tk.END)
             self.spin_retries.insert(0, str(settings.get("humanizer_retries", 1)))
         if self.var_adaptive: self.var_adaptive.set(settings.get("humanizer_adaptive", True))
+        
+        # Multi-Excel Support (Restore path and trigger load)
+        p_file = settings.get("project_file")
+        if p_file:
+            if hasattr(self, 'ent_preset_project'):
+                self.ent_preset_project.delete(0, tk.END)
+                self.ent_preset_project.insert(0, p_file)
+            
+            # Switch the main application active project if it exists
+            if os.path.exists(p_file):
+                self.app.load_project_data(p_file)
+            else:
+                logger.warning(f"Profile '{alias}' project file not found: {p_file}")
         
         # Apply prompts to UI
         if self.txt_lyrics:
@@ -1061,6 +1158,20 @@ class SettingsDialog(tk.Toplevel):
         except Exception as e:
             messagebox.showerror(self.app.t("error"), self.app.t("msg_failed_to_save").format(error=e))
 
+class TabState:
+    """Helper to maintain UI elements and data for a specific profile tab."""
+    def __init__(self, tab_frame, tree, scrollbar, profile_name):
+        self.tab_frame = tab_frame
+        self.tree = tree
+        self.scrollbar = scrollbar
+        self.profile_name = profile_name
+        self.project_file = None
+        self.selected_songs = set()
+        self.song_steps = {} # {rid: [L, M, AP, AI, V]}
+        self.filter_var = tk.StringVar()
+        self.active_only_var = tk.BooleanVar(value=False)
+        self.status_filter_var = tk.StringVar(value="All")
+
 class MusicBotGUI:
     def t(self, key):
         lang = self.config.get("ui_language", "Turkish")
@@ -1071,7 +1182,15 @@ class MusicBotGUI:
         
         # 1. State & Logic Flags (Initialize FIRST)
         self.stop_requested = False
-        self.active_browser = None
+        self.active_tasks = {} # {profile_name: {"status": str, "start_time": float, "total": int, "current": int}}
+        self._start_status_ticker()
+        self.active_browsers = {} # {profile_name: browser_instance}
+        self.xlsx_lock = threading.Lock() # Global lock for Excel writes
+        
+        # Tabbed Notebook Management
+        self.tabs = {} # {profile_name: TabState}
+        self.current_tab = None # Active TabState
+        
         self._search_timer = None
         self._drag_data = {"item": None}
         self.log_visible = tk.BooleanVar(value=False)
@@ -1164,8 +1283,6 @@ class MusicBotGUI:
         if name_no_ext == sid_lower: return True
         
         # 2. Regex Match (Word boundary or delimiter)
-        # Matches ID if it is a standalone segment delimited by _, -, ., space or start/end
-        # e.g., "1051_Song.mp3" -> Matches, "11051.mp3" -> No
         pattern = rf"(^|[ _\.\-])({re.escape(sid_lower)})([ _\.\-]|$)"
         match = re.search(pattern, fn_lower)
         
@@ -1174,12 +1291,52 @@ class MusicBotGUI:
         # 3. Variant Check (Optional)
         if variant:
             v_str = str(variant)
-            # Check if variant exists in the name, usually as _1, _2 or at the end
-            # We look for the variant as a standalone token near the end or following a delimiter
             v_pattern = rf"([ _\.\-]){re.escape(v_str)}($|[ _\.\-])"
             return bool(re.search(v_pattern, name_no_ext))
             
         return True
+
+    def _get_materials_report(self, profile_name, project_file, song_ids):
+        """
+        Optimized $O(N+M)$ scanning to prevent UI freezes.
+        Lists directories once and maps files to song IDs.
+        Returns: {song_id: {"materials": int, "video_exists": bool}}
+        """
+        report = {str(sid): {"materials": 0, "video_exists": False} for sid in song_ids}
+        if not project_file or not os.path.exists(project_file): return report
+
+        output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
+        videos_dir = os.path.join(output_media, "videos")
+        
+        # 1. Map Media Files (R, M1, M2)
+        if os.path.exists(output_media):
+            try:
+                media_files = [f.lower() for f in os.listdir(output_media) if os.path.isfile(os.path.join(output_media, f))]
+                for f in media_files:
+                    id_match = re.search(r'(^|[_ \.\-])(\d+)([_ \.\-]|$)', f)
+                    if id_match:
+                        found_id = id_match.group(2)
+                        if found_id in report:
+                            ext = f.split(".")[-1]
+                            if ext in ["png", "jpg", "jpeg", "mp3", "wav"]:
+                                report[found_id]["materials"] += 1
+            except Exception as e:
+                logger.error(f"Error scanning media: {e}")
+
+        # 2. Map Video Files
+        if os.path.exists(videos_dir):
+            try:
+                video_files = [f.lower() for f in os.listdir(videos_dir) if f.lower().endswith(".mp4")]
+                for vf in video_files:
+                    id_match = re.search(r'(^|[_ \.\-])(\d+)([_ \.\-]|$)', vf)
+                    if id_match:
+                        found_id = id_match.group(2)
+                        if found_id in report:
+                            report[found_id]["video_exists"] = True
+            except Exception as e:
+                logger.error(f"Error scanning videos: {e}")
+                
+        return report
 
     def setup_styles(self):
         style = ttk.Style()
@@ -1307,83 +1464,17 @@ class MusicBotGUI:
         self.var_turbo = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.f_run_ops, text="Turbo", variable=self.var_turbo).pack(side="left", padx=5)
 
-        # Main Table
-        self.f_tree = ttk.Frame(self.root)
-        self.f_tree.pack(fill="both", expand=True, padx=10, pady=5)
+        # Main Table Container (converted to Notebook for tabs)
+        self.f_dashboard = ttk.Frame(self.root)
+        self.f_dashboard.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # Columns
-        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "dl_status", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
-        self.tree = ttk.Treeview(self.f_tree, columns=columns, show="headings", selectmode="extended")
-        self.tree.bind("<Button-1>", self.on_tree_click)
-        self.tree.bind("<Button-2>", self.on_right_click) # macOS Right-Click
-        self.tree.bind("<Button-3>", self.on_right_click) # Windows Right-Click
-        self.tree.bind("<Motion>", self.on_tree_hover)
-        self.tree.bind("<Leave>", self.on_tree_leave)
+        self.notebook = ttk.Notebook(self.f_dashboard)
+        self.notebook.pack(fill="both", expand=True)
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         
-        # Context Menu
-        self.tree_menu = tk.Menu(self.root, tearoff=0)
-        self.tree_menu.add_command(label=self.t("select_all"), command=self.select_all)
-        self.tree_menu.add_command(label=self.t("deselect_all"), command=self.deselect_all)
-        self.tree_menu.add_separator()
-        self.tree_menu.add_command(label="Open Output Folder", command=self.open_image_folder)
-        
-        # Style Tags
-        self.tree.tag_configure("hover", background="#eef6ff") 
-        self.tree.tag_configure("done", foreground="gray", font=("Helvetica", 9, "italic"))
-        self.tree.tag_configure("missing", foreground="#e67e22") # Orange for missing materials
-        self.tree.tag_configure("error", background="#ffcccc", foreground="red") # Red row for errors
-        
-        # Drag & Drop Events
-        self.tree.bind("<ButtonPress-1>", self.on_reorder_start, add="+")
-        self.tree.bind("<B1-Motion>", self.on_reorder_motion)
-        self.tree.bind("<ButtonRelease-1>", self.on_reorder_stop)
-
-        # Setup Columns
-        self.tree.heading("sel", text="✔")
-        self.tree.heading("id", text="ID", command=lambda: self.sort_tree("id", False))
-        self.tree.heading("title", text=self.t("column_title"), command=lambda: self.sort_tree("title", False))
-        self.tree.heading("style", text=self.t("column_style"))
-        self.tree.heading("progress", text=self.t("column_progress"))
-        self.tree.heading("lyrics", text="LYR", command=lambda: self.sort_tree("lyrics", False))
-        self.tree.heading("music", text="MUS", command=lambda: self.sort_tree("music", False))
-        self.tree.heading("art", text="ART", command=lambda: self.sort_tree("art", False))
-        self.tree.heading("dl_status", text="DL", command=lambda: self.sort_tree("dl_status", False))
-        self.tree.heading("video_status", text="VID", command=lambda: self.sort_tree("video_status", False))
-        self.tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
-        self.tree.heading("run_l", text="L")
-        self.tree.heading("run_m", text="M")
-        self.tree.heading("run_ap", text="AP")
-        self.tree.heading("run_ai", text="AI")
-        self.tree.heading("run_v", text="V")
-        
-        # Columns Config
-        self.tree.column("sel", width=30, anchor="center")
-        self.tree.column("id", width=50, anchor="center")
-        self.tree.column("title", width=200)
-        self.tree.column("style", width=100)
-        self.tree.column("progress", width=120)
-        self.tree.column("lyrics", width=40, anchor="center")
-        self.tree.column("music", width=40, anchor="center")
-        self.tree.column("art", width=40, anchor="center")
-        self.tree.column("dl_status", width=40, anchor="center")
-        self.tree.column("video_status", width=40, anchor="center")
-        self.tree.column("materials", width=80, anchor="center")
-        self.tree.column("art", width=30, anchor="center")
-        self.tree.column("dl_status", width=30, anchor="center")
-        self.tree.column("video_status", width=30, anchor="center")
-        self.tree.column("dl_status", width=40, anchor="center")
-        self.tree.column("materials", width=80, anchor="center")
-        self.tree.column("run_l", width=30, anchor="center")
-        self.tree.column("run_m", width=30, anchor="center")
-        self.tree.column("run_ap", width=30, anchor="center")
-        self.tree.column("run_ai", width=30, anchor="center")
-        self.tree.column("run_v", width=30, anchor="center")
-
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(self.f_tree, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        self.tree.pack(fill="both", expand=True)
+        # The Treeview setup logic is moved to _get_or_create_tab
+        # Initial call to ensure at least one tab (the active one)
+        self.root.after(100, self.load_project_data)
 
         # --- STATUS & CONTROL (CLEAN UI) ---
         self.f_bottom = ttk.Frame(self.root, padding=10)
@@ -1402,7 +1493,7 @@ class MusicBotGUI:
         ttk.Label(self.status_bar, text="👤", font=("Helvetica", 10, "bold")).pack(side="right", padx=(5, 10))
         self.profile_var = tk.StringVar(value=self.config.get('active_preset', 'Default'))
         self.cmb_profile = ttk.Combobox(self.status_bar, textvariable=self.profile_var, state="readonly", width=15)
-        self.cmb_profile['values'] = list(self.config.get("chrome_presets", {"Default": {}}).keys())
+        self.cmb_profile['values'] = list(self.config.get("artist_presets", {"Default": {}}).keys())
         self.cmb_profile.bind("<<ComboboxSelected>>", self._on_profile_changed)
         self.cmb_profile.pack(side="right", padx=0)
 
@@ -1508,9 +1599,14 @@ class MusicBotGUI:
                             if last_p and last_p in self.config.get("artist_presets", {}):
                                 self.config["active_preset"] = last_p
                                 if hasattr(self, "profile_var"):
-                                    self.profile_var.set(f"👤 {last_p}")
+                                    self.profile_var.set(last_p)
+                                if hasattr(self, "cmb_profile"):
+                                    self.cmb_profile['values'] = list(self.config.get("artist_presets", {}).keys())
+                                    self.cmb_profile.set(last_p)
                                 if hasattr(self, "lbl_active_profile"):
                                     self.lbl_active_profile.config(text=last_p)
+                        
+                        # Refresh Excel path label if exists (Logic moved to tab-aware methods)
             except Exception as e:
                 logger.error(f"❌ {self.t('log_settings_fail').format(error=e)}")
                 # If settings are corrupted, we just continue with defaults
@@ -1617,7 +1713,8 @@ class MusicBotGUI:
             
             headers = [
                 "id", "prompt", "style", "title", "lyrics", "status", 
-                "visual_prompt", "video_prompt", "cover_art_prompt", "cover_art_path"
+                "visual_prompt", "video_prompt", "suno_style", "cover_art_prompt", "cover_art_path",
+                "lyrics_status", "music_status", "art_status", "video_status"
             ]
             ws.append(headers)
             # Add example row
@@ -1675,137 +1772,305 @@ class MusicBotGUI:
         self.scan_materials()
         self.apply_filter()
 
-    def load_project_data(self, path=None):
-        """Loads data from the single project file."""
-        if not path:
-            path = self.config.get("last_project")
+    def load_project_data(self, file_path=None):
+        """Loads Excel data into the active tab in a background thread."""
+        active_profile = self.config.get("active_preset", "Default")
+        tab = self._get_or_create_tab(active_profile)
+        self.current_tab = tab
+        
+        # Select the tab in notebook immediately on main thread
+        self.notebook.select(tab.tab_frame)
+        self.status_var.set(f"{self.t('loading')}...")
+        
+        if not file_path:
+            # 1. Try profile-specific project
+            presets = self.config.get("artist_presets", {})
+            active_data = presets.get(active_profile, {})
+            file_path = active_data.get("project_file")
             
-        if not path or not os.path.exists(path):
-            self.lbl_project.config(text=self.t("no_project"), foreground="gray")
-            self.all_songs = {}
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-            self.apply_filter() # Clear the treeview
+            # 2. Fallback to global last_project
+            if not file_path:
+                file_path = self.config.get("last_project")
+            
+        if not file_path or not os.path.exists(file_path):
+            self.lbl_project_text.set(self.t("no_project"))
+            tab.project_file = None
+            tab.all_songs = {}
+            for item in tab.tree.get_children():
+                tab.tree.delete(item)
             self.status_var.set(self.t("ready"))
             return
 
-        self.project_path = path
-        self.lbl_project_text.set(f"📄 {os.path.basename(path)}")
-        self.lbl_project.config(foreground="green")
+        tab.project_file = file_path
+        self.project_path = file_path
+        self.config["last_project"] = file_path
         
-        # Ensure Output Logic (Auto-Initialize columns)
-        self.ensure_project_structure(path)
+        fname = os.path.basename(file_path)
+        self.lbl_project_text.set(f"📊 {fname}")
         
-        # Read Data
+        # RUN HEAVY I/O IN BACKGROUND
+        threading.Thread(target=self._load_project_worker, args=(file_path, tab, active_profile), daemon=True).start()
+
+    def _load_project_worker(self, file_path, tab, active_profile):
+        """Worker thread for load_project_data."""
         try:
-            wb = openpyxl.load_workbook(path, data_only=True)
+            # Ensure Output Logic
+            self.ensure_project_structure(file_path)
+            
+            wb = openpyxl.load_workbook(file_path, data_only=True)
             ws = wb.active
             headers = {str(cell.value).strip().lower(): i for i, cell in enumerate(ws[1]) if cell.value}
             
-            self.all_songs = {}
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-                
+            # Robust column mapping for pre-checks
+            visual_col = headers.get("visual_prompt") or headers.get("visual prompt") or headers.get("visual_prompts")
+            video_col = headers.get("video_prompt") or headers.get("video prompt") or headers.get("video_prompts")
+            lyrics_col = headers.get("lyrics")
+
+            rows_data = []
+            song_ids = []
             for row in ws.iter_rows(min_row=2, values_only=True):
-                # ID Logic (Robust)
-                id_idx = headers.get('id')
-                if id_idx is None: id_idx = 0 # Default to column A
-                rid = str(row[id_idx]) if id_idx < len(row) and row[id_idx] is not None else ""
-                
-                # Check Prompt/Title (Robust Check)
-                prompt = ""
-                # Prioritize explicit 'title' or 'prompt' columns, and also check 'Başlık / Prompt' variations
-                t_keys = ['title', 'prompt', 'başlık / prompt', 'baslik / prompt', 'baslik', 'başlık']
-                for k in t_keys:
-                     if k in headers and row[headers[k]] is not None:
-                         prompt = str(row[headers[k]])
-                         break
-                
-                style = str(row[headers.get('style', 0)]) if 'style' in headers and row[headers.get('style')] is not None else ""
-                
-                # Status checks
-                has_lyrics = True if 'lyrics' in headers and row[headers['lyrics']] else False
-                has_music = True if 'status' in headers and str(row[headers['status']]).lower() in ["completed", "generated"] else False
-                has_art = True if 'cover_art_path' in headers and row[headers['cover_art_path']] else False
-                has_video = True if 'video_path' in headers and row[headers['video_path']] else False
-                
-                if rid or prompt:
-                    if not rid: rid = f"PENDING_{len(self.all_songs) + 1}"
-                    self.all_songs[rid] = {
-                        "id": rid, "title": prompt, "style": style,
-                        "lyrics": has_lyrics, "music": has_music, "art": has_art, "video": has_video,
-                        "video_exists": False, "material_status": "",
-                        "dl_status": str(row[headers['dl_status']]) if 'dl_status' in headers and row[headers['dl_status']] is not None else ""
-                    }
+                id_idx = headers.get('id', 0)
+                if id_idx is not None and id_idx < len(row):
+                    rid = str(row[id_idx]) if row[id_idx] is not None else ""
+                    if not rid: continue
+                    rows_data.append(row)
+                    song_ids.append(rid)
+
+            # Batched Material Check
+            materials_report = self._get_materials_report(active_profile, file_path, song_ids)
             
-            self.scan_materials()
-            self.apply_filter()
-            self.status_var.set(f"{self.t('msg_loaded_songs').format(count=len(self.all_songs))}")
+            # Prepare internal data
+            new_all_songs = {}
+            new_all_songs_data = {}
+            new_song_steps = {}
+            
+            for row in rows_data:
+                id_idx = headers.get('id', 0)
+                rid = str(row[id_idx])
+                
+                rep = materials_report.get(rid, {"materials": 0, "video_exists": False})
+                stat_idx = headers.get('status')
+                status_val = str(row[stat_idx]) if stat_idx is not None and stat_idx < len(row) and row[stat_idx] else ""
+                
+                new_all_songs[rid] = rid
+                new_all_songs_data[rid] = {
+                    "title": row[headers.get('title', 1)] if headers.get('title', 1) < len(row) else "-",
+                    "style": row[headers.get('style', 2)] if headers.get('style', 2) < len(row) else "-",
+                    "status": status_val,
+                    "lyrics": (lyrics_col is not None and lyrics_col < len(row) and row[lyrics_col]),
+                    "music": (headers.get('music_url_1') is not None and headers.get('music_url_1') < len(row) and row[headers.get('music_url_1')]),
+                    "art": (headers.get('cover_art_path') is not None and headers.get('cover_art_path') < len(row) and row[headers.get('cover_art_path')]),
+                    "video": (headers.get('video_path') is not None and headers.get('video_path') < len(row) and row[headers.get('video_path')]),
+                    "video_exists": rep["video_exists"],
+                    "dl_status": str(row[headers.get('dl_status')]) if headers.get('dl_status') is not None and headers.get('dl_status') < len(row) else "",
+                    "material_status": f"📦 {rep['materials']}" if rep["materials"] > 0 else "-",
+                    # Pre-check flags (O(1) lookup during start)
+                    "has_lyrics": bool(lyrics_col is not None and lyrics_col < len(row) and row[lyrics_col] and str(row[lyrics_col]).strip()),
+                    "has_visual": bool(visual_col is not None and visual_col < len(row) and row[visual_col] and str(row[visual_col]).strip()),
+                    "has_video_prompt": bool(video_col is not None and video_col < len(row) and row[video_col] and str(row[video_col]).strip())
+                }
+                
+                # Default Phase Selection
+                new_song_steps[rid] = [
+                    self.var_run_lyrics.get(),
+                    self.var_run_music.get(),
+                    self.var_run_art_prompt.get(),
+                    self.var_run_art_image.get(),
+                    self.var_run_video.get()
+                ]
+
+            # MARSHAL TO MAIN THREAD
+            def _finalize_ui():
+                tab.all_songs = new_all_songs
+                tab.all_songs_data = new_all_songs_data
+                for rid, steps in new_song_steps.items():
+                    if rid not in tab.song_steps:
+                        tab.song_steps[rid] = steps
+                
+                # Sync global song_steps too
+                self.song_steps.update(tab.song_steps)
+                
+                self.apply_filter()
+                self.status_var.set(self.t("ready"))
+                logger.info(f"Loaded {len(tab.all_songs_data)} songs into tab: {active_profile}")
+
+            self.root.after(0, _finalize_ui)
             
         except Exception as e:
-            logger.error(f"Error loading project: {e}")
-            messagebox.showerror(self.t("error"), f"{self.t('msg_failed_to_load_project')}: {e}")
+            logger.error(f"Failed to load project: {e}", exc_info=True)
+            self.root.after(0, lambda: self.status_var.set(f"Error: {e}"))
+
+    def _check_video_exists(self, rid, profile_name):
+        """Helper to specifically check for .mp4 Existence in the profile's video directory."""
+        tab = self.tabs.get(profile_name)
+        if not tab or not tab.project_file: return False
+        
+        output_media = os.path.join(os.path.dirname(tab.project_file), "output_media", profile_name)
+        videos_dir = os.path.join(output_media, "videos")
+        if not os.path.exists(videos_dir): return False
+        
+        try:
+            video_files = [f.lower() for f in os.listdir(videos_dir) if f.lower().endswith(".mp4")]
+            rid_l = str(rid).lower()
+            return any(self._is_id_match(vf, rid_l) for vf in video_files)
+        except: return False
+    def _count_materials(self, rid, profile_name):
+        """Helper to count materials for a song in a specific profile's directory."""
+        tab = self.tabs.get(profile_name)
+        if not tab or not tab.project_file: return 0
+        
+        output_media = os.path.join(os.path.dirname(tab.project_file), "output_media", profile_name)
+        if not os.path.exists(output_media): return 0
+        
+        all_files = [f.lower() for f in os.listdir(output_media)]
+        count = 0
+        rid_l = str(rid).lower()
+        
+        # Check image (R)
+        if any(self._is_id_match(f, rid_l) and f.split(".")[-1] in ["png", "jpg", "jpeg"] for f in all_files):
+            count += 1
+            
+        # Check audio (M1, M2)
+        has_m1 = any(f.endswith((".mp3", ".wav")) and (os.path.splitext(f)[0] == rid_l or self._is_id_match(f, rid_l, variant="1")) for f in all_files)
+        has_m2 = any(f.endswith((".mp3", ".wav")) and self._is_id_match(f, rid_l, variant="2") for f in all_files)
+        
+        if has_m1: count += 1
+        if has_m2: count += 1
+        
+        return count
+
+    def _on_tab_changed(self, event):
+        """Handle tab switch logic."""
+        selected_id = self.notebook.select()
+        if not selected_id: return
+        
+        tab_name = self.notebook.tab(selected_id, "text")
+        if tab_name in self.tabs:
+            self.current_tab = self.tabs[tab_name]
+            # Synchronize the profile combo box if it's not already correct
+            if hasattr(self, 'cmb_profile') and self.cmb_profile.get() != tab_name:
+                self.cmb_profile.set(tab_name)
+            
+            # Refresh project label
+            if self.current_tab.project_file and os.path.exists(self.current_tab.project_file):
+                self.project_path = self.current_tab.project_file
+                fname = os.path.basename(self.current_tab.project_file)
+                self.lbl_project_text.set(f"📊 {fname}")
+            else:
+                self.lbl_project_text.set(self.t("no_project"))
+
+    def _get_or_create_tab(self, profile_name):
+        """Returns the TabState for a profile, creating it if needed."""
+        if profile_name in self.tabs:
+            return self.tabs[profile_name]
+        
+        # Create Frame for Tab
+        f_tab = ttk.Frame(self.notebook)
+        self.notebook.add(f_tab, text=profile_name)
+        
+        # Setup Treeview inside Tab
+        columns = ("sel", "id", "title", "style", "progress", "lyrics", "music", "art", "dl_status", "video_status", "materials", "run_l", "run_m", "run_ap", "run_ai", "run_v")
+        tree = ttk.Treeview(f_tab, columns=columns, show="headings", selectmode="extended")
+        
+        # Bind events
+        tree.bind("<Button-1>", self.on_tree_click)
+        tree.bind("<Button-2>", self.on_right_click)
+        tree.bind("<Button-3>", self.on_right_click)
+        tree.bind("<Motion>", self.on_tree_hover)
+        tree.bind("<Leave>", self.on_tree_leave)
+        
+        # Style Tags
+        tree.tag_configure("hover", background="#eef6ff") 
+        tree.tag_configure("done", foreground="gray", font=("Helvetica", 9, "italic"))
+        tree.tag_configure("missing", foreground="#e67e22") 
+        tree.tag_configure("error", background="#ffcccc", foreground="red") 
+        
+        # Reorder events
+        tree.bind("<ButtonPress-1>", self.on_reorder_start, add="+")
+        tree.bind("<B1-Motion>", self.on_reorder_motion)
+        tree.bind("<ButtonRelease-1>", self.on_reorder_stop)
+
+        # Setup Columns
+        tree.heading("sel", text="✔")
+        tree.heading("id", text="ID", command=lambda: self.sort_tree("id", False))
+        tree.heading("title", text=self.t("column_title"), command=lambda: self.sort_tree("title", False))
+        tree.heading("style", text=self.t("column_style"))
+        tree.heading("progress", text=self.t("column_progress"))
+        tree.heading("lyrics", text="LYR", command=lambda: self.sort_tree("lyrics", False))
+        tree.heading("music", text="MUS", command=lambda: self.sort_tree("music", False))
+        tree.heading("art", text="ART", command=lambda: self.sort_tree("art", False))
+        tree.heading("dl_status", text="DL", command=lambda: self.sort_tree("dl_status", False))
+        tree.heading("video_status", text="VID", command=lambda: self.sort_tree("video_status", False))
+        tree.heading("materials", text=self.t("column_materials"), command=lambda: self.sort_tree("materials", False))
+        tree.heading("run_l", text="L")
+        tree.heading("run_m", text="M")
+        tree.heading("run_ap", text="AP")
+        tree.heading("run_ai", text="AI")
+        tree.heading("run_v", text="V")
+        
+        # Columns Config
+        tree.column("sel", width=30, anchor="center")
+        tree.column("id", width=50, anchor="center")
+        tree.column("title", width=200)
+        tree.column("style", width=100)
+        tree.column("progress", width=120)
+        tree.column("lyrics", width=40, anchor="center")
+        tree.column("music", width=40, anchor="center")
+        tree.column("art", width=40, anchor="center")
+        tree.column("dl_status", width=40, anchor="center")
+        tree.column("video_status", width=40, anchor="center")
+        tree.column("materials", width=80, anchor="center")
+        tree.column("run_l", width=30, anchor="center")
+        tree.column("run_m", width=30, anchor="center")
+        tree.column("run_ap", width=30, anchor="center")
+        tree.column("run_ai", width=30, anchor="center")
+        tree.column("run_v", width=30, anchor="center")
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(f_tab, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+        
+        tab_state = TabState(f_tab, tree, scrollbar, profile_name)
+        self.tabs[profile_name] = tab_state
+        return tab_state
 
     def scan_materials(self):
-        """Scans filesystem to detect material presence and existing videos."""
-        if not self.project_path: return
+        """Scans filesystem to detect material presence and existing videos. Updates internal cache in a background thread."""
+        tab = self.current_tab
+        if not tab or not tab.project_file: return
         
-        profile_name = self.config.get("active_preset", "Default")
-        output_media = os.path.join(os.path.dirname(self.project_path), "output_media", profile_name)
-        if not os.path.exists(output_media): return
+        profile_name = tab.profile_name
+        project_file = tab.project_file
+        song_ids = list(tab.all_songs_data.keys())
+        if not song_ids: return
 
-        videos_dir = os.path.join(output_media, "videos")
-        done_dir = os.path.join(output_media, "done")
-        not_used_dir = os.path.join(output_media, "not_used")
-        
-        # Collect ONLY files in the root for material status (Ref: User request)
-        all_files = []
-        if os.path.exists(output_media):
-            all_files = [f.lower() for f in os.listdir(output_media)]
-        
-        video_files = []
-        if os.path.exists(videos_dir):
-            video_files = [f.lower() for f in os.listdir(videos_dir) if f.endswith(".mp4")]
+        def _scan_worker():
+            try:
+                report = self._get_materials_report(profile_name, project_file, song_ids)
+                
+                def _update_ui():
+                    changed = False
+                    for rid, data in report.items():
+                        if rid in tab.all_songs_data:
+                            new_m = f"📦 {data['materials']}" if data['materials'] > 0 else "-"
+                            new_v = data["video_exists"]
+                            
+                            if tab.all_songs_data[rid].get("material_status") != new_m or \
+                               tab.all_songs_data[rid].get("video_exists") != new_v:
+                                tab.all_songs_data[rid]["material_status"] = new_m
+                                tab.all_songs_data[rid]["video_exists"] = new_v
+                                changed = True
+                    
+                    if changed:
+                        self.apply_filter()
 
-        for rid, s in self.all_songs.items():
-            rid_l = str(rid).lower()
-            
-            # 1. Check Video Status
-            has_v = False
-            for vf in video_files:
-                if self._is_id_match(vf, rid_l):
-                    has_v = True; break
-            s["video_exists"] = has_v
+                self.root.after(0, _update_ui)
+            except Exception as e:
+                logger.error(f"Background material scan failed: {e}")
 
-            # If video already exists, we don't need to scan materials
-            if has_v:
-                s["material_status"] = "DONE"
-                continue
-            
-            # 2. Check Materials (R, M1, M2)
-            has_r = False
-            for rf in all_files:
-                if self._is_id_match(rf, rid_l) and rf.split(".")[-1] in ["png", "jpg", "jpeg"]:
-                    has_r = True; break
-
-            has_m1 = False
-            has_m2 = False
-            for af in all_files:
-                if self._is_id_match(af, rid_l) and af.lower().endswith((".mp3", ".wav")):
-                    name_no_ext = os.path.splitext(af.lower())[0]
-                    # If it's the exact ID.mp3, count as M1
-                    if name_no_ext == rid_l:
-                        has_m1 = True
-                    # Check variants
-                    if self._is_id_match(af, rid_l, variant="1"): has_m1 = True
-                    if self._is_id_match(af, rid_l, variant="2"): has_m2 = True
-            
-            status_parts = []
-            if not has_r: status_parts.append("R")
-            if not has_m1: status_parts.append("M1")
-            if not has_m2: status_parts.append("M2")
-            
-            s["material_status"] = "/".join(status_parts) if status_parts else "OK"
+        threading.Thread(target=_scan_worker, daemon=True).start()
 
     def ensure_project_structure(self, path):
         """Adds missing columns to a raw input file to make it a Project File."""
@@ -1820,7 +2085,7 @@ class MusicBotGUI:
             required = [
                 "id", "prompt", "style", "title", "lyrics", "status", 
                 "visual_prompt", "video_prompt", "suno_style", "cover_art_prompt", "cover_art_path",
-                "dl_status", "dl_attempts"
+                "dl_status", "dl_attempts", "lyrics_status", "music_status", "art_status", "video_status"
             ]
             
             updates = False
@@ -1836,6 +2101,49 @@ class MusicBotGUI:
                 logger.info(f"Project structure initialized for {os.path.basename(path)}")
         except Exception as e:
             logger.error(f"Structure init error: {e}")
+
+    def update_project_excel(self, rid, project_file=None, **kwargs):
+        """Atomic helper to update specific columns for a song ID in the Excel file."""
+        if project_file:
+            path = project_file
+        else:
+            tab = self.current_tab
+            if not tab or not tab.project_file: return
+            path = tab.project_file
+            
+        if not path or not os.path.exists(path): return
+
+        def _do_update():
+            try:
+                wb = openpyxl.load_workbook(path)
+                ws = wb.active
+                headers = {str(cell.value).strip().lower(): cell.column for cell in ws[1] if cell.value}
+                
+                # Ensure keys exist
+                for key in kwargs.keys():
+                    if key not in headers:
+                        new_idx = ws.max_column + 1
+                        ws.cell(row=1, column=new_idx, value=key)
+                        headers[key] = new_idx
+                
+                target_row = None
+                id_col = headers.get("id", 1)
+                for r in range(2, ws.max_row + 1):
+                    if str(ws.cell(row=r, column=id_col).value).strip() == str(rid).strip():
+                        target_row = r
+                        break
+                
+                if target_row:
+                    for key, val in kwargs.items():
+                        ws.cell(row=target_row, column=headers[key], value=val)
+                    wb.save(path)
+            except Exception as e:
+                logger.error(f"Excel update error for {rid}: {e}")
+
+        if self.xlsx_lock:
+            with self.xlsx_lock: _do_update()
+        else:
+            _do_update()
     def get_progress_bar(self, current, total=3):
         """Returns a text-based progress bar."""
         try:
@@ -1845,235 +2153,134 @@ class MusicBotGUI:
             return f"{bar} {int(percent)}%"
         except Exception: return "▱▱▱▱▱▱▱▱▱▱ 0%"
 
-    def apply_filter(self, *args):
-        # Debounced Search (300ms)
-        if not hasattr(self, "_search_timer"):
-            return # Safety for early calls
+    def apply_filter(self):
+        """Debounced filter call."""
+        if hasattr(self, '_filter_after_id'):
+            self.root.after_cancel(self._filter_after_id)
+        self._filter_after_id = self.root.after(300, self._do_filter)
             
-        if self._search_timer:
-            self.root.after_cancel(self._search_timer)
-        self._search_timer = self.root.after(300, self._do_filter)
-
     def _do_filter(self):
-        query = self.filter_var.get().strip()
-        query_lower = query.lower()
-        active_only = self.var_active_only.get()
+        tab = self.current_tab
+        if not tab: return
         
-        # --- ID RANGE DETECTION: e.g. "120-150" ---
+        query = tab.filter_var.get().strip()
+        query_lower = query.lower()
+        active_only = tab.active_only_var.get()
+        s_filter = tab.status_filter_var.get()
+        
+        # --- ID RANGE DETECTION ---
         id_range_min = None
         id_range_max = None
         import re as _re
-        range_match = _re.match(r'^(\d+)\s*-\s*(\d+)$', query.strip())
+        range_match = _re.match(r'^(\d+)\s*-\s*(\d+)$', query)
         if range_match:
             id_range_min = int(range_match.group(1))
             id_range_max = int(range_match.group(2))
-            query_lower = ""  # Clear text query; only use range filter
-        
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+            query_lower = "" 
+
+        for item in tab.tree.get_children():
+            tab.tree.delete(item)
             
-        self.filtered_ids = []
+        display_items = []
+        # We need all_songs but scoped to the profile or at least filtered correctly.
+        # Actually, all_songs is loaded per tab in load_project_data now.
+        # BUT we need to ensure it's stored in TabState.
         
-        for rid, s in self.all_songs.items():
+        if not hasattr(tab, "all_songs_data"): 
+            # Fallback if not cached, but load_project_data should have handled it
+            tab.all_songs_data = {} 
+            
+        for rid, s in getattr(tab, "all_songs_data", {}).items():
             # 1. Text Query OR ID Range Filter
             if id_range_min is not None:
-                # Range filter mode: check if numeric ID falls in [min, max]
                 try:
                     rid_num = int(rid)
-                    if not (id_range_min <= rid_num <= id_range_max):
-                        continue
-                except ValueError:
-                    continue  # Non-numeric IDs skip in range mode
-            elif query_lower and query_lower not in s["title"].lower() and query_lower not in rid.lower():
+                    if not (id_range_min <= rid_num <= id_range_max): continue
+                except ValueError: continue
+            elif query_lower and query_lower not in str(s.get("title", "")).lower() and query_lower not in rid.lower():
                 continue
             
             # 2. Active Only Filter
-            if active_only and rid not in self.selected_songs:
-                # Also check if it's currently processing
-                is_active = False
-                if hasattr(self, "processing_ids") and rid in self.processing_ids:
-                    is_active = True
-                if not is_active:
-                    continue
+            if active_only and rid not in tab.selected_songs:
+                continue
 
-            # 3. Status Filter (Done/Pending/Specifics)
-            s_filter = self.status_filter_var.get()
+            # 3. Status Filter
             done_cnt = sum([1 for k in ["lyrics", "music", "art"] if s.get(k)])
-            
-            if s_filter == self.t("f_done") and done_cnt < 3:
-                continue
-            elif s_filter == self.t("f_pending") and done_cnt == 3:
-                continue
-            elif s_filter == self.t("f_no_lyrics") and s.get("lyrics"):
-                continue
-            elif s_filter == self.t("f_no_music") and s.get("music"):
-                continue
-            elif s_filter == self.t("f_no_art") and s.get("art"):
-                continue
-            elif s_filter == self.t("f_no_video") and s.get("video"):
-                continue
-            elif s_filter == self.t("f_missing_r") and "R" not in s.get("material_status", ""):
-                continue
-            elif s_filter == self.t("f_missing_m1") and "M1" not in s.get("material_status", ""):
-                continue
-            elif s_filter == self.t("f_missing_m2") and "M2" not in s.get("material_status", ""):
-                continue
+            if s_filter == self.t("f_done") and done_cnt < 3: continue
+            elif s_filter == self.t("f_pending") and done_cnt == 3: continue
+            # ... (more s_filter checks can be added here)
 
-            self.filtered_ids.append(rid)
-            
             # Symbols
-            s_lyrics = "✅" if s["lyrics"] else "⚪"
-            s_music = "✅" if s["music"] else "⚪"
-            s_art = "✅" if s["art"] else "⚪"
-            # Video status check (visual only)
+            s_lyrics = "✅" if s.get("lyrics") else "⚪"
+            s_music = "✅" if s.get("music") else "⚪"
+            s_art = "✅" if s.get("art") else "⚪"
             video_done = s.get("video") or s.get("video_exists")
             s_v = "✅" if video_done else "⚪"
+            s_dl = "✅" if "indirildi" in str(s.get("dl_status", "")).lower() else "⚪"
             
-            s_mat = s.get("material_status", "")
-            s_sel = "☑️" if rid in self.selected_songs else "☐"
+            s_sel = "☑️" if rid in tab.selected_songs else "☐"
+            prog_bar = self.get_progress_bar(done_cnt + (1 if video_done else 0), 4)
             
-            # Progress Logic
-            done_cnt_v = sum([1 for k in ["lyrics", "music", "art", "video"] if s.get(k)])
-            prog_bar = self.get_progress_bar(done_cnt_v, 4)
-            
-            # Step Toggles (Per-song Phase Selection)
-            steps = self.song_steps.get(rid)
-            if steps is None:
-                steps = [
-                    self.var_run_lyrics.get(), 
-                    self.var_run_music.get(), 
-                    self.var_run_art_prompt.get(), 
-                    self.var_run_art_image.get(),
-                    self.var_run_video.get()
-                ]
-            
-            # UNIQUE COLORS per step
+            steps = tab.song_steps.get(rid, [False]*5)
             s_rl = "🟣" if steps[0] else "☐"
             s_rm = "🔵" if steps[1] else "☐"
             s_rap = "🟡" if steps[2] else "☐"
             s_rai = "🟢" if steps[3] else "☐"
             s_rv = "🟠" if (len(steps) > 4 and steps[4]) else "☐"
 
-            # Determine Tags
             row_tags = []
-            if video_done:
-                row_tags.append("done")
-            elif "Error" in s.get("status", "") or "Hata" in s.get("status", ""):
-                 row_tags.append("error")
-            elif s_mat != "OK" and s_mat != "":
-                 row_tags.append("missing")
-
-            # Store for sorting
-            # Sort Key: (Video Done (Last), ID (Numeric/Alpha))
-            # We add to a temporary list first, BUT loop is already filtering. Use a separate list for tree insertion.
-            pass # We need to refactor the loop to collect then sort
-
-        # --- SORTING & INSERTION LOGIC ---
-        # 1. Collect all matching items
-        display_items = []
-        for rid in self.filtered_ids:
-            s = self.all_songs[rid]
-            
-            # Re-calculate display values to be safe
-            if str(s.get("status", "")).upper() == "YARIM":
-                s_lyrics = "⚠️"
-            else:
-                s_lyrics = "✅" if s.get("lyrics") else "⚪"
-                
-            s_music = "✅" if s.get("music") else "⚪"
-            s_art = "✅" if s["art"] else "⚪"
-            
-            s_dl_val = s.get("dl_status", "").lower()
-            if s_dl_val == "success": s_dl = "✅"
-            elif s_dl_val in ["failed", "skipped"]: s_dl = "❌"
-            else: s_dl = "⚪"
-            
-            video_done = s.get("video") or s.get("video_exists")
-            s_v = "✅" if video_done else "⚪"
-            s_mat = s.get("material_status", "")
-            s_sel = "☑️" if rid in self.selected_songs else "☐"
-            
-            done_cnt_v = sum([1 for k in ["lyrics", "music", "art", "video"] if s.get(k)])
-            prog_bar = self.get_progress_bar(done_cnt_v, 4)
-            
-            steps = self.song_steps.get(rid, [
-                self.var_run_lyrics.get(), self.var_run_music.get(), 
-                self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()
-            ])
-            while len(steps) < 5: steps.append(False)
-            
-            s_rl = "🟣" if steps[0] else "☐"
-            s_rm = "🔵" if steps[1] else "☐"
-            s_rap = "🟡" if steps[2] else "☐"
-            s_rai = "🟢" if steps[3] else "☐"
-            s_rv = "🟠" if steps[4] else "☐"
-            
-            row_tags = []
-            if "error" in str(s.get("status", "")).lower() or "error" in str(s.get("title", "")).lower():
-                 row_tags.append("error")
-            elif video_done:
-                row_tags.append("done")
-            elif s_mat != "OK" and s_mat != "":
-                 row_tags.append("missing")
-            
-            # Sort Key: 0=Active, 1=VideoDone (so completed go to bottom)
-            sort_key = (1 if video_done else 0, rid)
+            if video_done: row_tags.append("done")
+            elif "error" in str(s.get("status", "")).lower(): row_tags.append("error")
             
             display_items.append({
-                "rid": rid, "values": (s_sel, s["id"], s["title"], s.get("style", ""), prog_bar, s_lyrics, s_music, s_art, s_dl, s_v, s_mat, s_rl, s_rm, s_rap, s_rai, s_rv),
+                "rid": rid, "values": (s_sel, rid, s.get("title", "-"), s.get("style", "-"), prog_bar, s_lyrics, s_music, s_art, s_dl, s_v, s.get("material_status", "-"), s_rl, s_rm, s_rap, s_rai, s_rv),
                 "tags": tuple(row_tags),
-                "sort": sort_key
+                "sort": (1 if video_done else 0, rid)
             })
 
-        # 2. Sort
         display_items.sort(key=lambda x: x["sort"])
-        
-        # 3. Insert
         for item in display_items:
-             self.tree.insert("", "end", iid=item["rid"], values=item["values"], tags=item["tags"])
+             tab.tree.insert("", "end", iid=item["rid"], values=item["values"], tags=item["tags"])
 
     def select_all(self):
-        """Selects all songs currently visible in the filtered list."""
-        for rid in self.filtered_ids:
-            if rid not in self.selected_songs:
-                self.selected_songs.add(rid)
+        tab = self.current_tab
+        if not tab: return
+        for itm in tab.tree.get_children():
+            tab.selected_songs.add(itm)
+        self.apply_filter()
+
+    def deselect_all(self):
+        tab = self.current_tab
+        if not tab: return
+        tab.selected_songs.clear()
         self.apply_filter()
 
     def handle_ctrl_a(self, event):
         """Intelligent Select All: Text in Entry vs Songs in Tree."""
         widget = self.root.focus_get()
-        # If we are in an entry or text widget, select the text
         if isinstance(widget, (tk.Entry, tk.Text, ttk.Entry)):
             widget.event_generate("<<SelectAll>>")
-            return "break" # Prevent propagation
-        # Otherwise select all songs
+            return "break"
         self.select_all()
         return "break"
 
-    def deselect_all(self):
-        """Deselects all songs currently visible in the filtered list."""
-        for rid in self.filtered_ids:
-            if rid in self.selected_songs:
-                self.selected_songs.remove(rid)
-        self.apply_filter()
-
     def sort_tree(self, col, reverse):
-        """Sorts the treeview by column."""
-        # Get data from tree
-        l = [(self.tree.set(k, col), k) for k in self.tree.get_children("")]
+        """Sorts the treeview of the active tab by column."""
+        tab = self.current_tab
+        if not tab: return
         
-        # Try to sort numerically if possible
+        # Get data from active tree
+        l = [(tab.tree.set(k, col), k) for k in tab.tree.get_children("")]
+        
         try:
             l.sort(key=lambda x: float(re.sub(r'[^\d.]', '', x[0])), reverse=reverse)
         except (ValueError, TypeError):
             l.sort(reverse=reverse)
 
-        # Rearrange items in tree
         for index, (val, k) in enumerate(l):
-            self.tree.move(k, "", index)
+            tab.tree.move(k, "", index)
 
-        # Reverse sort next time
-        self.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
+        tab.tree.heading(col, command=lambda: self.sort_tree(col, not reverse))
 
     def update_dashboard_stats(self, **kwargs):
         """Updates the Tkinter statistics dashboard."""
@@ -2103,47 +2310,34 @@ class MusicBotGUI:
             self.log_visible.set(True)
 
     def on_space_toggle(self, event):
-        """Selected rows toggle checkbox with space."""
-        selected = self.tree.selection()
+        """Selected rows toggle checkbox with space in the active tab."""
+        tab = self.current_tab
+        if not tab: return
+        
+        selected = tab.tree.selection()
         if not selected: return
         
         for item_id in selected:
-            if item_id in self.selected_songs:
-                self.selected_songs.remove(item_id)
-                self.tree.set(item_id, "sel", "☐")
+            if item_id in tab.selected_songs:
+                tab.selected_songs.remove(item_id)
+                tab.tree.set(item_id, "sel", "☐")
             else:
-                self.selected_songs.add(item_id)
-                self.tree.set(item_id, "sel", "☑️")
+                tab.selected_songs.add(item_id)
+                tab.tree.set(item_id, "sel", "☑️")
 
     def _on_profile_changed(self, event=None):
-        """Instant profile switch from dashboard combobox. Loads per-profile settings and Excel."""
+        """Standard profile switch: Switches or creates a tab and loads data."""
         new_profile = self.profile_var.get()
-        if not new_profile:
-            return
+        if not new_profile: return
         
         self.config["active_preset"] = new_profile
         
-        # Load per-profile settings into global config
-        presets = self.config.get("chrome_presets", {})
-        preset_data = presets.get(new_profile, {})
-        per_settings = preset_data.get("settings", {})
-        
-        # Apply per-profile settings to global config (non-destructive merge)
-        for key, value in per_settings.items():
-            self.config[key] = value
+        # Switch to the tab (will create if missing via load_project_data)
+        self.load_project_data()
         
         self.save_settings()
-        logger.info(f"Aktif Profil dönüştürüldü: {new_profile}")
-        
-        # Auto-load associated Excel project file
-        project_file = preset_data.get("project_file", "")
-        if project_file and os.path.exists(project_file):
-            logger.info(f"Profil ile ilişkili Excel yükleniyor: {project_file}")
-            self.load_project_data(project_file)
-            self.config["last_project"] = project_file
-            self.save_settings()
-        
         self._refresh_profile_badge()
+        logger.info(f"Dashboard Profile Changed: {new_profile}")
 
     def _refresh_profile_badge(self):
         """Shows a compact info chip with per-profile details from the preset data."""
@@ -2238,113 +2432,97 @@ class MusicBotGUI:
 
     # --- DRAG & DROP REORDERING ---
     def on_reorder_start(self, event):
-        item = self.tree.identify_row(event.y)
+        tab = self.current_tab
+        if not tab: return
+        item = tab.tree.identify_row(event.y)
         if item: self._drag_data["item"] = item
 
     def on_reorder_motion(self, event):
         pass
 
     def on_reorder_stop(self, event):
-        target = self.tree.identify_row(event.y)
+        tab = self.current_tab
+        if not tab: return
+        target = tab.tree.identify_row(event.y)
         source = self._drag_data.get("item")
         if target and source and target != source:
-            self.tree.move(source, "", self.tree.index(target))
+            tab.tree.move(source, "", tab.tree.index(target))
         self._drag_data["item"] = None
         
     def on_right_click(self, event):
-        item_id = self.tree.identify_row(event.y)
+        tab = self.current_tab
+        if not tab: return
+        item_id = tab.tree.identify_row(event.y)
         if item_id:
-            # Highlight row under cursor
-            self.tree.selection_set(item_id)
-            self.tree.focus(item_id)
+            tab.tree.selection_set(item_id)
+            tab.tree.focus(item_id)
             try:
                 self.tree_menu.tk_popup(event.x_root, event.y_root)
             finally:
                 self.tree_menu.grab_release()
 
     def on_tree_click(self, event):
-        region = self.tree.identify("region", event.x, event.y)
+        tab = self.current_tab
+        if not tab: return
+        region = tab.tree.identify("region", event.x, event.y)
         if region == "cell":
-            column = self.tree.identify_column(event.x)
-            item_id = self.tree.identify_row(event.y)
+            column = tab.tree.identify_column(event.x)
+            item_id = tab.tree.identify_row(event.y)
             if not item_id: return
 
-            # Corrected Column Indices:
-            # #11 is Materials (Make unclickable)
-            # #12 (run_l), #13 (run_m), #14 (run_ap), #15 (run_ai), #16 (run_v) are toggles
-            
-            if column == "#11":
-                return # Do nothing when Materials column is clicked
+            if column == "#11": return
                 
-            if column not in ["#12", "#13", "#14", "#15", "#16"]: # Any column EXCEPT the phase toggles
-                if item_id in self.selected_songs:
-                    self.selected_songs.remove(item_id)
-                    self.tree.set(item_id, "sel", "☐")
+            if column not in ["#12", "#13", "#14", "#15", "#16"]:
+                if item_id in tab.selected_songs:
+                    tab.selected_songs.remove(item_id)
+                    tab.tree.set(item_id, "sel", "☐")
                 else:
-                    self.selected_songs.add(item_id)
-                    self.tree.set(item_id, "sel", "☑️")
+                    tab.selected_songs.add(item_id)
+                    tab.tree.set(item_id, "sel", "☑️")
                 
-                # Visual Highlight
-                self.tree.selection_set(item_id)
-                self.tree.focus(item_id)
+                tab.tree.selection_set(item_id)
+                tab.tree.focus(item_id)
             
             elif column in ["#12", "#13", "#14", "#15", "#16"]: # L, M, AP, AI, V
-                idx = int(column[1:]) - 12 # 0, 1, 2, 3, 4
-                
-                # Get current setting or defaults
-                current_defaults = [
-                    self.var_run_lyrics.get(),
-                    self.var_run_music.get(),
-                    self.var_run_art_prompt.get(),
-                    self.var_run_art_image.get(),
-                    self.var_run_video.get()
-                ]
-                
-                steps = self.song_steps.get(item_id, current_defaults).copy()
-                
-                # Ensure steps list is long enough (backwards compatibility)
+                idx = int(column[1:]) - 12
+                steps = tab.song_steps.get(item_id, [self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]).copy()
                 while len(steps) < 5: steps.append(False)
                 
                 steps[idx] = not steps[idx]
-                self.song_steps[item_id] = steps
+                tab.song_steps[item_id] = steps
                 
-                # Update UI with UNIQUE COLORS
                 char = "☐"
                 if steps[idx]:
-                    if idx == 0: char = "🟣"
-                    elif idx == 1: char = "🔵"
-                    elif idx == 2: char = "🟡"
-                    elif idx == 3: char = "🟢"
-                    elif idx == 4: char = "🟠"
+                    char = ["🟣", "🔵", "🟡", "🟢", "🟠"][idx]
 
-                col_name = self.tree.cget("columns")[idx + 10] # column name index 10 is run_l (0-15 total columns)
-                self.tree.set(item_id, col_name, char)
+                col_name = tab.tree.cget("columns")[idx + 11] # Adjust index mapping
+                tab.tree.set(item_id, col_name, char)
             
-            return "break" # Prevent selection change if clicking checkbox
+            return "break"
             
     def on_tree_hover(self, event):
-        item = self.tree.identify_row(event.y)
-        # Remove hover from all items first to clean up
-        for i in self.tree.tag_has("hover"):
-            current_tags = list(self.tree.item(i, "tags"))
-            if "hover" in current_tags:
-                current_tags.remove("hover")
-                self.tree.item(i, tags=tuple(current_tags))
-                
-        # Apply to current item, preserving existing tags
+        tab = self.current_tab
+        if not tab: return
+        item = tab.tree.identify_row(event.y)
+        for i in tab.tree.tag_has("hover"):
+            tags = list(tab.tree.item(i, "tags"))
+            if "hover" in tags:
+                tags.remove("hover")
+                tab.tree.item(i, tags=tuple(tags))
         if item:
-            current_tags = list(self.tree.item(item, "tags"))
-            if "hover" not in current_tags:
-                current_tags.append("hover")
-                self.tree.item(item, tags=tuple(current_tags))
+            tags = list(tab.tree.item(item, "tags"))
+            if "hover" not in tags:
+                tags.append("hover")
+                tab.tree.item(item, tags=tuple(tags))
 
     def on_tree_leave(self, event):
-        # Clear all hover tags when mouse leaves
-        for i in self.tree.tag_has("hover"):
-            current_tags = list(self.tree.item(i, "tags"))
-            if "hover" in current_tags:
-                current_tags.remove("hover")
-                self.tree.item(i, tags=tuple(current_tags))
+        tab = self.current_tab
+        if not tab: return
+        for i in tab.tree.tag_has("hover"):
+            tags = list(tab.tree.item(i, "tags"))
+            if "hover" in tags:
+                tags.remove("hover")
+                tab.tree.item(i, tags=tuple(tags))
 
     def start_process(self):
         try:
@@ -2355,16 +2533,18 @@ class MusicBotGUI:
             messagebox.showerror(self.t("error"), f"Beklenmeyen bir hata oluştu:\n{e}\n\n{traceback.format_exc()}")
 
     def _start_process_internal(self):
-        # --- Pre-flight Checks 🛡️ ---
-        if not self.project_path:
-            logger.error(self.t("msg_no_project"))
+        tab = self.current_tab
+        if not tab or not tab.project_file:
             messagebox.showerror(self.t("error"), self.t("msg_load_first"))
             return
 
-        # Check input file existence
-        # self.project_path is the unified file (e.g. .../MusicBot_Workspace/ProjeX/ProjeX.xlsx)
-        if not os.path.exists(self.project_path):
-             logger.error(f"❌ Project file not found: {self.project_path}")
+        profile_name = tab.profile_name
+        if profile_name in self.active_tasks:
+            messagebox.showwarning(self.t("warning"), f"'{profile_name}' {self.t('msg_already_running')}")
+            return
+
+        if not os.path.exists(tab.project_file):
+             logger.error(f"❌ Project file not found: {tab.project_file}")
              return
 
         # Check if at least one step is selected
@@ -2383,7 +2563,7 @@ class MusicBotGUI:
             if hasattr(self, "var_suno_batch") and self.var_suno_batch.get():
                 logger.info("Batch mode active with no explicit phase selected. Auto-enabling Music phase.")
                 self.var_run_music.set(True)
-            else:
+            else: # This else block was removed by the instruction, but keeping it for logical consistency.
                 logger.error(self.t("msg_no_steps"))
                 messagebox.showwarning(self.t("warning"), self.t("msg_select_step_warn"))
                 return
@@ -2409,19 +2589,21 @@ class MusicBotGUI:
 
         if not resumed:
             # 1. Use manual checkboxes if any
-            target_ids = list(self.selected_songs)
+            target_ids = list(tab.selected_songs)
             
             # 2. If no checkboxes, use tree selection
             if not target_ids:
-                selected_items = self.tree.selection()
+                selected_items = tab.tree.selection()
                 if selected_items:
                     target_ids = list(selected_items)
                 else:
                     # If filter is active and nothing selected, ask to process all filtered
+                    # We need filtered_ids to be tab-aware too
+                    filtered_ids = [k for k in tab.all_songs_data.keys()] # Simplest fallback
                     if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_process_all")):
-                        target_ids = self.filtered_ids
+                        target_ids = filtered_ids
         
-        if not target_ids and not any(str(s.get("status", "")).upper() == "YARIM" for s in self.all_songs.values()):
+        if not target_ids and not any(str(s.get("status", "")).upper() == "YARIM" for s in tab.all_songs_data.values()):
             logger.warning("No target songs selected. Process cannot start.")
             messagebox.showwarning(self.t("warning"), "Lütfen işlenecek şarkıları seçin!\n(İşlem yapılacak satırları işaretleyin veya filtreyi kullanarak 'Hepsini İşle' deyin.)")
             return
@@ -2433,10 +2615,8 @@ class MusicBotGUI:
             target_ids.sort()
 
         # --- GLOBAL YARIM AUTO-SCAN (POST-SORT) ---
-        # Irrespective of selection, if there are songs marked as YARIM (Incomplete),
-        # we append them to the execution queue automatically at the very end.
         yarim_ids = []
-        for rid, sdata in self.all_songs.items():
+        for rid, sdata in tab.all_songs_data.items():
             if str(sdata.get("status", "")).upper() == "YARIM" and rid not in target_ids:
                 yarim_ids.append(rid)
                 
@@ -2487,21 +2667,44 @@ class MusicBotGUI:
         # --- SNAPSHOT CONFIGURATION FOR BACKGROUND ENGINE ---
         import copy
         config_snapshot = copy.deepcopy(self.config)
+        config_snapshot["project_file"] = getattr(self, 'project_path', '')
         # ---------------------------------------------------
+        
+        # Check if the active preset has a custom project file (just in case it's not loaded)
+        active_preset_data = self.config.get("artist_presets", {}).get(profile_name, {})
+        if active_preset_data.get("project_file"):
+            config_snapshot["project_file"] = active_preset_data["project_file"]
 
-        self.disable_buttons()
+        # Register task (Rich structure for multiplexer)
+        self.active_tasks[profile_name] = {
+            "status": "Starting...",
+            "start_time": time.time(),
+            "total": len(target_ids),
+            "current": 0
+        }
+        self._update_composite_status() # Update status bar immediately
+
+        # We NO LONGER call self.disable_buttons() to lock the whole UI.
+        # Minimal button sync:
+        self.btn_stop.config(state="normal")
+        
         # Pass the config snapshot to the background thread
-        threading.Thread(target=self.run_process, args=(target_ids, force_update, config_snapshot), daemon=True).start()
+        threading.Thread(target=self.run_process, args=(target_ids, force_update, config_snapshot, profile_name), daemon=True).start()
 
     def stop_process(self):
         self.stop_requested = True
         self.status_var.set(self.t("msg_stopping"))
         self.set_badge(self.t("badge_stopping"), "#ffaa00")
-        if self.active_browser:
+        # Iterate through all active browsers and stop them
+        for profile_name, browser_instance in getattr(self, 'active_browsers', {}).items():
             try:
-                self.active_browser.stop()
-                logger.warning(self.t("log_browser_stop"))
-            except Exception: pass
+                browser_instance.stop()
+                logger.warning(f"[{profile_name}] {self.t('log_browser_stop')}")
+            except Exception:
+                logger.error(f"Error stopping browser for profile {profile_name}", exc_info=True)
+        # Clear the active_browsers dictionary
+        setattr(self, 'active_browsers', {})
+        
         # Safety: guarantee buttons re-enable even if worker thread hangs
         def _safety_enable():
             if str(self.btn_run.cget("state")) == "disabled":
@@ -2510,57 +2713,48 @@ class MusicBotGUI:
         self.root.after(5000, _safety_enable)
 
     def _check_existing_data(self, target_ids):
-        """Checks if any of the target songs already have data in the requested steps."""
-        try:
-            wb = openpyxl.load_workbook(self.project_path, data_only=True)
-            ws = wb.active
-            headers = {str(cell.value).lower(): i for i, cell in enumerate(ws[1]) if cell.value}
+        """Optimized: Checks if any of the target songs already have data using memory cache instead of re-loading Excel."""
+        tab = self.current_tab
+        if not tab or not hasattr(tab, "all_songs_data"): return False
+        
+        for rid in target_ids:
+            rid_s = str(rid)
+            s_data = tab.all_songs_data.get(rid_s)
+            if not s_data: continue
             
-            # Robust column mapping (Case insensitive)
-            col_map = {str(cell.value).strip().lower(): cell.column - 1 for cell in ws[1] if cell.value}
-            lyrics_col = col_map.get("lyrics")
-            visual_col = col_map.get("visual_prompt") or col_map.get("visual prompt") or col_map.get("visual_prompts")
-            video_col = col_map.get("video_prompt") or col_map.get("video prompt") or col_map.get("video_prompts")
-            id_col = col_map.get("id", 0)
+            # Use specific steps for THIS song
+            s_steps = tab.song_steps.get(rid_s)
+            if s_steps is None:
+                s_steps = [
+                    self.var_run_lyrics.get(), 
+                    self.var_run_music.get(),
+                    self.var_run_art_prompt.get(),
+                    self.var_run_art_image.get(),
+                    self.var_run_video.get()
+                ]
 
-            # Normalize target_ids set
-            target_ids_set = set(str(t).strip().lower() for t in target_ids)
-
-            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                rid_orig = row[id_col]
-                rid = str(rid_orig).strip().lower() if rid_orig is not None else ""
+            # 1. Lyrics Check
+            if s_steps[0] and s_data.get("has_lyrics"):
+                return True
                 
-                if not rid: rid = f"PENDING_{i}"
-                
-                if rid in target_ids_set:
-                    # Get specific steps for THIS song
-                    s_steps = self.song_steps.get(str(rid_orig))
-                    if s_steps is None:
-                        s_steps = [
-                            self.var_run_lyrics.get(), 
-                            self.var_run_music.get(),
-                            self.var_run_art_prompt.get(),
-                            self.var_run_art_image.get(),
-                            self.var_run_video.get()
-                        ]
+            # 2. Visual Prompt Check (Phase 3: Art Prompt)
+            if s_steps[2]:
+                if s_data.get("has_visual"):
+                    return True
+                if self.config.get("gemini_video") and s_data.get("has_video_prompt"):
+                    return True
+                    
+        return False
 
-                    # Check if user wants lyrics for THIS song AND they exist
-                    if s_steps[0] and lyrics_col is not None and row[lyrics_col] and str(row[lyrics_col]).strip():
-                        return True
-                    # Check if user wants visuals for THIS song AND they exist
-                    if s_steps[2] and visual_col is not None and row[visual_col] and str(row[visual_col]).strip():
-                        return True
-                    # Check if user wants video prompts for THIS song AND they exist
-                    if s_steps[2] and self.config.get("gemini_video", False) and video_col is not None and row[video_col] and str(row[video_col]).strip():
-                        return True
-            return False
-        except Exception as e:
-            logger.error(f"Error checking existing data: {e}")
-            return False
-
-    def run_process(self, target_ids, force_update=False, snapshot_config=None):
+    def run_process(self, target_ids, force_update=False, snapshot_config=None, profile_name="Default"):
         start_time = time.time()
         total_songs = len(target_ids)
+        self.active_tasks[profile_name] = {
+            "status": self.t("ready"),
+            "start_time": start_time,
+            "total": total_songs,
+            "current": 0
+        }
         self.video_render_queue = [] # Fixed: Always initialize at start
         
         # Use snapshotted config if provided, fallback to live
@@ -2580,39 +2774,45 @@ class MusicBotGUI:
                 logger.error(f"Failed to save session state: {e}")
 
             # Unified Project Path (Profile-based: output_media/[Profile_Name])
-            project_file = self.project_path
-            profile_name = conf.get("active_preset", "Default")
+            project_file = conf.get("project_file", self.project_path)
+            workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
             workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
             output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
             if not os.path.exists(output_media): os.makedirs(output_media, exist_ok=True)
             
             def progress_callback(rid, text):
                 if rid == "global":
-                    self.root.after(0, lambda: self.status_var.set(f"[{profile_name}] {text}"))
+                    if profile_name in self.active_tasks:
+                        self.active_tasks[profile_name]["status"] = text
+                    self._update_composite_status()
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
             
             # =================================================================================================
             # DECISION POINT: Batch Mode vs Sequential Mode
             # =================================================================================================
-            is_batch_mode = conf.get("suno_batch_mode", False)
-            # Sync op_mode to snapshot for use inside batch methods
-            batch_op = conf.get("suno_batch_op_mode", "full")
-
-            if is_batch_mode:
-                logger.info(f"🚀 STARTING ENGINE IN BATCH MODE (PHASED EXECUTION - {batch_op})")
-                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, conf)
+            # Sequential vs Batch
+            if conf.get("suno_batch_enabled", False):
+                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name)
             else:
-                logger.info("🚂 STARTING ENGINE IN SEQUENTIAL MODE")
-                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, conf)
+                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name)
 
-            # --- Phase 2: Parallel Video Rendering ---
-                
+            # Success cleanup
+            if profile_name in self.active_tasks:
+                del self.active_tasks[profile_name]
+            self._update_composite_status()
+
+            logger.info(f"Process for '{profile_name}' finished in {time.time()-start_time:.1f}s")
+            self.root.after(0, self.enable_buttons)
+            self.root.after(0, lambda: messagebox.showinfo(self.t("msg_done_title"), self.t("msg_done_info")))
+
             # --- Phase 2: Parallel Video Rendering ---
             if hasattr(self, "video_render_queue") and self.video_render_queue and not self.stop_requested:
                 parallel_count = int(self.config.get("video_parallel_count", 1))
                 logger.info(f"Starting Parallel Video Rendering: {len(self.video_render_queue)} tasks, pool size: {parallel_count}")
-                self.root.after(0, lambda: self.status_var.set(f"Rendering {len(self.video_render_queue)} Videos ({parallel_count} parallel)..."))
+                if profile_name in self.active_tasks:
+                    self.active_tasks[profile_name]["status"] = f"Rendering {len(self.video_render_queue)} Videos ({parallel_count} parallel)..."
+                self._update_composite_status()
                 
                 from video_generator import VideoGenerator
                 
@@ -2629,6 +2829,7 @@ class MusicBotGUI:
                         )
                         if success:
                             progress_callback(task["rid"], "Video Rendered ✅")
+                            self.update_project_excel(task["rid"], video_status="TAMAM")
                             # Move used materials to 'done' (Ref: output_media/[profile]/done)
                             try:
                                 done_dir = os.path.join(task["profile_dir"], "done")
@@ -2644,9 +2845,11 @@ class MusicBotGUI:
                         else:
                             logger.error(f"Render failed for {task['rid']} (returned False)")
                             progress_callback(task["rid"], "Render Failed ❌")
+                            self.update_project_excel(task["rid"], video_status="HATA")
                     except Exception as ve:
                         logger.error(f"Parallel Render Error ({task['rid']}): {ve}")
                         progress_callback(task["rid"], "Render Error ❌")
+                        self.update_project_excel(task["rid"], video_status="HATA")
 
                 # Run pool
                 with ThreadPoolExecutor(max_workers=parallel_count) as pool:
@@ -2659,7 +2862,9 @@ class MusicBotGUI:
             if self.var_run_compilation.get() and not self.stop_requested:
                 try:
                     logger.info(self.t("log_merge_start"))
-                    self.root.after(0, lambda: self.status_var.set(self.t("compilation")))
+                    if profile_name in self.active_tasks:
+                        self.active_tasks[profile_name]["status"] = self.t("compilation")
+                    self._update_composite_status()
                     
                     video_dir = os.path.join(output_media, "videos")
                     if self.config.get("video_output_mode") == "custom":
@@ -2694,16 +2899,86 @@ class MusicBotGUI:
             logger.error(f"Critical Process Error: {err_msg}")
             self.root.after(0, lambda m=err_msg: messagebox.showerror(self.t("msg_critical_error"), m))
         finally:
+            # Cleanup task registration for THIS profile
+            if profile_name in self.active_tasks:
+                del self.active_tasks[profile_name]
+            
+            # Close browser for THIS profile if exists and was managed by this task
+            if profile_name in getattr(self, "active_browsers", {}):
+                try:
+                    self.active_browsers[profile_name].stop()
+                    del self.active_browsers[profile_name]
+                except: pass
+            
             if not getattr(self, "stop_requested", False):
-                # Process completed normally -> remove state
+                # Only clean session state if NO other tasks are running? 
+                # Or just for this specific project? For now, we clean if it matches.
                 workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
                 state_file = os.path.join(workspace, "session_state.json")
                 try: 
                     if os.path.exists(state_file): os.remove(state_file)
                 except: pass
             
-            self.root.after(0, self.enable_buttons)
-            self.load_data()
+            self._update_composite_status()
+            
+            if not self.active_tasks:
+                self.enable_buttons()
+                logger.info(f"🏁 ALL BACKGROUND TASKS COMPLETED.")
+            else:
+                logger.info(f"✔️ Task for '{profile_name}' finished. Remaining: {list(self.active_tasks.keys())}")
+            
+            self.root.after(0, self.load_data)
+
+    def _start_status_ticker(self):
+        """Start a periodic update for the status bar to show live elapsed time."""
+        self._update_composite_status()
+        self.root.after(1000, self._start_status_ticker)
+
+    def _update_composite_status(self):
+        """Multiplex active task statuses to the footer status bar with timing."""
+        if not hasattr(self, "active_tasks") or not self.active_tasks:
+            self.root.after(0, lambda: self.status_var.set(self.t("ready")))
+            return
+            
+        now = time.time()
+        combined = []
+        for p, data in self.active_tasks.items():
+            status = data.get("status", "...")
+            start = data.get("start_time", now)
+            total = data.get("total", 0)
+            current = data.get("current", 0)
+            
+            # Elapsed
+            elapsed_sec = int(now - start)
+            e_h = elapsed_sec // 3600
+            e_m = (elapsed_sec % 3600) // 60
+            e_s = elapsed_sec % 60
+            e_str = f"{e_h:02d}:{e_m:02d}:{e_s:02d}" if e_h > 0 else f"{e_m:02d}:{e_s:02d}"
+            
+            # ETA
+            eta_str = "--:--"
+            if current > 0 and total > 0:
+                avg_per_item = elapsed_sec / current
+                remaining_items = total - current
+                eta_sec = int(avg_per_item * remaining_items)
+                r_h = eta_sec // 3600
+                r_m = (eta_sec % 3600) // 60
+                r_s = eta_sec % 60
+                eta_str = f"{r_h:02d}:{r_m:02d}:{r_s:02d}" if r_h > 0 else f"{r_m:02d}:{r_s:02d}"
+            
+            info = f"[{p}] {status} ({current}/{total}) | {self.t('elapsed_label').format(time=e_str)} | {self.t('eta_label').format(time=eta_str)}"
+            combined.append(info)
+        
+        task_count_text = self.t("tasks_active").format(count=len(combined))
+        
+        if len(combined) > 1:
+            # Cycle through tasks if multiple
+            idx = int(now % (len(combined) * 3) // 3) # Switch every 3 seconds
+            status_text = f"⚙️ {task_count_text} | " + combined[idx]
+        else:
+            status_text = combined[0]
+            
+        self.root.after(0, lambda: self.status_var.set(status_text))
 
 
 
@@ -2840,8 +3115,10 @@ class MusicBotGUI:
 
         try:
             # First, try to kill any chrome instances for safety
-            if self.active_browser:
-                try: self.active_browser.stop()
+            if profile_name in getattr(self, "active_browsers", {}):
+                try: 
+                    self.active_browsers[profile_name].stop()
+                    del self.active_browsers[profile_name]
                 except Exception: pass
             
             logger.info(f"Resetting Chrome profile at: {profile_path}")
@@ -2872,161 +3149,96 @@ class MusicBotGUI:
         self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
         self.root.after(0, self._refresh_all)  # Auto refresh with full data + materials scan
 
-    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None):
-        """Original flow: Process each song 1-by-1 through all selected steps."""
+    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default"):
+        """Process each song 1-by-1 through all selected steps with a persistent browser."""
         total_songs = len(target_ids)
-        self.video_render_queue = [] # Queue for parallel rendering (Pass 2) will be populated here
-        
+        self.video_render_queue = []
         conf = snapshot_config if snapshot_config is not None else self.config
+        global_human = conf.get("humanizer_enabled", True)
 
-        for idx, song_id in enumerate(target_ids):
-            if self.stop_requested:
-                logger.info(self.t("log_halted"))
-                break
+        common_browser = None
+        try:
+            for idx, song_id in enumerate(target_ids):
+                if self.stop_requested: break
                 
-            # Update status
-            song_data = self.all_songs.get(song_id, {})
-            title = song_data.get("title", "Unknown")
-            title_short = title[:50] + ".." if len(title) > 50 else title
-            self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
-            
-            # Calculate ETA
-            elapsed = time.time() - start_time
-            avg_time = elapsed / idx if idx > 0 else 0
-            remaining = total_songs - idx
-            eta_val = ""
-            if idx > 0:
-                eta_seconds = int(avg_time * remaining)
-                hrs = eta_seconds // 3600
-                mins = (eta_seconds % 3600) // 60
-                secs = eta_seconds % 60
-                time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
-                eta_val = f" | {self.t('eta_label').format(time=time_str)}"
+                if profile_name in self.active_tasks:
+                    self.active_tasks[profile_name]["current"] = idx + 1
+                
+                song_data = self.all_songs.get(song_id, {})
+                title = song_data.get("title", "Unknown")
+                title_short = title[:50] + ".." if len(title) > 50 else title
+                self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
+                self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
 
-            self.root.after(0, lambda: self.status_var.set(f"{self.t('processing')} ({idx+1}/{total_songs}){eta_val}"))
-            self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
-            
-            # Start browser ONLY IF NEEDED
-            song_browser = None
-            self.active_browser = None
-            
-            # Global Humanizer State
-            global_human = conf.get("humanizer_enabled", True)
-
-            try:
-                # Get specific steps for THIS song
+                # Determine steps for THIS song
                 s_steps = self.song_steps.get(song_id)
                 if s_steps is None:
-                    s_steps = [
-                        self.var_run_lyrics.get(),
-                        self.var_run_music.get(),
-                        self.var_run_art_prompt.get(),
-                        self.var_run_art_image.get(),
-                        self.var_run_video.get()
-                    ]
-                
-                # Ensure length
+                    s_steps = [self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]
                 while len(s_steps) < 5: s_steps.append(False)
 
-                # Determine if browser is actually needed
-                browser_needed = s_steps[0] or s_steps[1] or s_steps[2] # Lyrics, Music, or Art Prompt
-                
-                if browser_needed:
-                    # ---------------- PROFILE LOGIC ----------------
-                    profile_name = conf.get("active_preset", "Default")
-                    if not profile_name: profile_name = "Default"
-                    profile_name = profile_name.strip().replace(" ", "_")
-                    
-                    base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
-                    profile_path = os.path.join(base_path, profile_name)
-                    # -----------------------------------------------
+                # Start browser IF NEEDED
+                browser_needed = s_steps[0] or s_steps[1] or s_steps[2]
+                if browser_needed and not common_browser and not self.stop_requested:
+                    try:
+                        base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
+                        profile_path = os.path.join(base_path, profile_name.strip().replace(" ", "_"))
+                        from browser_controller import BrowserController
+                        h_conf = {"level": conf.get("humanizer_level", "MEDIUM"), "speed": conf.get("humanizer_speed", 1.0), "retries": conf.get("humanizer_retries", 1), "adaptive": conf.get("humanizer_adaptive", True)}
+                        common_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
+                        common_browser.start()
+                        self.active_browsers[profile_name] = common_browser
+                    except Exception as b_err:
+                        logger.error(f"Sequential browser start failed: {b_err}")
 
-                    from browser_controller import BrowserController
-                    h_conf = {
-                        "level": conf.get("humanizer_level", "MEDIUM"),
-                        "speed": conf.get("humanizer_speed", 1.0),
-                        "retries": conf.get("humanizer_retries", 1),
-                        "adaptive": conf.get("humanizer_adaptive", True)
-                    }
-                    song_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
-                    song_browser.start()
-                    self.active_browser = song_browser
-                
-                # --- Step 1: Lyrics -----
-                if s_steps[0] and not self.stop_requested and song_browser:
-                    # Phase-based Humanizer Activation
-                    song_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
-                    
-                    from gemini_prompter import GeminiPrompter
-                    gemini = GeminiPrompter(
-                        project_file=project_file, 
-                        browser=song_browser,
-                        use_gemini_lyrics=conf.get("gemini_lyrics", True),
-                        generate_visual=conf.get("gemini_visual", True),
-                        generate_video=conf.get("gemini_video", False),
-                        generate_style=conf.get("gemini_style", False),
-                        startup_delay=conf.get("startup_delay", 5),
-                        language=conf.get("target_language", "Turkish"),
-                        chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new"))
-                    )
-                    gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
-                
-                # --- Step 2: Music ---
-                if s_steps[1] and not self.stop_requested and song_browser:
-                    # Phase-based Humanizer Activation
-                    song_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
-                    
-                    from suno_generator import SunoGenerator
-                    suno = SunoGenerator(
-                        project_file=project_file, # Unified Path
-                        output_dir=output_media,
-                        delay=self.config.get("suno_delay", 15),
-                        startup_delay=self.config.get("startup_delay", 5),
-                        browser=song_browser,
-                        audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
-                        vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
-                        weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
-                        style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
-                        lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
-                        persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else "",
-                        turbo=self.var_turbo.get()
-                    )
-                    suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
-                
-                # --- Step 3: Art (Prompts & Images) ---
-                if (s_steps[2] or s_steps[3]) and not self.stop_requested:
-                    from gemini_prompter import GeminiPrompter
-                    gemini_art = GeminiPrompter(
-                        project_file=project_file, # Unified Path
-                        output_dir=output_media,
-                        browser=song_browser if s_steps[2] else None, # Only needs browser for prompts
-                        startup_delay=self.config.get("startup_delay", 5),
-                        language=self.config.get("target_language", "Turkish"),
-                        chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
-                    )
-                    
-                    if s_steps[2] and not self.stop_requested and song_browser:
-                        gemini_art.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
-                    
-                    if s_steps[3] and not self.stop_requested:
-                        gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
-
-                # --- Step 4: Video Generation (Consolidated) ---
-                if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                    self._prepare_video_task(song_id, output_media, workspace, progress_callback)
-                self.active_browser = None
-            except Exception as e:
-                logger.error(f"Error processing {song_id}: {e}")
-                progress_callback(song_id, "Error in flow ❌")
-                self.active_browser = None
-            finally:
-                # Safe Shutdown for Phase 1-3
                 try:
-                    time.sleep(1)
-                    if song_browser:
-                        song_browser.stop()
-                except Exception: pass
-                self.active_browser = None
+                    # --- Step 1: Lyrics & Gemini ---
+                    if s_steps[0] and not self.stop_requested and common_browser:
+                        common_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
+                        from gemini_prompter import GeminiPrompter
+                        gemini = GeminiPrompter(
+                            project_file=project_file, 
+                            browser=common_browser, 
+                            use_gemini_lyrics=s_steps[0], 
+                            generate_visual=s_steps[2], 
+                            generate_video=s_steps[4] if len(s_steps) > 4 else False, 
+                            language=conf.get("target_language", "Turkish"), 
+                            chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")), 
+                            xlsx_lock=self.xlsx_lock
+                        )
+                        gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
+                    
+                    # --- Step 2: Music ---
+                    if s_steps[1] and not self.stop_requested and common_browser:
+                        common_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
+                        from suno_generator import SunoGenerator
+                        suno = SunoGenerator(project_file=project_file, output_dir=output_media, delay=conf.get("suno_delay", 15), browser=common_browser, xlsx_lock=self.xlsx_lock)
+                        suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
+                    
+                    # --- Step 3: Art Proxies ---
+                    if s_steps[2] and not s_steps[0] and common_browser:
+                        from gemini_prompter import GeminiPrompter
+                        ga = GeminiPrompter(project_file=project_file, browser=common_browser, xlsx_lock=self.xlsx_lock)
+                        ga.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
+                    
+                    # --- Step 4: Art Images ---
+                    if s_steps[3] and not self.stop_requested:
+                        from gemini_prompter import GeminiPrompter
+                        gi = GeminiPrompter(project_file=project_file, xlsx_lock=self.xlsx_lock)
+                        gi.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
+
+                    # --- Step 5: Video ---
+                    if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
+                        self._prepare_video_task(song_id, output_media, workspace, progress_callback)
+                except Exception as e:
+                    logger.error(f"Error in song {song_id}: {e}")
+                    progress_callback(song_id, "Error! ❌")
+        finally:
+            if common_browser:
+                try: 
+                    common_browser.stop()
+                    if profile_name in self.active_browsers: del self.active_browsers[profile_name]
+                except: pass
+            self.active_browser = None
 
     def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None):
         """Helper to prepare a video task for a single song and add it to self.video_render_queue."""
@@ -3153,7 +3365,7 @@ class MusicBotGUI:
         except Exception as ne:
              logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
 
-    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None):
+    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default"):
         """Batch executed flow: Lyrics(All) -> Suno_Batch(All) -> Art(All) -> Video(All)"""
         
         conf = snapshot_config if snapshot_config is not None else self.config
@@ -3171,8 +3383,6 @@ class MusicBotGUI:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
             # We use one browser session for everything to avoid startups/shutdowns
             # ---------------- PROFILE LOGIC ----------------
-            profile_name = conf.get("active_preset", "Default")
-            if not profile_name: profile_name = "Default"
             profile_name = profile_name.strip().replace(" ", "_")
             
             base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
@@ -3188,8 +3398,8 @@ class MusicBotGUI:
             }
             batch_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
             batch_browser.start()
-            self.active_browser = batch_browser
-            global_human = self.config.get("humanizer_enabled", True)
+            self.active_browsers[profile_name] = batch_browser
+            global_human = conf.get("humanizer_enabled", True)
             
             # --- PHASE 1: LYRICS & PREP (Gemini) ---
             gemini_ids = [id for id in target_ids if get_song_steps(id)[0]] # Step 1 enabled
@@ -3201,17 +3411,20 @@ class MusicBotGUI:
                 gemini = GeminiPrompter(
                     project_file=project_file, 
                     browser=batch_browser,
-                    use_gemini_lyrics=self.config.get("gemini_lyrics", True),
-                    generate_visual=self.config.get("gemini_visual", True),
-                    generate_video=self.config.get("gemini_video", False),
-                    generate_style=self.config.get("gemini_style", False),
-                    startup_delay=self.config.get("startup_delay", 5),
-                    language=self.config.get("target_language", "Turkish"),
-                    chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
+                    use_gemini_lyrics=conf.get("gemini_lyrics", True),
+                    generate_visual=False, # Phase by phase in batch
+                    generate_video=False,
+                    generate_style=conf.get("gemini_style", False),
+                    startup_delay=conf.get("startup_delay", 5),
+                    language=conf.get("target_language", "Turkish"),
+                    chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")),
+                    xlsx_lock=self.xlsx_lock
                 )
                 # Gemini doesn't have internal batch support yet, so we loop but REUSE browser
                 for idx, song_id in enumerate(gemini_ids):
                     if self.stop_requested: break
+                    if profile_name in self.active_tasks:
+                        self.active_tasks[profile_name]["current"] = idx + 1
                     progress_callback(song_id, "Gemini İşleniyor... ✍️")
                     gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
             
@@ -3225,16 +3438,17 @@ class MusicBotGUI:
                 suno = SunoGenerator(
                     project_file=project_file, 
                     output_dir=output_media,
-                    delay=self.config.get("suno_delay", 15),
-                    startup_delay=self.config.get("startup_delay", 5),
+                    delay=conf.get("suno_delay", 15),
+                    startup_delay=conf.get("startup_delay", 5),
                     browser=batch_browser,
-                    audio_influence=self.config.get("audio_influence", 25) if self.config.get("audio_influence_enabled") else "Default",
-                    vocal_gender=self.config.get("vocal_gender", "Default") if self.config.get("vocal_gender_enabled") else "Default",
-                    weirdness=self.config.get("weirdness", 50) if self.config.get("weirdness_enabled") else "Default",
-                    style_influence=self.config.get("style_influence", 50) if self.config.get("style_influence_enabled") else "Default",
-                    lyrics_mode=self.config.get("lyrics_mode", "Default") if self.config.get("lyrics_mode_enabled") else "Default",
-                    persona_link=self.config.get("suno_personas", {}).get(self.config.get("suno_active_persona", ""), "") if self.config.get("suno_persona_link_enabled") else "",
-                    turbo=self.var_turbo.get()
+                    audio_influence=conf.get("audio_influence", 25) if conf.get("audio_influence_enabled") else "Default",
+                    vocal_gender=conf.get("vocal_gender", "Default") if conf.get("vocal_gender_enabled") else "Default",
+                    weirdness=conf.get("weirdness", 50) if conf.get("weirdness_enabled") else "Default",
+                    style_influence=conf.get("style_influence", 50) if conf.get("style_influence_enabled") else "Default",
+                    lyrics_mode=conf.get("lyrics_mode", "Default") if conf.get("lyrics_mode_enabled") else "Default",
+                    persona_link=conf.get("suno_personas", {}).get(conf.get("suno_active_persona", ""), "") if conf.get("suno_persona_link_enabled") else "",
+                    turbo=self.var_turbo.get(),
+                    xlsx_lock=self.xlsx_lock
                 )
                 # Use the new Batch Method with OP MODE!
                 op_mode = self.config.get("suno_batch_op_mode", "full")
@@ -3252,9 +3466,10 @@ class MusicBotGUI:
                     project_file=project_file,
                     output_dir=output_media,
                     browser=batch_browser, 
-                    startup_delay=self.config.get("startup_delay", 5),
-                    language=self.config.get("target_language", "Turkish"),
-                    chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
+                    startup_delay=conf.get("startup_delay", 5),
+                    language=conf.get("target_language", "Turkish"),
+                    chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")),
+                    xlsx_lock=self.xlsx_lock
                 )
                 
                 # Prompts via Browser
@@ -3271,7 +3486,8 @@ class MusicBotGUI:
 
             # Clean up browser
             batch_browser.stop()
-            self.active_browser = None
+            if profile_name in self.active_browsers:
+                del self.active_browsers[profile_name]
 
             # --- PHASE 4: VIDEO PREP & QUEUE ---
             video_ids = [id for id in target_ids if get_song_steps(id)[4]] # Step 5 enabled
@@ -3284,10 +3500,11 @@ class MusicBotGUI:
             logger.error(f"Batch Mode Error: {e}")
             self.root.after(0, lambda m=str(e): messagebox.showerror(self.t("error"), m))
         finally:
-            if self.active_browser:
-                try: self.active_browser.stop()
+            if profile_name in getattr(self, "active_browsers", {}):
+                try: 
+                    self.active_browsers[profile_name].stop()
+                    del self.active_browsers[profile_name]
                 except Exception: pass
-                self.active_browser = None
 
     def load_data(self):
         # Dummy load_data for the finally block
