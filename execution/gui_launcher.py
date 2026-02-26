@@ -2479,12 +2479,19 @@ class MusicBotGUI:
             has_data = self._check_existing_data(target_ids)
             if has_data:
                 # Ask user if they want to re-generate (Must be on main thread!)
-                if messagebox.askyesno(self.t("msg_confirm_regen"), self.t("msg_regen_body")):
+                if messagebox.askyesno(self.t("confirm"), self.t("msg_confirm_regen")):
                     force_update = True
 
         self.stop_requested = False
+        
+        # --- SNAPSHOT CONFIGURATION FOR BACKGROUND ENGINE ---
+        import copy
+        config_snapshot = copy.deepcopy(self.config)
+        # ---------------------------------------------------
+
         self.disable_buttons()
-        threading.Thread(target=self.run_process, args=(target_ids, force_update), daemon=True).start()
+        # Pass the config snapshot to the background thread
+        threading.Thread(target=self.run_process, args=(target_ids, force_update, config_snapshot), daemon=True).start()
 
     def stop_process(self):
         self.stop_requested = True
@@ -2551,11 +2558,14 @@ class MusicBotGUI:
             logger.error(f"Error checking existing data: {e}")
             return False
 
-    def run_process(self, target_ids, force_update=False):
+    def run_process(self, target_ids, force_update=False, snapshot_config=None):
         start_time = time.time()
         total_songs = len(target_ids)
         self.video_render_queue = [] # Fixed: Always initialize at start
         
+        # Use snapshotted config if provided, fallback to live
+        conf = snapshot_config if snapshot_config is not None else self.config
+
         try:
             # Save session state before starting long operation
             workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
@@ -2571,31 +2581,30 @@ class MusicBotGUI:
 
             # Unified Project Path (Profile-based: output_media/[Profile_Name])
             project_file = self.project_path
-            profile_name = self.config.get("active_preset", "Default")
+            profile_name = conf.get("active_preset", "Default")
             workspace = os.path.expanduser("~/Documents/MusicBot_Workspace")
             output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
             if not os.path.exists(output_media): os.makedirs(output_media, exist_ok=True)
             
             def progress_callback(rid, text):
                 if rid == "global":
-                    self.status_var.set(text)
+                    self.root.after(0, lambda: self.status_var.set(f"[{profile_name}] {text}"))
                 else:
                     self.root.after(0, lambda: self.update_progress(rid, text))
             
             # =================================================================================================
             # DECISION POINT: Batch Mode vs Sequential Mode
             # =================================================================================================
-            is_batch_mode = self.var_suno_batch.get() if hasattr(self, "var_suno_batch") else self.config.get("suno_batch_mode", False)
-            # Sync op_mode to config for use inside batch methods
-            if hasattr(self, "var_batch_op"):
-                self.config["suno_batch_op_mode"] = self.var_batch_op.get()
+            is_batch_mode = conf.get("suno_batch_mode", False)
+            # Sync op_mode to snapshot for use inside batch methods
+            batch_op = conf.get("suno_batch_op_mode", "full")
 
             if is_batch_mode:
-                logger.info(f"🚀 STARTING ENGINE IN BATCH MODE (PHASED EXECUTION - {self.config.get('suno_batch_op_mode')})")
-                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update)
+                logger.info(f"🚀 STARTING ENGINE IN BATCH MODE (PHASED EXECUTION - {batch_op})")
+                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, conf)
             else:
                 logger.info("🚂 STARTING ENGINE IN SEQUENTIAL MODE")
-                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update)
+                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, conf)
 
             # --- Phase 2: Parallel Video Rendering ---
                 
@@ -2853,6 +2862,7 @@ class MusicBotGUI:
     def disable_buttons(self):
         self.btn_run.config(state="disabled")
         self.btn_stop.config(state="normal")
+        # Keep tabs and settings enabled for background work
 
     def enable_buttons(self):
         self.stop_requested = False  # Reset flag so engine can restart
@@ -2862,11 +2872,13 @@ class MusicBotGUI:
         self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
         self.root.after(0, self._refresh_all)  # Auto refresh with full data + materials scan
 
-    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update):
+    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None):
         """Original flow: Process each song 1-by-1 through all selected steps."""
         total_songs = len(target_ids)
         self.video_render_queue = [] # Queue for parallel rendering (Pass 2) will be populated here
         
+        conf = snapshot_config if snapshot_config is not None else self.config
+
         for idx, song_id in enumerate(target_ids):
             if self.stop_requested:
                 logger.info(self.t("log_halted"))
@@ -2899,7 +2911,7 @@ class MusicBotGUI:
             self.active_browser = None
             
             # Global Humanizer State
-            global_human = self.config.get("humanizer_enabled", True)
+            global_human = conf.get("humanizer_enabled", True)
 
             try:
                 # Get specific steps for THIS song
@@ -2921,7 +2933,7 @@ class MusicBotGUI:
                 
                 if browser_needed:
                     # ---------------- PROFILE LOGIC ----------------
-                    profile_name = self.config.get("active_preset", "Default")
+                    profile_name = conf.get("active_preset", "Default")
                     if not profile_name: profile_name = "Default"
                     profile_name = profile_name.strip().replace(" ", "_")
                     
@@ -2931,31 +2943,31 @@ class MusicBotGUI:
 
                     from browser_controller import BrowserController
                     h_conf = {
-                        "level": self.config.get("humanizer_level", "MEDIUM"),
-                        "speed": self.config.get("humanizer_speed", 1.0),
-                        "retries": self.config.get("humanizer_retries", 1),
-                        "adaptive": self.config.get("humanizer_adaptive", True)
+                        "level": conf.get("humanizer_level", "MEDIUM"),
+                        "speed": conf.get("humanizer_speed", 1.0),
+                        "retries": conf.get("humanizer_retries", 1),
+                        "adaptive": conf.get("humanizer_adaptive", True)
                     }
                     song_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
                     song_browser.start()
                     self.active_browser = song_browser
                 
-                # --- Step 1: Lyrics ---
+                # --- Step 1: Lyrics -----
                 if s_steps[0] and not self.stop_requested and song_browser:
                     # Phase-based Humanizer Activation
-                    song_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
+                    song_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
                     
                     from gemini_prompter import GeminiPrompter
                     gemini = GeminiPrompter(
                         project_file=project_file, 
                         browser=song_browser,
-                        use_gemini_lyrics=self.config.get("gemini_lyrics", True),
-                        generate_visual=self.config.get("gemini_visual", True),
-                        generate_video=self.config.get("gemini_video", False),
-                        generate_style=self.config.get("gemini_style", False),
-                        startup_delay=self.config.get("startup_delay", 5),
-                        language=self.config.get("target_language", "Turkish"),
-                        chat_mode=self.config.get("gemini_chat_mode", self.t("gemini_mode_new"))
+                        use_gemini_lyrics=conf.get("gemini_lyrics", True),
+                        generate_visual=conf.get("gemini_visual", True),
+                        generate_video=conf.get("gemini_video", False),
+                        generate_style=conf.get("gemini_style", False),
+                        startup_delay=conf.get("startup_delay", 5),
+                        language=conf.get("target_language", "Turkish"),
+                        chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new"))
                     )
                     gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                 
@@ -3141,9 +3153,11 @@ class MusicBotGUI:
         except Exception as ne:
              logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
 
-    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update):
+    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None):
         """Batch executed flow: Lyrics(All) -> Suno_Batch(All) -> Art(All) -> Video(All)"""
         
+        conf = snapshot_config if snapshot_config is not None else self.config
+
         def get_song_steps(sid):
             return self.song_steps.get(sid) or [
                 self.var_run_lyrics.get(),
@@ -3157,7 +3171,7 @@ class MusicBotGUI:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
             # We use one browser session for everything to avoid startups/shutdowns
             # ---------------- PROFILE LOGIC ----------------
-            profile_name = self.config.get("active_preset", "Default")
+            profile_name = conf.get("active_preset", "Default")
             if not profile_name: profile_name = "Default"
             profile_name = profile_name.strip().replace(" ", "_")
             
@@ -3167,10 +3181,10 @@ class MusicBotGUI:
 
             from browser_controller import BrowserController
             h_conf = {
-                "level": self.config.get("humanizer_level", "MEDIUM"),
-                "speed": self.config.get("humanizer_speed", 1.0),
-                "retries": self.config.get("humanizer_retries", 1),
-                "adaptive": self.config.get("humanizer_adaptive", True)
+                "level": conf.get("humanizer_level", "MEDIUM"),
+                "speed": conf.get("humanizer_speed", 1.0),
+                "retries": conf.get("humanizer_retries", 1),
+                "adaptive": conf.get("humanizer_adaptive", True)
             }
             batch_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
             batch_browser.start()
