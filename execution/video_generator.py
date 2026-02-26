@@ -67,16 +67,22 @@ class VideoGenerator:
             if "FFmpeg" in video_engine:
                 import subprocess
                 w, h = target_res
+                # For zoompan, we must specify the output framerate `fps` matching our target fps
+                # otherwise it defaults to 25fps and clashes with the output -r, causing massive files and glitches.
+                
+                # Base scaling
                 vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
                 
                 has_pulse = any(e in effect_types for e in ["Bass Pulse", "Vuruş Ritmi (Bass Pulse)"])
                 has_kb = any(e in effect_types for e in ["Ken Burns (Zoom)", "Yakınlaşma (Ken Burns)"])
                 
                 if has_kb:
-                    vf += f",zoompan=z='min(zoom+0.0005,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
+                    # frames = fps * 1 (zoompan duration is per input frame, since it's an image, default is 1 frame. We loop it).
+                    # Actually, for an image loop, zoompan `d` is total frames. But we just want it to tick over time `t`.
+                    vf += f",zoompan=z='min(zoom+0.0005,1.5)':d=1:fps={fps}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
                 elif has_pulse:
                     pulse_amt = 0.03 * (intensity / 50)
-                    vf += f",zoompan=z='1+{pulse_amt}*sin(2*PI*t*130/60)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
+                    vf += f",zoompan=z='1+{pulse_amt}*sin(2*PI*t*130/60)':d=1:fps={fps}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}"
                     
                 if any(e in effect_types for e in ["Vignette", "Köşe Karartma (Vignette)"]):
                     vf += ",vignette=a=PI/4"
