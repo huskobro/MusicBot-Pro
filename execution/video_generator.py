@@ -84,7 +84,9 @@ class VideoGenerator:
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
                     "-vf", vf, 
-                    "-c:v", "h264_videotoolbox", "-b:v", "3M", # Lowered to 3Mbps to match MoviePy-like sizes
+                    "-c:v", "h264_videotoolbox", 
+                    "-b:v", "3M", "-maxrate", "3M", "-bufsize", "6M", # Strict limits for hardware encoding
+                    "-profile:v", "high",
                     "-c:a", "aac", "-b:a", "192k",
                     "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
                 ]
