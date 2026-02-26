@@ -90,13 +90,14 @@ class VideoGenerator:
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
                     "-vf", vf, 
-                    "-c:v", "libx264", "-crf", "28", "-preset", "veryfast", # Strict size control (MoviePy style)
+                    "-c:v", "h264_videotoolbox", 
+                    "-b:v", "1M", "-maxrate", "2M", "-bufsize", "2M", # Extremely strict limits to mimic the 762kbps sample
                     "-profile:v", "high",
                     "-c:a", "aac", "-b:a", "192k",
                     "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
                 ]
                 
-                if progress_callback: progress_callback(rid, "FFmpeg Motoru Başlıyor (Boyut Optimize)... 🚀")
+                if progress_callback: progress_callback(rid, "FFmpeg Donanım Motoru (Mac Hızlandırması) Başlıyor... 🚀")
                 try:
                     res_run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     if res_run.returncode == 0 and os.path.exists(output_path):
