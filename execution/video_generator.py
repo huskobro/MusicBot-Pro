@@ -84,30 +84,20 @@ class VideoGenerator:
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
                     "-vf", vf, 
-                    "-c:v", "h264_videotoolbox", 
-                    "-b:v", "3M", "-maxrate", "3M", "-bufsize", "6M", # Strict limits for hardware encoding
+                    "-c:v", "libx264", "-crf", "28", "-preset", "veryfast", # Strict size control (MoviePy style)
                     "-profile:v", "high",
                     "-c:a", "aac", "-b:a", "192k",
                     "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
                 ]
                 
-                if progress_callback: progress_callback(rid, "FFmpeg Motoru Başlıyor... 🚀")
+                if progress_callback: progress_callback(rid, "FFmpeg Motoru Başlıyor (Boyut Optimize)... 🚀")
                 try:
                     res_run = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     if res_run.returncode == 0 and os.path.exists(output_path):
                         return True
                     else:
-                        if progress_callback: progress_callback(rid, "FFmpeg H264 Yok, Yazılım Render'ı (libx264)... ⚙️")
-                        # Software Fallback: Use CRF for quality-based compression
-                        cmd = [
-                            "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
-                            "-vf", vf, 
-                            "-c:v", "libx264", "-crf", "23", "-preset", "faster",
-                            "-c:a", "aac", "-b:a", "192k",
-                            "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
-                        ]
-                        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        return os.path.exists(output_path)
+                        logger.error(f"FFmpeg render error: STDERR: {res_run.stderr}")
+                        return False
                 except Exception as e:
                     logger.error(f"FFmpeg error: {e}")
                     return False
