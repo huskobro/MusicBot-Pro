@@ -89,6 +89,7 @@ class VideoGenerator:
                     
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
+                    "-threads", "0", # Use all available CPU cores
                     "-vf", vf, 
                     "-c:v", "h264_videotoolbox", 
                     "-b:v", "1M", "-maxrate", "2M", "-bufsize", "2M", # Extremely strict limits to mimic the 762kbps sample
