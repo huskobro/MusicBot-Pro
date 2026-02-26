@@ -95,7 +95,7 @@ class VideoGenerator:
                     "-b:v", "1M", "-maxrate", "2M", "-bufsize", "2M", # Extremely strict limits to mimic the 762kbps sample
                     "-profile:v", "high",
                     "-c:a", "aac", "-b:a", "192k",
-                    "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
+                    "-r", str(fps), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-shortest", output_path
                 ]
                 
                 if progress_callback: progress_callback(rid, "FFmpeg Donanım Motoru (Mac Hızlandırması) Başlıyor... 🚀")
