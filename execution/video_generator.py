@@ -83,7 +83,9 @@ class VideoGenerator:
                     
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
-                    "-vf", vf, "-c:v", "h264_videotoolbox", "-c:a", "aac", "-b:a", "192k",
+                    "-vf", vf, 
+                    "-c:v", "h264_videotoolbox", "-b:v", "3M", # Lowered to 3Mbps to match MoviePy-like sizes
+                    "-c:a", "aac", "-b:a", "192k",
                     "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
                 ]
                 
@@ -94,7 +96,14 @@ class VideoGenerator:
                         return True
                     else:
                         if progress_callback: progress_callback(rid, "FFmpeg H264 Yok, Yazılım Render'ı (libx264)... ⚙️")
-                        cmd[cmd.index("h264_videotoolbox")] = "libx264"
+                        # Software Fallback: Use CRF for quality-based compression
+                        cmd = [
+                            "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-i", audio_path,
+                            "-vf", vf, 
+                            "-c:v", "libx264", "-crf", "23", "-preset", "faster",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-r", str(fps), "-pix_fmt", "yuv420p", "-shortest", output_path
+                        ]
                         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         return os.path.exists(output_path)
                 except Exception as e:
