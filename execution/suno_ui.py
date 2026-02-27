@@ -315,9 +315,14 @@ class SunoUIMixin:
                     logger.warning(f"Error setting {label_text}: {e}")
 
             if self.persona_link:
-                set_numeric_value("Audio Influence", self.audio_influence)
-            set_numeric_value("Weirdness", self.weirdness)
-            set_numeric_value("Style Influence", self.style_influence)
+                if self.audio_influence != "Default":
+                    set_numeric_value("Audio Influence", self.audio_influence)
+            
+            if self.weirdness != "Default":
+                set_numeric_value("Weirdness", self.weirdness)
+            
+            if self.style_influence != "Default":
+                set_numeric_value("Style Influence", self.style_influence)
 
             # FINAL VERIFICATION
             final_check = self.tab.evaluate(r"""() => {

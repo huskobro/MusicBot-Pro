@@ -40,14 +40,17 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         self.turbo = turbo
         
         # Advanced Params
-        try:
-            self.audio_influence = int(audio_influence)
-            self.weirdness = int(weirdness)
-            self.style_influence = int(style_influence)
-        except (ValueError, TypeError):
-            self.audio_influence = 25
-            self.weirdness = 50
-            self.style_influence = 50
+        def parse_adv(val, default_val):
+            if str(val) == "Default":
+                return "Default"
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return default_val
+                
+        self.audio_influence = parse_adv(audio_influence, 25)
+        self.weirdness = parse_adv(weirdness, 50)
+        self.style_influence = parse_adv(style_influence, 50)
             
         self.vocal_gender = vocal_gender
         self.lyrics_mode = lyrics_mode
