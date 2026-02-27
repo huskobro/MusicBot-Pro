@@ -89,11 +89,13 @@ class BrowserController:
         # Aggressive process cleanup for macOS/Linux based on profile path
         if platform.system() in ["Darwin", "Linux"]:
             try:
-                # Use pkill with full command line matching to catch long paths
-                # THIS IS THE ONLY SAFE WAY for multi-profile concurrency! Do NOT use global killall.
+                # Use pkill with full command line matching to catch only Chrome/Chromium
+                # specifically associated with this user data dir.
                 safe_path = self.user_data_dir.replace("'", "'\\''")
-                subprocess.run(f"pkill -9 -f '{safe_path}' 2>/dev/null", shell=True, stderr=subprocess.DEVNULL)
-                time.sleep(1) # Vital wait for OS to release file handles
+                # Kill Chrome processes that are using this specific profile
+                subprocess.run(f"pkill -9 -f 'Chrome.*{safe_path}' 2>/dev/null", shell=True, stderr=subprocess.DEVNULL)
+                subprocess.run(f"pkill -9 -f 'Chromium.*{safe_path}' 2>/dev/null", shell=True, stderr=subprocess.DEVNULL)
+                time.sleep(1) 
             except Exception as e:
                 logger.warning(f"Process cleanup error: {e}")
                 
@@ -151,10 +153,14 @@ class BrowserController:
                         "--disable-dev-shm-usage",
                         "--no-first-run",
                         "--no-default-browser-check",
-                        "--lang=tr-TR"
-                    ] + (["--profile-directory=Default"] if attempt == 1 else []) + # Try without specific profile dir if it fails
-                      (["--password-store=basic"] if platform.system() == "Darwin" else []),
-                    ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
+                        "--lang=tr-TR",
+                        "--disable-gpu",
+                        "--profile-directory=Default"
+                    ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                    ignore_default_args=[
+                        "--enable-automation",
+                        "--disable-features=OptimizationHints"
+                    ] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                     viewport=None, 
                     device_scale_factor=1,
                     locale="tr-TR",
