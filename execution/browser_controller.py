@@ -90,16 +90,10 @@ class BrowserController:
         if platform.system() in ["Darwin", "Linux"]:
             try:
                 # Use pkill with full command line matching to catch long paths
+                # THIS IS THE ONLY SAFE WAY for multi-profile concurrency! Do NOT use global killall.
                 safe_path = self.user_data_dir.replace("'", "'\\''")
-                subprocess.run(f"pkill -9 -f '{safe_path}'", shell=True, stderr=subprocess.DEVNULL)
-                
-                # Broad kill to ensure no other Chrome instance is holding the profile
-                if platform.system() == "Darwin":
-                    subprocess.run("killall -9 'Google Chrome' 2>/dev/null || true", shell=True)
-                    subprocess.run("killall -9 'Google Chrome for Testing' 2>/dev/null || true", shell=True)
-                
-                subprocess.run("pkill -9 -f playwright 2>/dev/null || true", shell=True)
-                time.sleep(2) # Vital wait for OS to release file handles
+                subprocess.run(f"pkill -9 -f '{safe_path}' 2>/dev/null", shell=True, stderr=subprocess.DEVNULL)
+                time.sleep(1) # Vital wait for OS to release file handles
             except Exception as e:
                 logger.warning(f"Process cleanup error: {e}")
                 
@@ -157,7 +151,8 @@ class BrowserController:
                         "--disable-dev-shm-usage",
                         "--no-first-run",
                         "--no-default-browser-check",
-                        "--lang=tr-TR"
+                        "--lang=tr-TR",
+                        "--disable-features=OptimizationHints" # Critical to fix Protocol error (Browser window not found) on macOS
                     ] + (["--profile-directory=Default"] if attempt == 1 else []) + # Try without specific profile dir if it fails
                       (["--password-store=basic"] if platform.system() == "Darwin" else []),
                     ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),

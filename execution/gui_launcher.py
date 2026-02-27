@@ -2286,7 +2286,11 @@ class MusicBotGUI:
             elif s_filter == self.t("f_no_lyrics") and s.get("lyrics"): continue
             elif s_filter == self.t("f_no_music") and s.get("music"): continue
             elif s_filter == self.t("f_no_art") and s.get("art"): continue
-            elif s_filter == self.t("f_no_video") and video_done: continue
+            elif s_filter == self.t("f_no_video"):
+                if video_done: continue
+                # Yalnızca malzemesi tam (resim ve ses var) ama videosu olmayanları göster
+                if not s.get("has_r") or not (s.get("has_m1") or s.get("has_m2")):
+                    continue
             
             # Material specific filters (using report flags)
             elif s_filter == self.t("f_missing_r") and s.get("has_r"): continue
@@ -2755,6 +2759,14 @@ class MusicBotGUI:
         import copy
         config_snapshot = copy.deepcopy(self.config)
         config_snapshot["project_file"] = getattr(self, 'project_path', '')
+        config_snapshot["global_steps"] = [
+            self.var_run_lyrics.get(), 
+            self.var_run_music.get(),
+            self.var_run_art_prompt.get(),
+            self.var_run_art_image.get(),
+            self.var_run_video.get(),
+            self.var_run_compilation.get()
+        ]
         # ---------------------------------------------------
         
         # Check if the active preset has a custom project file (just in case it's not loaded)
@@ -2871,22 +2883,22 @@ class MusicBotGUI:
             tab = self.tabs.get(profile_name)
             def get_song_steps(sid):
                 if tab:
-                    return tab.song_steps.get(sid) or [
-                        self.var_run_lyrics.get(),
-                        self.var_run_music.get(),
-                        self.var_run_art_prompt.get(),
-                        self.var_run_art_image.get(),
-                        self.var_run_video.get()
-                    ]
-                return [False, False, False, False, False]
+                    return tab.song_steps.get(sid) or conf.get("global_steps", [False, False, False, False, False, False])
+                return conf.get("global_steps", [False, False, False, False, False, False])
 
+            last_progress_time = {}
             def progress_callback(rid, text):
                 if rid == "global":
                     if profile_name in self.active_tasks:
                         self.active_tasks[profile_name]["status"] = text
                     self._update_composite_status()
                 else:
-                    self.root.after(0, lambda: self.update_progress(rid, text, profile_name=profile_name))
+                    now = time.time()
+                    # Force update for final states/emojis or rate-limit progress strings to max 3 FPS (0.3s)
+                    force = any(e in text for e in ["✅", "❌", "🖼️", "🎵", "⚠️"])
+                    if force or (now - last_progress_time.get(rid, 0) > 0.3):
+                        last_progress_time[rid] = now
+                        self.root.after(0, lambda t=text: self.update_progress(rid, t, profile_name=profile_name))
             
             # =================================================================================================
             # DECISION POINT: Batch Mode vs Sequential Mode
@@ -2963,7 +2975,10 @@ class MusicBotGUI:
                 self.scan_materials(profile_name=profile_name) # Refresh status icons for THIS profile
 
             # --- Step 6: Video Merger (Compilation) ---
-            if self.var_run_compilation.get() and not self.stop_requested:
+            global_steps = conf.get("global_steps", [False]*6)
+            run_compilation = global_steps[5] if len(global_steps) > 5 else False
+            
+            if run_compilation and not self.stop_requested:
                 try:
                     logger.info(self.t("log_merge_start"))
                     if profile_name in self.active_tasks:
@@ -3296,9 +3311,9 @@ class MusicBotGUI:
                 self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
 
                 # Determine steps for THIS song
-                s_steps = self.song_steps.get(song_id)
+                s_steps = tab.song_steps.get(song_id)
                 if s_steps is None:
-                    s_steps = [self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]
+                    s_steps = conf.get("global_steps", [False]*6)[:5]
                 while len(s_steps) < 5: s_steps.append(False)
 
                 # Start browser IF NEEDED
@@ -3420,10 +3435,14 @@ class MusicBotGUI:
 
                     # --- Step 5: Video ---
                     if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                        self._prepare_video_task(song_id, output_media, workspace, progress_callback, video_queue=video_queue)
+                        # Optimization: Pre-scan directory once per chunk/song loop
+                        all_output_media_files = []
+                        if os.path.exists(output_media):
+                            all_output_media_files = os.listdir(output_media)
+                        self._prepare_video_task(song_id, output_media, workspace, progress_callback, video_queue=video_queue, all_files=all_output_media_files)
                 except Exception as e:
                     logger.error(f"Error in song {song_id}: {e}")
-                    progress_callback(song_id, "Error! ❌")
+                    progress_callback(song_id, "Hata! ❌")
         finally:
             if common_browser:
                 try: 
@@ -3432,13 +3451,16 @@ class MusicBotGUI:
                 except: pass
             self.active_browser = None
 
-    def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None, video_queue=None):
+    def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None, video_queue=None, all_files=None):
         """Optimized helper to prepare a video task for a single song."""
-        if not os.path.exists(output_media): return
+        if not os.path.exists(output_media): 
+            if progress_callback: progress_callback(song_id, "Medya Klasörü Yok ❌")
+            return
         
-        try:
+        if all_files is None:
             all_files = os.listdir(output_media)
             
+        try:
             all_materials = []
             found_audio = []
             
@@ -3534,10 +3556,15 @@ class MusicBotGUI:
                             "params": v_params
                         })
                     else:
-                        if progress_callback: progress_callback(song_id, "No Image 🖼️")
+                        if progress_callback: progress_callback(song_id, "Malzeme Eksik (Resim Yok) 🖼️")
                         logger.warning(f"No matching image found for {aud_file}")
+            else:
+                 if progress_callback: progress_callback(song_id, "Malzeme Eksik (Ses Yok) 🎵")
+                 logger.warning(f"No matching audio found for song {song_id}")
+                 
         except Exception as e:
             logger.error(f"Error preparing video task for {song_id}: {e}")
+            if progress_callback: progress_callback(song_id, "Hazırlık Hatası ❌")
 
     def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default", video_queue=None):
         """Batch executed flow: Lyrics(All) -> Suno_Batch(All) -> Art(All) -> Video(All)"""
@@ -3547,7 +3574,9 @@ class MusicBotGUI:
         if not tab:
             logger.error(f"Tab for profile {profile_name} not found during batch mode!")
             return
-
+            
+        def get_song_steps(sid):
+            return tab.song_steps.get(sid) or conf.get("global_steps", [False]*6)[:5]
 
         try:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
@@ -3699,8 +3728,11 @@ class MusicBotGUI:
             video_ids = [id for id in target_ids if get_song_steps(id)[4]] # Step 5 enabled
             if video_ids and not self.stop_requested:
                 self.video_render_queue = []
+                all_output_media_files = []
+                if os.path.exists(output_media):
+                    all_output_media_files = os.listdir(output_media)
                 for song_id in video_ids:
-                    self._prepare_video_task(song_id, output_media, workspace, progress_callback)
+                    self._prepare_video_task(song_id, output_media, workspace, progress_callback, all_files=all_output_media_files)
 
         except Exception as e:
             logger.error(f"Batch Mode Error: {e}")
