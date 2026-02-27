@@ -168,14 +168,33 @@ class SunoUIMixin:
                 logger.warning("Advanced Options panel did NOT expand.")
                 return
 
-            # Vocal Gender
+            # Vocal Gender Selection
             if self.vocal_gender != "Default":
-                self.tab.evaluate(f"""(gender) => {{
+                logger.info(f"Setting Vocal Gender to: {self.vocal_gender}")
+                self.tab.evaluate(f"""(targetGender) => {{
                     const btns = Array.from(document.querySelectorAll('button'));
-                    const target = btns.find(b => b.innerText.trim() === gender);
-                    if (target) target.click();
+                    const genderBtns = btns.filter(b => ['Male', 'Female'].includes(b.innerText.trim()) && b.offsetParent !== null);
+                    
+                    const isButtonActive = (btn) => {{
+                        const style = window.getComputedStyle(btn);
+                        const bg = style.backgroundColor;
+                        // Suno active buttons usually have a non-transparent/non-black background
+                        return bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' && !bg.includes('rgba(0, 0, 0,');
+                    }};
+
+                    if (targetGender === "None") {{
+                        // Deactivate any active gender button
+                        genderBtns.forEach(b => {{
+                            if (isButtonActive(b)) b.click();
+                        }});
+                    }} else {{
+                        const targetBtn = genderBtns.find(b => b.innerText.trim() === targetGender);
+                        if (targetBtn && !isButtonActive(targetBtn)) {{
+                            targetBtn.click();
+                        }}
+                    }}
                 }}""", self.vocal_gender)
-                time.sleep(1)
+                time.sleep(1.5)
 
             def set_numeric_value(label_text, target_val):
                 if target_val == "Default" or target_val is None: return

@@ -149,7 +149,6 @@ class BrowserController:
                     user_agent=self.user_agent,
                     args=[
                         "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
                         "--disable-dev-shm-usage",
                         "--no-first-run",
                         "--no-default-browser-check",
@@ -166,6 +165,21 @@ class BrowserController:
                     locale="tr-TR",
                     timezone_id="Europe/Istanbul"
                 )
+
+                # --- UI Cleanup & Stealth Enhancement ---
+                # Hide that annoying 'word word word' bar if it appears
+                self.context.add_init_script("""
+                    setInterval(() => {
+                        const badDivs = Array.from(document.querySelectorAll('div, span, p'));
+                        badDivs.forEach(el => {
+                            if (el.innerText && el.innerText.includes('word word word')) {
+                                el.style.display = 'none';
+                                el.style.visibility = 'hidden';
+                                el.style.height = '0';
+                            }
+                        });
+                    }, 2000);
+                """)
 
                 # Standard Stealth only
                 Stealth().apply_stealth_sync(self.context)
