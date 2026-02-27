@@ -2928,7 +2928,7 @@ class MusicBotGUI:
             # DECISION POINT: Batch Mode vs Sequential Mode
             # =================================================================================================
             # Sequential vs Batch
-            if conf.get("suno_batch_enabled", False):
+            if conf.get("suno_batch_mode", False):
                 self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name, video_queue=video_render_queue)
             else:
                 self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name, video_queue=video_render_queue)

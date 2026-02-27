@@ -146,8 +146,14 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 rows_data = rows_data[:max_count]
 
             processed_count = 0
-            for i, row_dict in enumerate(rows_data): 
-                rid = str(row_dict.get('id', ''))
+            # If batch mode is active in config, we shouldn't be running sequential loop here 
+            # as gui_launcher should have called run_batch directly.
+            # But as a safety measure, let's redirect if needed.
+            if self.config.get("suno_batch_mode", False):
+                logger.info("Redirecting Suno.run() to run_batch() due to config.")
+                return self.run_batch(target_ids=target_ids, progress_callback=progress_callback, force_update=force_update)
+
+            for i, row_dict in enumerate(rows_data):
                 
                 if i > 0:
                     if progress_callback: progress_callback(rid, f"Waiting {self.delay}s...")
@@ -1065,8 +1071,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 logger.info(f"Clicking Create for: {suno_title}")
                 create_btn.click()
                 time.sleep(2) 
-                # Update status in Excel
-                try: self.update_row_status(rid, status="Sıraya Alındı")
+                # Update status in Excel (Corrected to use row_idx)
+                try: self.update_row_status(row.get('_row_idx', rid), status="Sıraya Alındı")
                 except Exception: pass
 
                 # [Requirement 7 + CAPTCHA Alert]

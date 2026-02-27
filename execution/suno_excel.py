@@ -74,7 +74,11 @@ class SunoExcelMixin:
                         col = ws.max_column + 1
                         ws.cell(row=1, column=col, value=key)
                         headers[key] = col
-                    ws.cell(row=row_idx, column=col, value=val)
+                    try:
+                        target_row_idx = int(row_idx)
+                        ws.cell(row=target_row_idx, column=col, value=val)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid row_idx for Excel update: {row_idx}")
 
             temp_path = self.metadata_path + ".tmp"
             wb.save(temp_path)
