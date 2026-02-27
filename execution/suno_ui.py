@@ -280,7 +280,8 @@ class SunoUIMixin:
                         if input_ready:
                             self.tab.keyboard.press(f"{self.mod}+A")
                             time.sleep(0.1)
-                            if self.turbo:
+                            h_enabled = getattr(self.browser, "humanizer_enabled", True)
+                            if self.turbo or not h_enabled:
                                 self.tab.keyboard.type(str(target_val), delay=0)
                             else:
                                 self.tab.keyboard.type(str(target_val), delay=100)

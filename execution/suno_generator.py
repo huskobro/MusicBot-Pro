@@ -832,8 +832,14 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         input_title = title_loc_alt.nth(i); break
 
             def fill_field(el, val):
-                if self.turbo:
-                    el.fill(str(val))
+                if not el or val is None: return
+                h_enabled = getattr(self.browser, "humanizer_enabled", True)
+                if self.turbo or not h_enabled:
+                    try:
+                        el.scroll_into_view_if_needed()
+                        el.fill(str(val))
+                    except Exception:
+                        self.browser.humanizer.type_text(self.tab, el, val)
                 else:
                     try:
                         self.browser.humanizer.type_text(self.tab, el, val)
@@ -964,10 +970,15 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         time.sleep(0.2)
                     except Exception: pass
 
-                    logger.info(f"Filling field with: {str(val)[:20]}...")
-                    self.browser.humanizer.type_text(self.tab, el, val)
+                    h_enabled = getattr(self.browser, "humanizer_enabled", True)
+                    logger.info(f"Filling field (Turbo={self.turbo}, Human={h_enabled}) with: {str(val)[:20]}...")
+                    
+                    if self.turbo or not h_enabled:
+                        el.fill(str(val))
+                    else:
+                        self.browser.humanizer.type_text(self.tab, el, val)
                 except Exception as fe:
-                    logger.warning(f"Humanizer failed: {fe}")
+                    logger.warning(f"Field fill failed: {fe}")
                     try:
                         el.scroll_into_view_if_needed()
                         el.fill(str(val))

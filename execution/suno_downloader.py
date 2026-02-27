@@ -493,7 +493,11 @@ class SunoDownloaderMixin:
                 search_input.fill("")
                 time.sleep(0.3)
 
-                search_input.type(query, delay=0 if self.turbo else 50)
+                h_enabled = getattr(self.browser, "humanizer_enabled", True)
+                if self.turbo or not h_enabled:
+                    search_input.type(query, delay=0)
+                else:
+                    search_input.type(query, delay=random.randint(40, 60))
                 self.tab.keyboard.press("Enter")
 
                 logger.debug(f"Search query '{query}' submitted.")
