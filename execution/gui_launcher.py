@@ -3607,10 +3607,10 @@ class MusicBotGUI:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
             # We use one browser session for everything to avoid startups/shutdowns
             # ---------------- PROFILE LOGIC ----------------
-            profile_name = profile_name.strip().replace(" ", "_")
+            p_disk_name = profile_name.strip().replace(" ", "_")
             
             base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
-            profile_path = os.path.join(base_path, profile_name)
+            profile_path = os.path.join(base_path, p_disk_name)
             # -----------------------------------------------
 
             from browser_controller import BrowserController
