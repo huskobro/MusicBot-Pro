@@ -309,8 +309,10 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             time.sleep(3)
                             self._ensure_v5_active()
                     
+                    # Turbo Delay Override: Use a much shorter delay (3s) if turbo is enabled
+                    batch_delay = 3 if self.turbo else self.delay
                     if i > 0:
-                        time.sleep(self.delay)
+                        time.sleep(batch_delay)
                     
                     self.update_row_status(row_dict['_row_idx'], status="Processing")
                     
@@ -883,8 +885,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
             if create_btn.is_enabled():
                 create_btn.click()
                 time.sleep(1 if self.turbo else 2) 
-                # Update status in Excel
-                try: self.update_row_status(rid, status="Sıraya Alındı")
+                # Update status in Excel (Corrected to use row_idx)
+                try: self.update_row_status(row['_row_idx'], status="Sıraya Alındı")
                 except Exception: pass
 
                 # Wait for clip count increase OR "Generating"
@@ -903,7 +905,8 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         logger.info(f"Batch: Queued {rid}")
                         return True
                     
-                    time.sleep(2)
+                    # Faster polling for Turbo mode
+                    time.sleep(0.5 if self.turbo else 2)
                 
                 return False
             return False
