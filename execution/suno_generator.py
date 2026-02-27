@@ -19,7 +19,7 @@ class UserStoppedException(Exception):
 class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
     def __init__(self, project_file, output_dir="data/output", delay=10, startup_delay=5, browser=None,
                  audio_influence=25, vocal_gender="Default", lyrics_mode="Default", 
-                 weirdness=50, style_influence=50, persona_link="", turbo=False, xlsx_lock=None):
+                 weirdness=50, style_influence=50, persona_link="", turbo=False, xlsx_lock=None, batch_delay=5):
         self.xlsx_lock = xlsx_lock
         self.config = SunoConfig()
         self.project_file = project_file
@@ -32,6 +32,11 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
         except (ValueError, TypeError):
             self.delay = 10
             self.startup_delay = 5
+            
+        try:
+            self.batch_delay = int(batch_delay)
+        except (ValueError, TypeError):
+            self.batch_delay = 5
             
         self.browser = browser or BrowserController()
         self.tab = self.browser.page
@@ -318,10 +323,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                             time.sleep(3)
                             self._ensure_v5_active()
                     
-                    # Turbo Delay Override: Use a much shorter delay (3s) if turbo is enabled
-                    batch_delay = 3 if self.turbo else self.delay
+                    # Use the new configurable batch delay!
                     if i > 0:
-                        time.sleep(batch_delay)
+                        time.sleep(self.batch_delay)
                     
                     self.update_row_status(row_dict['_row_idx'], status="Processing")
                     

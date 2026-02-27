@@ -58,6 +58,7 @@
     "gen_video_prompts": "Generate Video Prompts",
     "automation_delays": "Automation Delays",
     "suno_delay_label": "Suno Gen Delay (s):",
+    "suno_batch_delay_label": "Batch Mode Inter-Song Delay (s):",
     "startup_delay_label": "Browser Startup Delay (s):",
     "lang_reg": "Language & Regional",
     "target_lang_label": "Target Song Language:",

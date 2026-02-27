@@ -351,6 +351,13 @@ class SettingsDialog(tk.Toplevel):
         self.entry_startup.delete(0, tk.END)
         self.entry_startup.insert(0, str(config.get("startup_delay", 5)))
         self.entry_startup.pack(fill="x", pady=2)
+
+        # 3.5 Suno Batch Delay
+        ttk.Label(f_suno, text=self.app.t("suno_batch_delay_label")).pack(anchor="w")
+        self.entry_batch_delay = tk.Spinbox(f_suno, from_=1, to_=60, width=10)
+        self.entry_batch_delay.delete(0, tk.END)
+        self.entry_batch_delay.insert(0, str(config.get("suno_batch_delay", 5)))
+        self.entry_batch_delay.pack(fill="x", pady=2)
         
         # 4. Language
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
@@ -757,6 +764,10 @@ class SettingsDialog(tk.Toplevel):
             if self.entry_startup: settings_snapshot["startup_delay"] = int(self.entry_startup.get())
         except (ValueError, TypeError): settings_snapshot["startup_delay"] = 5
         
+        try:
+            if hasattr(self, 'entry_batch_delay'): settings_snapshot["suno_batch_delay"] = int(self.entry_batch_delay.get())
+        except (ValueError, TypeError): settings_snapshot["suno_batch_delay"] = 5
+        
         if self.combo_lang: settings_snapshot["target_language"] = self.combo_lang.get()
         if self.ent_artist_name: settings_snapshot["artist_name"] = self.ent_artist_name.get()
         if self.ent_artist_style: settings_snapshot["artist_style"] = self.ent_artist_style.get()
@@ -859,6 +870,9 @@ class SettingsDialog(tk.Toplevel):
         if self.entry_startup:
             self.entry_startup.delete(0, tk.END)
             self.entry_startup.insert(0, settings.get("startup_delay", "5"))
+        if hasattr(self, 'entry_batch_delay') and self.entry_batch_delay:
+            self.entry_batch_delay.delete(0, tk.END)
+            self.entry_batch_delay.insert(0, str(settings.get("suno_batch_delay", "5")))
         if self.combo_lang: self.combo_lang.set(settings.get("target_language", "Turkish"))
         
         if self.ent_artist_name:
@@ -1082,6 +1096,7 @@ class SettingsDialog(tk.Toplevel):
             
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
+            if hasattr(self, 'entry_batch_delay'): self.config["suno_batch_delay"] = int(self.entry_batch_delay.get())
             if self.combo_lang: self.config["target_language"] = self.combo_lang.get()
             if self.combo_ui_lang: self.config["ui_language"] = self.combo_ui_lang.get()
             if self.var_log_at_start: self.config["log_open_at_start"] = self.var_log_at_start.get()
@@ -3698,7 +3713,8 @@ class MusicBotGUI:
                     lyrics_mode=l_mode if preset_settings.get("lyrics_mode_enabled") else "Default",
                     persona_link=p_link,
                     turbo=self.var_turbo.get(),
-                    xlsx_lock=self.xlsx_lock
+                    xlsx_lock=self.xlsx_lock,
+                    batch_delay=preset_settings.get("suno_batch_delay", conf.get("suno_batch_delay", 5))
                 )
                 # Use the new Batch Method with OP MODE!
                 op_mode = self.config.get("suno_batch_op_mode", "full")
