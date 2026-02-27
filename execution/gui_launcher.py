@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging IMMEDIATELY to catch all imports and initializations.
@@ -1187,9 +1188,9 @@ class MusicBotGUI:
         self.active_browsers = {} # {profile_name: browser_instance}
         self.xlsx_lock = threading.Lock() # Global lock for Excel writes
         
-        # Tabbed Notebook Management
         self.tabs = {} # {profile_name: TabState}
         self.current_tab = None # Active TabState
+        self._is_loading = False # Thread-safe loading flag
         
         self._search_timer = None
         self._drag_data = {"item": None}
@@ -1275,23 +1276,28 @@ class MusicBotGUI:
         Example: 1051_Title.mp3, Title_1051.mp3, 1051_2.mp3
         """
         if not filename or not song_id: return False
-        fn_lower = filename.lower()
-        sid_lower = str(song_id).lower()
+        
+        # Normalize to NFC (Mac uses NFD, Excel/Source usually NFC)
+        fn_norm = unicodedata.normalize('NFC', filename).lower()
+        sid_norm = unicodedata.normalize('NFC', str(song_id)).strip().lower()
         
         # 1. Direct Match (Exact)
-        name_no_ext = os.path.splitext(fn_lower)[0]
-        if name_no_ext == sid_lower: return True
+        name_no_ext = os.path.splitext(fn_norm)[0]
+        if name_no_ext == sid_norm: return True
         
         # 2. Regex Match (Word boundary or delimiter)
-        pattern = rf"(^|[ _\.\-])({re.escape(sid_lower)})([ _\.\-]|$)"
-        match = re.search(pattern, fn_lower)
+        # Using specific delimiters to avoid false positives with other numbers
+        pattern = rf"(^|[ _\.\-])({re.escape(sid_norm)})([ _\.\-]|$)"
+        match = re.search(pattern, fn_norm)
         
         if not match: return False
         
         # 3. Variant Check (Optional)
         if variant:
-            v_str = str(variant)
-            v_pattern = rf"([ _\.\-]){re.escape(v_str)}($|[ _\.\-])"
+            v_str = unicodedata.normalize('NFC', str(variant)).strip().lower()
+            # Variant is often at the end or delimited. 
+            # We match if variant is a standalone numeric part (e.g. _1, -1, 1., .1)
+            v_pattern = rf"[ _\.\-](variant)?{re.escape(v_str)}($|[ _\.\-])"
             return bool(re.search(v_pattern, name_no_ext))
             
         return True
@@ -1299,12 +1305,12 @@ class MusicBotGUI:
     def _get_materials_report(self, profile_name, project_file, song_ids):
         """
         Optimized $O(N+M)$ scanning to prevent UI freezes.
-        Lists directories once and maps files to song IDs.
-        Returns: {song_id: {"materials": int, "video_exists": bool}}
+        Returns: {song_id: {"materials": int, "video_exists": bool, "has_r": bool, "has_m1": bool, "has_m2": bool}}
         """
-        report = {str(sid): {"materials": 0, "video_exists": False} for sid in song_ids}
+        report = {str(sid): {"materials": 0, "video_exists": False, "has_r": False, "has_m1": False, "has_m2": False} for sid in song_ids}
         if not project_file or not os.path.exists(project_file): return report
 
+        # Fix: Ensure we use the profile_name passed to this method, which is the CORRECT profile directory
         output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
         videos_dir = os.path.join(output_media, "videos")
         
@@ -1318,8 +1324,24 @@ class MusicBotGUI:
                         found_id = id_match.group(2)
                         if found_id in report:
                             ext = f.split(".")[-1]
-                            if ext in ["png", "jpg", "jpeg", "mp3", "wav"]:
-                                report[found_id]["materials"] += 1
+                            name_no_ext = os.path.splitext(f)[0]
+                            if ext in ["png", "jpg", "jpeg"]:
+                                if not report[found_id]["has_r"]:
+                                    report[found_id]["has_r"] = True
+                                    report[found_id]["materials"] += 1
+                            elif ext in ["mp3", "wav"]:
+                                if "_1" in f or "variant1" in f:
+                                    if not report[found_id]["has_m1"]:
+                                        report[found_id]["has_m1"] = True
+                                        report[found_id]["materials"] += 1
+                                elif "_2" in f or "variant2" in f:
+                                    if not report[found_id]["has_m2"]:
+                                        report[found_id]["has_m2"] = True
+                                        report[found_id]["materials"] += 1
+                                elif name_no_ext == found_id:
+                                    if not report[found_id]["has_m1"]:
+                                        report[found_id]["has_m1"] = True
+                                        report[found_id]["materials"] += 1
             except Exception as e:
                 logger.error(f"Error scanning media: {e}")
 
@@ -1472,8 +1494,7 @@ class MusicBotGUI:
         self.notebook.pack(fill="both", expand=True)
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         
-        # The Treeview setup logic is moved to _get_or_create_tab
-        # Initial call to ensure at least one tab (the active one)
+        # Initial call to load data (moved to after everything is ready)
         self.root.after(100, self.load_project_data)
 
         # --- STATUS & CONTROL (CLEAN UI) ---
@@ -1565,8 +1586,7 @@ class MusicBotGUI:
         self.all_songs = {} 
         self.filtered_ids = []
         
-        # Initial Load
-        self.load_project_data() # Load last project or show no project
+        # Initial load is handled via root.after in setup
         
         # Handle log visibility at startup
         if self.config.get("log_open_at_start", False):
@@ -1656,23 +1676,24 @@ class MusicBotGUI:
         except Exception as e:
             logger.error(f"Failed to save settings: {e}")
 
-    def update_progress(self, rid, text):
-        """Updates the progress text for a specific row ID."""
-        if self.tree.exists(rid):
-            # If text is something like 'Suno: Generating 20%', we can extract info
+    def update_progress(self, rid, text, profile_name="Default"):
+        """Updates the progress text for a specific row ID in a specific tab."""
+        tab = self.tabs.get(profile_name)
+        if not tab: return
+        
+        if tab.tree.exists(rid):
             # Update the main progress column
-            self.tree.set(rid, "progress", text)
+            tab.tree.set(rid, "progress", text)
             
             # Check for Download Status keywords
             text_lower = text.lower()
             if any(k in text_lower for k in ["iniyor", "indiriliyor"]):
-                self.tree.set(rid, "dl_status", "⏳")
+                tab.tree.set(rid, "dl_status", "⏳")
             elif any(k in text_lower for k in ["indirildi", "downloaded"]):
-                self.tree.set(rid, "dl_status", "✅")
+                tab.tree.set(rid, "dl_status", "✅")
             elif any(k in text_lower for k in ["indirilemedi", "hata", "başarısız", "failed", "bulunamadı"]):
-                # Only set error if it's specifically a download-related error during batch
                 if "hata" in text_lower or "indirilemedi" in text_lower or "bulunamadı" in text_lower:
-                    self.tree.set(rid, "dl_status", "❌")
+                    tab.tree.set(rid, "dl_status", "❌")
             
             # If it's a completion mark, we might want to refresh the bar
             if "✅" in text or "Done" in text:
@@ -1767,14 +1788,16 @@ class MusicBotGUI:
             messagebox.showwarning(self.t("warning"), self.t("msg_load_first"))
 
     def _refresh_all(self):
-        """Full refresh: reload Excel data + scan filesystem for materials."""
-        self.load_project_data()
+        """Full refresh: reload Excel data + scan filesystem for materials for the current tab."""
+        tab = self.current_tab
+        if not tab: return
+        self.load_project_data(profile_name=tab.profile_name)
         self.scan_materials()
         self.apply_filter()
 
-    def load_project_data(self, file_path=None):
-        """Loads Excel data into the active tab in a background thread."""
-        active_profile = self.config.get("active_preset", "Default")
+    def load_project_data(self, file_path=None, profile_name=None):
+        """Loads Excel data into the specified or active tab in a background thread."""
+        active_profile = profile_name if profile_name else self.config.get("active_preset", "Default")
         tab = self._get_or_create_tab(active_profile)
         self.current_tab = tab
         
@@ -1801,6 +1824,11 @@ class MusicBotGUI:
             self.status_var.set(self.t("ready"))
             return
 
+        if self._is_loading:
+            logger.warning("Load already in progress. Skipping.")
+            return
+            
+        self._is_loading = True
         tab.project_file = file_path
         self.project_path = file_path
         self.config["last_project"] = file_path
@@ -1852,22 +1880,42 @@ class MusicBotGUI:
                 stat_idx = headers.get('status')
                 status_val = str(row[stat_idx]) if stat_idx is not None and stat_idx < len(row) and row[stat_idx] else ""
                 
+                # Look up robust indices
+                t_idx = headers.get('title') or headers.get('başlık / prompt') or headers.get('başlık') or headers.get('baslik') or 1
+                p_idx = headers.get('prompt') or headers.get('lyrics_master_prompt') or headers.get('lyrics') or None
+                s_idx = headers.get('style') or headers.get('tarz (style)') or headers.get('tarz') or 2
+                ss_idx = headers.get('suno_style') or None
+                
+                # Fetch values
+                t_val = str(row[t_idx]).replace('\n', ' ').strip() if t_idx < len(row) and row[t_idx] is not None else ""
+                p_val = str(row[p_idx]).replace('\n', ' ').strip() if p_idx is not None and p_idx < len(row) and row[p_idx] is not None else ""
+                s_val = str(row[s_idx]).replace('\n', ' ').strip() if s_idx < len(row) and row[s_idx] is not None else ""
+                ss_val = str(row[ss_idx]).replace('\n', ' ').strip() if ss_idx is not None and ss_idx < len(row) and row[ss_idx] is not None else ""
+                
+                # Apply fallback logic
+                title_val = t_val if t_val else (p_val if p_val else "-")
+                style_val = s_val if s_val else (ss_val if ss_val else "-")
+                
                 new_all_songs[rid] = rid
                 new_all_songs_data[rid] = {
-                    "title": row[headers.get('title', 1)] if headers.get('title', 1) < len(row) else "-",
-                    "style": row[headers.get('style', 2)] if headers.get('style', 2) < len(row) else "-",
+                    "title": title_val,
+                    "style": style_val,
                     "status": status_val,
                     "lyrics": (lyrics_col is not None and lyrics_col < len(row) and row[lyrics_col]),
                     "music": (headers.get('music_url_1') is not None and headers.get('music_url_1') < len(row) and row[headers.get('music_url_1')]),
                     "art": (headers.get('cover_art_path') is not None and headers.get('cover_art_path') < len(row) and row[headers.get('cover_art_path')]),
                     "video": (headers.get('video_path') is not None and headers.get('video_path') < len(row) and row[headers.get('video_path')]),
-                    "video_exists": rep["video_exists"],
+                    "video_exists": rep.get("video_exists", False),
                     "dl_status": str(row[headers.get('dl_status')]) if headers.get('dl_status') is not None and headers.get('dl_status') < len(row) else "",
                     "material_status": f"📦 {rep['materials']}" if rep["materials"] > 0 else "-",
                     # Pre-check flags (O(1) lookup during start)
                     "has_lyrics": bool(lyrics_col is not None and lyrics_col < len(row) and row[lyrics_col] and str(row[lyrics_col]).strip()),
                     "has_visual": bool(visual_col is not None and visual_col < len(row) and row[visual_col] and str(row[visual_col]).strip()),
-                    "has_video_prompt": bool(video_col is not None and video_col < len(row) and row[video_col] and str(row[video_col]).strip())
+                    "has_video_prompt": bool(video_col is not None and video_col < len(row) and row[video_col] and str(row[video_col]).strip()),
+                    # Material flags
+                    "has_r": rep.get("has_r", False),
+                    "has_m1": rep.get("has_m1", False),
+                    "has_m2": rep.get("has_m2", False)
                 }
                 
                 # Default Phase Selection
@@ -1892,11 +1940,13 @@ class MusicBotGUI:
                 
                 self.apply_filter()
                 self.status_var.set(self.t("ready"))
+                self._is_loading = False
                 logger.info(f"Loaded {len(tab.all_songs_data)} songs into tab: {active_profile}")
 
             self.root.after(0, _finalize_ui)
             
         except Exception as e:
+            self._is_loading = False
             logger.error(f"Failed to load project: {e}", exc_info=True)
             self.root.after(0, lambda: self.status_var.set(f"Error: {e}"))
 
@@ -2036,19 +2086,22 @@ class MusicBotGUI:
         self.tabs[profile_name] = tab_state
         return tab_state
 
-    def scan_materials(self):
+    def scan_materials(self, profile_name=None):
         """Scans filesystem to detect material presence and existing videos. Updates internal cache in a background thread."""
-        tab = self.current_tab
+        active_profile = profile_name if profile_name else (self.current_tab.profile_name if self.current_tab else None)
+        if not active_profile: return
+        
+        tab = self.tabs.get(active_profile)
         if not tab or not tab.project_file: return
         
-        profile_name = tab.profile_name
         project_file = tab.project_file
         song_ids = list(tab.all_songs_data.keys())
         if not song_ids: return
 
         def _scan_worker():
             try:
-                report = self._get_materials_report(profile_name, project_file, song_ids)
+                # Fix: Use active_profile instead of profile_name to avoid NoneType join error
+                report = self._get_materials_report(active_profile, project_file, song_ids)
                 
                 def _update_ui():
                     changed = False
@@ -2057,10 +2110,18 @@ class MusicBotGUI:
                             new_m = f"📦 {data['materials']}" if data['materials'] > 0 else "-"
                             new_v = data["video_exists"]
                             
+                            # Update granular material flags too
                             if tab.all_songs_data[rid].get("material_status") != new_m or \
-                               tab.all_songs_data[rid].get("video_exists") != new_v:
+                               tab.all_songs_data[rid].get("video_exists") != new_v or \
+                               tab.all_songs_data[rid].get("has_r") != data.get("has_r") or \
+                               tab.all_songs_data[rid].get("has_m1") != data.get("has_m1") or \
+                               tab.all_songs_data[rid].get("has_m2") != data.get("has_m2"):
+                               
                                 tab.all_songs_data[rid]["material_status"] = new_m
                                 tab.all_songs_data[rid]["video_exists"] = new_v
+                                tab.all_songs_data[rid]["has_r"] = data.get("has_r", False)
+                                tab.all_songs_data[rid]["has_m1"] = data.get("has_m1", False)
+                                tab.all_songs_data[rid]["has_m2"] = data.get("has_m2", False)
                                 changed = True
                     
                     if changed:
@@ -2153,20 +2214,32 @@ class MusicBotGUI:
             return f"{bar} {int(percent)}%"
         except Exception: return "▱▱▱▱▱▱▱▱▱▱ 0%"
 
-    def apply_filter(self):
-        """Debounced filter call."""
+    def apply_filter(self, *args, profile_name=None):
+        """Debounced filter call. If profile_name is None, uses current_tab."""
         if hasattr(self, '_filter_after_id'):
             self.root.after_cancel(self._filter_after_id)
-        self._filter_after_id = self.root.after(300, self._do_filter)
+        # Pass profile_name through after
+        self._filter_after_id = self.root.after(300, lambda: self._do_filter(profile_name=profile_name))
             
-    def _do_filter(self):
-        tab = self.current_tab
+    def _do_filter(self, profile_name=None):
+        tab = self.tabs.get(profile_name) if profile_name else self.current_tab
         if not tab: return
         
-        query = tab.filter_var.get().strip()
+        # If refreshing current tab, sync with global UI. If other tab, use its stored state.
+        if tab == (self.current_tab if hasattr(self, "current_tab") else None):
+            query = self.filter_var.get().strip()
+            active_only = self.var_active_only.get()
+            s_filter = self.status_filter_var.get()
+            # Save to tab for background use
+            tab.filter_var.set(query)
+            tab.active_only_var.set(active_only)
+            tab.status_filter_var.set(s_filter)
+        else:
+            query = tab.filter_var.get().strip()
+            active_only = tab.active_only_var.get()
+            s_filter = tab.status_filter_var.get()
+        
         query_lower = query.lower()
-        active_only = tab.active_only_var.get()
-        s_filter = tab.status_filter_var.get()
         
         # --- ID RANGE DETECTION ---
         id_range_min = None
@@ -2206,9 +2279,19 @@ class MusicBotGUI:
 
             # 3. Status Filter
             done_cnt = sum([1 for k in ["lyrics", "music", "art"] if s.get(k)])
-            if s_filter == self.t("f_done") and done_cnt < 3: continue
-            elif s_filter == self.t("f_pending") and done_cnt == 3: continue
-            # ... (more s_filter checks can be added here)
+            video_done = s.get("video") or s.get("video_exists")
+
+            if s_filter == self.t("f_done") and (done_cnt < 3 or not video_done): continue
+            elif s_filter == self.t("f_pending") and (done_cnt == 3 and video_done): continue
+            elif s_filter == self.t("f_no_lyrics") and s.get("lyrics"): continue
+            elif s_filter == self.t("f_no_music") and s.get("music"): continue
+            elif s_filter == self.t("f_no_art") and s.get("art"): continue
+            elif s_filter == self.t("f_no_video") and video_done: continue
+            
+            # Material specific filters (using report flags)
+            elif s_filter == self.t("f_missing_r") and s.get("has_r"): continue
+            elif s_filter == self.t("f_missing_m1") and s.get("has_m1"): continue
+            elif s_filter == self.t("f_missing_m2") and s.get("has_m2"): continue
 
             # Symbols
             s_lyrics = "✅" if s.get("lyrics") else "⚪"
@@ -2616,26 +2699,30 @@ class MusicBotGUI:
 
         # --- GLOBAL YARIM AUTO-SCAN (POST-SORT) ---
         yarim_ids = []
-        for rid, sdata in tab.all_songs_data.items():
-            if str(sdata.get("status", "")).upper() == "YARIM" and rid not in target_ids:
-                yarim_ids.append(rid)
-                
-                # Ensure the GUI's "Lyrics" step is forcefully enabled for this appended item
-                s_steps = self.song_steps.get(rid)
-                if s_steps is None:
-                    s_steps = [
-                        self.var_run_lyrics.get(),
-                        self.var_run_music.get(),
-                        self.var_run_art_prompt.get(),
-                        self.var_run_art_image.get(),
-                        self.var_run_video.get()
-                    ]
-                s_steps[0] = True # Force Lyrics Generation
-                self.song_steps[rid] = s_steps
-        
         if yarim_ids:
             logger.info(f"Auto-Retry: Found {len(yarim_ids)} YARIM items. Appending to the end of target list with Lyrics phase forced ON.")
             target_ids.extend(yarim_ids)
+            
+        # --- Update song_steps for ALL target items from CURRENT dashboard state ---
+        # This ensures that global checkbox changes are applied to selected items
+        current_global_steps = [
+            self.var_run_lyrics.get(),
+            self.var_run_music.get(),
+            self.var_run_art_prompt.get(),
+            self.var_run_art_image.get(),
+            self.var_run_video.get()
+        ]
+        for rid in target_ids:
+            # For YARIM items, we already set s_steps[0]=True above, but let's be safe
+            if rid in yarim_ids:
+                steps = list(current_global_steps)
+                steps[0] = True
+                tab.song_steps[rid] = steps
+            else:
+                tab.song_steps[rid] = list(current_global_steps)
+        
+        # Sync global copy
+        self.song_steps.update(tab.song_steps)
 
         # --- Evaluate Re-generation (Main Thread) ---
         force_update = False
@@ -2755,7 +2842,8 @@ class MusicBotGUI:
             "total": total_songs,
             "current": 0
         }
-        self.video_render_queue = [] # Fixed: Always initialize at start
+        # Local video queue for this run instance
+        video_render_queue = []
         
         # Use snapshotted config if provided, fallback to live
         conf = snapshot_config if snapshot_config is not None else self.config
@@ -2780,38 +2868,54 @@ class MusicBotGUI:
             output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
             if not os.path.exists(output_media): os.makedirs(output_media, exist_ok=True)
             
+            tab = self.tabs.get(profile_name)
+            def get_song_steps(sid):
+                if tab:
+                    return tab.song_steps.get(sid) or [
+                        self.var_run_lyrics.get(),
+                        self.var_run_music.get(),
+                        self.var_run_art_prompt.get(),
+                        self.var_run_art_image.get(),
+                        self.var_run_video.get()
+                    ]
+                return [False, False, False, False, False]
+
             def progress_callback(rid, text):
                 if rid == "global":
                     if profile_name in self.active_tasks:
                         self.active_tasks[profile_name]["status"] = text
                     self._update_composite_status()
                 else:
-                    self.root.after(0, lambda: self.update_progress(rid, text))
+                    self.root.after(0, lambda: self.update_progress(rid, text, profile_name=profile_name))
             
             # =================================================================================================
             # DECISION POINT: Batch Mode vs Sequential Mode
             # =================================================================================================
             # Sequential vs Batch
             if conf.get("suno_batch_enabled", False):
-                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name)
+                self._run_process_batch_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name, video_queue=video_render_queue)
             else:
-                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name)
+                self._run_process_sequential_mode(target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=conf, profile_name=profile_name, video_queue=video_render_queue)
 
-            # Success cleanup
+            # Success cleanup (for non-video steps)
             if profile_name in self.active_tasks:
-                del self.active_tasks[profile_name]
+                self.active_tasks[profile_name]["status"] = self.t("ready")
             self._update_composite_status()
 
-            logger.info(f"Process for '{profile_name}' finished in {time.time()-start_time:.1f}s")
-            self.root.after(0, self.enable_buttons)
-            self.root.after(0, lambda: messagebox.showinfo(self.t("msg_done_title"), self.t("msg_done_info")))
+            logger.info(f"Main steps for '{profile_name}' finished in {time.time()-start_time:.1f}s")
+            
+            # If ONLY video was selected and queue is empty, inform user
+            only_video = all(not get_song_steps(sid)[0] and not get_song_steps(sid)[1] and not get_song_steps(sid)[2] and not get_song_steps(sid)[3] and get_song_steps(sid)[4] for sid in target_ids)
+            if only_video and not video_render_queue:
+                 self.root.after(0, lambda: messagebox.showwarning(self.t("warning"), self.t("msg_no_materials") if hasattr(self, "t") else "No materials found for video rendering!"))
+                 return
 
             # --- Phase 2: Parallel Video Rendering ---
-            if hasattr(self, "video_render_queue") and self.video_render_queue and not self.stop_requested:
+            if video_render_queue and not self.stop_requested:
                 parallel_count = int(self.config.get("video_parallel_count", 1))
-                logger.info(f"Starting Parallel Video Rendering: {len(self.video_render_queue)} tasks, pool size: {parallel_count}")
+                logger.info(f"Starting Parallel Video Rendering: {len(video_render_queue)} tasks, pool size: {parallel_count}")
                 if profile_name in self.active_tasks:
-                    self.active_tasks[profile_name]["status"] = f"Rendering {len(self.video_render_queue)} Videos ({parallel_count} parallel)..."
+                    self.active_tasks[profile_name]["status"] = f"Rendering {len(video_render_queue)} Videos ({parallel_count} parallel)..."
                 self._update_composite_status()
                 
                 from video_generator import VideoGenerator
@@ -2853,10 +2957,10 @@ class MusicBotGUI:
 
                 # Run pool
                 with ThreadPoolExecutor(max_workers=parallel_count) as pool:
-                    pool.map(run_parallel_task, self.video_render_queue)
+                    pool.map(run_parallel_task, video_render_queue)
                 
                 logger.info("Parallel Video Rendering Phase Completed.")
-                self.scan_materials() # Refresh status icons
+                self.scan_materials(profile_name=profile_name) # Refresh status icons for THIS profile
 
             # --- Step 6: Video Merger (Compilation) ---
             if self.var_run_compilation.get() and not self.stop_requested:
@@ -2891,8 +2995,6 @@ class MusicBotGUI:
 
             self.root.after(0, lambda: self.current_song_var.set(""))
             self.play_chime()
-            self.root.after(0, lambda: messagebox.showinfo(self.t("msg_done_title"), self.t("msg_done_info")))
-            self.root.after(0, self.load_project_data) # Refresh UI
 
         except Exception as e:
             err_msg = str(e)
@@ -2922,12 +3024,16 @@ class MusicBotGUI:
             self._update_composite_status()
             
             if not self.active_tasks:
-                self.enable_buttons()
+                self.enable_buttons(profile_name=profile_name)
                 logger.info(f"🏁 ALL BACKGROUND TASKS COMPLETED.")
+                
+                # Show completion message safely after thread exits to avoid macOS Tkinter freeze
+                def _show_done():
+                    messagebox.showinfo(self.t("msg_done_title"), self.t("msg_done_info"))
+                self.root.after(200, _show_done)
             else:
+                self._refresh_all_tab(profile_name)
                 logger.info(f"✔️ Task for '{profile_name}' finished. Remaining: {list(self.active_tasks.keys())}")
-            
-            self.root.after(0, self.load_data)
 
     def _start_status_ticker(self):
         """Start a periodic update for the status bar to show live elapsed time."""
@@ -3141,22 +3247,41 @@ class MusicBotGUI:
         self.btn_stop.config(state="normal")
         # Keep tabs and settings enabled for background work
 
-    def enable_buttons(self):
+    def enable_buttons(self, profile_name=None):
         self.stop_requested = False  # Reset flag so engine can restart
         self.root.after(0, lambda: self.btn_run.config(state="normal"))
         self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
         self.root.after(0, lambda: self.status_var.set(self.t("ready")))
         self.root.after(0, lambda: self.set_badge(self.t("badge_idle"), "#888888"))
-        self.root.after(0, self._refresh_all)  # Auto refresh with full data + materials scan
+        
+        if profile_name:
+            self.root.after(0, lambda: self._refresh_all_tab(profile_name))
+        else:
+            self.root.after(0, self._refresh_all)
 
-    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default"):
+    def _refresh_all_tab(self, profile_name):
+        """Helper to refresh a specific tab from background thread."""
+        tab = self.tabs.get(profile_name)
+        if tab:
+            # We must be careful not to switch current_tab if we just want to update data
+            # But load_project_data might need to know which tab to fill
+            self.load_project_data(profile_name=profile_name)
+            self.scan_materials(profile_name=profile_name)
+            self.apply_filter(profile_name=profile_name)
+
+    def _run_process_sequential_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default", video_queue=None):
         """Process each song 1-by-1 through all selected steps with a persistent browser."""
         total_songs = len(target_ids)
-        self.video_render_queue = []
+        # Using local video_queue passed from run_process
         conf = snapshot_config if snapshot_config is not None else self.config
         global_human = conf.get("humanizer_enabled", True)
 
         common_browser = None
+        tab = self.tabs.get(profile_name)
+        if not tab:
+            logger.error(f"Tab for profile {profile_name} not found!")
+            return
+
         try:
             for idx, song_id in enumerate(target_ids):
                 if self.stop_requested: break
@@ -3164,8 +3289,8 @@ class MusicBotGUI:
                 if profile_name in self.active_tasks:
                     self.active_tasks[profile_name]["current"] = idx + 1
                 
-                song_data = self.all_songs.get(song_id, {})
-                title = song_data.get("title", "Unknown")
+                song_data = tab.all_songs_data.get(song_id, {})
+                title = str(song_data.get("title") or "Unknown")
                 title_short = title[:50] + ".." if len(title) > 50 else title
                 self.root.after(0, lambda id=song_id, t=title_short: self.current_song_var.set(f"{self.t('working_on')} {id} ({t})"))
                 self.root.after(0, lambda: self.set_badge(self.t("badge_active"), "#00aa00"))
@@ -3193,6 +3318,16 @@ class MusicBotGUI:
                 try:
                     # --- Step 1: Lyrics & Gemini ---
                     if s_steps[0] and not self.stop_requested and common_browser:
+                        # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
+                        artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                        preset_prompts = artist_preset.get("prompts", {})
+                        m_prompts = {
+                            "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
+                            "visual_master_prompt": preset_prompts.get("visual_master_prompt"),
+                            "video_master_prompt": preset_prompts.get("video_master_prompt"),
+                            "art_master_prompt": preset_prompts.get("art_master_prompt")
+                        }
+                        
                         common_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
                         from gemini_prompter import GeminiPrompter
                         gemini = GeminiPrompter(
@@ -3203,32 +3338,89 @@ class MusicBotGUI:
                             generate_video=s_steps[4] if len(s_steps) > 4 else False, 
                             language=conf.get("target_language", "Turkish"), 
                             chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")), 
-                            xlsx_lock=self.xlsx_lock
+                            xlsx_lock=self.xlsx_lock,
+                            master_prompts=m_prompts
                         )
                         gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 2: Music ---
                     if s_steps[1] and not self.stop_requested and common_browser:
                         common_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
+                        
+                        # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
+                        artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                        preset_settings = artist_preset.get("settings", {})
+                        p_link = preset_settings.get("suno_active_persona", "") if preset_settings.get("suno_persona_link_enabled") else ""
+                        if not p_link:
+                            # Fallback if using old structure
+                            p_link = preset_settings.get("persona_link", "")
+
+                        v_gender = preset_settings.get("vocal_gender", "Default")
+                        a_infl = preset_settings.get("audio_influence", 25)
+                        wrd = preset_settings.get("weirdness", 50)
+                        s_infl = preset_settings.get("style_influence", 50)
+                        l_mode = preset_settings.get("lyrics_mode", "Default")
+                        
                         from suno_generator import SunoGenerator
-                        suno = SunoGenerator(project_file=project_file, output_dir=output_media, delay=conf.get("suno_delay", 15), browser=common_browser, xlsx_lock=self.xlsx_lock)
+                        suno = SunoGenerator(
+                            project_file=project_file, 
+                            output_dir=output_media, 
+                            delay=conf.get("suno_delay", 15), 
+                            browser=common_browser, 
+                            xlsx_lock=self.xlsx_lock,
+                            persona_link=p_link,
+                            vocal_gender=v_gender,
+                            audio_influence=a_infl,
+                            weirdness=wrd,
+                            style_influence=s_infl,
+                            lyrics_mode=l_mode
+                        )
                         suno.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 3: Art Proxies ---
                     if s_steps[2] and not s_steps[0] and common_browser:
+                        # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
+                        artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                        preset_prompts = artist_preset.get("prompts", {})
+                        m_prompts = {
+                            "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
+                            "visual_master_prompt": preset_prompts.get("visual_master_prompt"),
+                            "video_master_prompt": preset_prompts.get("video_master_prompt"),
+                            "art_master_prompt": preset_prompts.get("art_master_prompt")
+                        }
+                        
                         from gemini_prompter import GeminiPrompter
-                        ga = GeminiPrompter(project_file=project_file, browser=common_browser, xlsx_lock=self.xlsx_lock)
+                        ga = GeminiPrompter(
+                            project_file=project_file, 
+                            browser=common_browser, 
+                            xlsx_lock=self.xlsx_lock,
+                            master_prompts=m_prompts
+                        )
                         ga.generate_art_prompts(target_ids=[song_id], progress_callback=progress_callback)
                     
                     # --- Step 4: Art Images ---
                     if s_steps[3] and not self.stop_requested:
+                        # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
+                        artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                        preset_prompts = artist_preset.get("prompts", {})
+                        m_prompts = {
+                            "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
+                            "visual_master_prompt": preset_prompts.get("visual_master_prompt"),
+                            "video_master_prompt": preset_prompts.get("video_master_prompt"),
+                            "art_master_prompt": preset_prompts.get("art_master_prompt")
+                        }
+                        
                         from gemini_prompter import GeminiPrompter
-                        gi = GeminiPrompter(project_file=project_file, xlsx_lock=self.xlsx_lock)
+                        gi = GeminiPrompter(
+                            project_file=project_file, 
+                            xlsx_lock=self.xlsx_lock,
+                            master_prompts=m_prompts
+                        )
                         gi.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
 
                     # --- Step 5: Video ---
                     if len(s_steps) > 4 and s_steps[4] and not self.stop_requested:
-                        self._prepare_video_task(song_id, output_media, workspace, progress_callback)
+                        self._prepare_video_task(song_id, output_media, workspace, progress_callback, video_queue=video_queue)
                 except Exception as e:
                     logger.error(f"Error in song {song_id}: {e}")
                     progress_callback(song_id, "Error! ❌")
@@ -3240,14 +3432,18 @@ class MusicBotGUI:
                 except: pass
             self.active_browser = None
 
-    def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None):
-        """Helper to prepare a video task for a single song and add it to self.video_render_queue."""
-        found_audio = []
-        all_materials = [] # Track all found for not_used
+    def _prepare_video_task(self, song_id, output_media, workspace, progress_callback=None, video_queue=None):
+        """Optimized helper to prepare a video task for a single song."""
+        if not os.path.exists(output_media): return
+        
         try:
+            all_files = os.listdir(output_media)
+            
+            all_materials = []
+            found_audio = []
+            
             # Selection logic: _1, _2 or Both
             selection_mode = self.config.get("video_selection_mode", "Both")
-            # Map localization to internal suffixes
             suffix_map = {
                 self.t("v_mode_1"): "_1",
                 self.t("v_mode_2"): "_2",
@@ -3255,129 +3451,103 @@ class MusicBotGUI:
                 "Only _2": "_2"
             }
             target_suffix = suffix_map.get(selection_mode)
+            variant_filter = target_suffix.replace("_", "") if target_suffix else None
+            
+            common_id_suffix = None
+            if variant_filter:
+                # If we have a variant filter (1 or 2), try matching _1 or _2 explicitly
+                common_id_suffix = f"_{variant_filter}"
 
-            for f in os.listdir(output_media):
+            for f in all_files:
                 f_l = f.lower()
                 if self._is_id_match(f_l, song_id):
                     if f_l.endswith((".mp3", ".wav", ".png", ".jpg", ".jpeg")):
                         all_materials.append(f)
-                        
-                if self._is_id_match(f_l, song_id) and f_l.endswith((".mp3", ".wav")):
-                    # Filter by selection mode if applicable
-                    is_match = False
-                    if not target_suffix:
-                        is_match = True
-                    else:
-                        variant = target_suffix.replace("_", "")
-                        if self._is_id_match(f_l, song_id, variant=variant):
-                            is_match = True
-                            
-                    if is_match:
-                        found_audio.append(f)
-            
-            # Robust fallback for exact ID.mp3
-            if os.path.exists(os.path.join(output_media, f"{song_id}.mp3")):
-                if not target_suffix:
-                    found_audio.append(f"{song_id}.mp3")
-        except Exception: pass
-        found_audio = sorted(list(set(found_audio)))
-        used_in_tasks = []
-
-        if found_audio:
-            v_params = {
-                "effect_types": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
-                "fps": int(self.config.get("video_fps", 30)),
-                "resolution": self.config.get("video_resolution", self.t("video_res_shorts")),
-                "intensity": int(self.config.get("video_intensity", 1.0) * 50) # Scale 1.0 to 50
-            }
-            
-            for aud_file in found_audio:
-                if self.stop_requested: break
-                aud_full_path = os.path.join(output_media, aud_file)
-                aud_base = os.path.splitext(aud_file)[0]
-                parts = aud_base.split("_")
-                seq_name = None
-                if len(parts) >= 2:
-                    last_part = parts[-1]
-                    if last_part.isdigit():
-                        seq_name = f"{song_id}_{last_part}"
-
-                if not hasattr(self, "video_render_queue"): self.video_render_queue = []
-
-                # Find matching image logic duplicated from sequential... 
-                # To save space, we assume it's same logic.
-                img_path = None
-                search_dirs = []
-                assets_folder = self.config.get("video_assets_path")
-                if assets_folder and os.path.exists(assets_folder):
-                    search_dirs.append(assets_folder)
-                search_dirs.append(output_media) 
-                
-                for s_dir in search_dirs:
-                    if not os.path.exists(s_dir): continue
                     
-                    # SCAN directory for ANY image matching this ID/AudBase
-                    for f in os.listdir(s_dir):
+                    if f_l.endswith((".mp3", ".wav")):
+                        if not variant_filter or self._is_id_match(f_l, song_id, variant=variant_filter):
+                            found_audio.append(f)
+
+            found_audio = sorted(list(set(found_audio)))
+            
+            if found_audio:
+                v_params = {
+                    "effect_types": self.config.get("video_effects", [self.config.get("video_effect", "None")]),
+                    "fps": int(self.config.get("video_fps", 30)),
+                    "resolution": self.config.get("video_resolution", self.t("video_res_shorts")),
+                    "intensity": int(self.config.get("video_intensity", 1.0) * 50)
+                }
+                
+                for aud_file in found_audio:
+                    if self.stop_requested: break
+                    aud_full_path = os.path.join(output_media, aud_file)
+                    aud_base = os.path.splitext(aud_file)[0]
+                    
+                    if not hasattr(self, "video_render_queue"): self.video_render_queue = []
+
+                    # Find matching image logic 
+                    img_path = None
+                    assets_folder = self.config.get("video_assets_path")
+                    
+                    # Extract variant from audio file name
+                    aud_variant = None
+                    if "_1" in aud_file.lower() or "variant1" in aud_file.lower(): aud_variant = "1"
+                    elif "_2" in aud_file.lower() or "variant2" in aud_file.lower(): aud_variant = "2"
+
+                    # 1. Search in output_media
+                    for f in all_files:
                         f_l = f.lower()
-                        if not f_l.endswith((".png", ".jpg", ".jpeg")): continue
-                        
-                        # 1. Try exact AudBase match (e.g., ID_Title.png matching ID_Title.mp3)
-                        # We extract the variant from the audio if exists
-                        aud_variant = None
-                        if "_1" in aud_base.lower(): aud_variant = "1"
-                        elif "_2" in aud_base.lower(): aud_variant = "2"
-                        
-                        # Match logic
-                        if self._is_id_match(f_l, song_id, variant=aud_variant):
-                            img_path = os.path.join(s_dir, f); break
-                        
-                        # Fallback to general ID match
-                        if self._is_id_match(f_l, song_id):
-                            img_path = os.path.join(s_dir, f); break
-                            
-                    if img_path: break
-                
-                if img_path:
-                    video_out_dir = os.path.join(output_media, "videos")
-                    if self.config.get("video_output_mode") == "custom":
-                        video_out_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
-                    if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
+                        if f_l.endswith((".png", ".jpg", ".jpeg")) and self._is_id_match(f_l, song_id, variant=aud_variant):
+                            img_path = os.path.join(output_media, f); break
                     
-                    self.video_render_queue.append({
-                        "rid": song_id,
-                        "audio_path": aud_full_path,
-                        "image_path": img_path,
-                        "output_dir": video_out_dir,
-                        "profile_dir": output_media,
-                        "output_filename": f"{aud_base}.mp4",
-                        "params": v_params
-                    })
-                    used_in_tasks.append(aud_file)
-                    used_in_tasks.append(os.path.basename(img_path))
-        
-        # Move Unused
-        try:
-            not_used_dir = os.path.join(output_media, "not_used")
-            for mat in all_materials:
-                if mat not in used_in_tasks:
-                    if not os.path.exists(not_used_dir): os.makedirs(not_used_dir, exist_ok=True)
-                    shutil.move(os.path.join(output_media, mat), os.path.join(not_used_dir, mat))
-        except Exception as ne:
-             logger.warning(f"Failed to move unused materials for {song_id}: {ne}")
+                    # 2. Fallback
+                    if not img_path:
+                        for f in all_files:
+                            f_l = f.lower()
+                            if f_l.endswith((".png", ".jpg", ".jpeg")) and self._is_id_match(f_l, song_id):
+                                img_path = os.path.join(output_media, f); break
+                                
+                    # 3. Assets Fallback
+                    if not img_path and assets_folder and os.path.exists(assets_folder):
+                        try:
+                            asset_files = os.listdir(assets_folder)
+                            for f in asset_files:
+                                f_l = f.lower()
+                                if f_l.endswith((".png", ".jpg", ".jpeg")) and self._is_id_match(f_l, song_id):
+                                    img_path = os.path.join(assets_folder, f); break
+                        except Exception: pass
+                    
+                    if img_path:
+                        video_out_dir = os.path.join(output_media, "videos")
+                        if self.config.get("video_output_mode") == "custom":
+                            video_out_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
+                        if not os.path.exists(video_out_dir): os.makedirs(video_out_dir, exist_ok=True)
+                        
+                    if video_queue is not None:
+                        video_queue.append({
+                            "rid": song_id,
+                            "audio_path": aud_full_path,
+                            "image_path": img_path,
+                            "output_dir": video_out_dir,
+                            "profile_dir": output_media,
+                            "output_filename": f"{aud_base}.mp4",
+                            "params": v_params
+                        })
+                    else:
+                        if progress_callback: progress_callback(song_id, "No Image 🖼️")
+                        logger.warning(f"No matching image found for {aud_file}")
+        except Exception as e:
+            logger.error(f"Error preparing video task for {song_id}: {e}")
 
-    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default"):
+    def _run_process_batch_mode(self, target_ids, project_file, output_media, workspace, start_time, progress_callback, force_update, snapshot_config=None, profile_name="Default", video_queue=None):
         """Batch executed flow: Lyrics(All) -> Suno_Batch(All) -> Art(All) -> Video(All)"""
         
         conf = snapshot_config if snapshot_config is not None else self.config
+        tab = self.tabs.get(profile_name)
+        if not tab:
+            logger.error(f"Tab for profile {profile_name} not found during batch mode!")
+            return
 
-        def get_song_steps(sid):
-            return self.song_steps.get(sid) or [
-                self.var_run_lyrics.get(),
-                self.var_run_music.get(),
-                self.var_run_art_prompt.get(),
-                self.var_run_art_image.get(),
-                self.var_run_video.get()
-            ]
 
         try:
             # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
@@ -3407,18 +3577,29 @@ class MusicBotGUI:
                 logger.info(f"Batch Phase 1: Gemini Lyrics ({len(gemini_ids)} songs)")
                 batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
                 
+                # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
+                artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                preset_prompts = artist_preset.get("prompts", {})
+                m_prompts = {
+                    "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
+                    "visual_master_prompt": preset_prompts.get("visual_master_prompt"),
+                    "video_master_prompt": preset_prompts.get("video_master_prompt"),
+                    "art_master_prompt": preset_prompts.get("art_master_prompt")
+                }
+                
                 from gemini_prompter import GeminiPrompter
                 gemini = GeminiPrompter(
                     project_file=project_file, 
                     browser=batch_browser,
                     use_gemini_lyrics=conf.get("gemini_lyrics", True),
-                    generate_visual=False, # Phase by phase in batch
+                    generate_visual=False, 
                     generate_video=False,
                     generate_style=conf.get("gemini_style", False),
                     startup_delay=conf.get("startup_delay", 5),
                     language=conf.get("target_language", "Turkish"),
                     chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")),
-                    xlsx_lock=self.xlsx_lock
+                    xlsx_lock=self.xlsx_lock,
+                    master_prompts=m_prompts
                 )
                 # Gemini doesn't have internal batch support yet, so we loop but REUSE browser
                 for idx, song_id in enumerate(gemini_ids):
@@ -3434,6 +3615,20 @@ class MusicBotGUI:
                 logger.info(f"Batch Phase 2: Suno Batch ({len(suno_ids)} songs)")
                 batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
                 
+                # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
+                artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                preset_settings = artist_preset.get("settings", {})
+                p_link = preset_settings.get("suno_active_persona", "") if preset_settings.get("suno_persona_link_enabled") else ""
+                if not p_link:
+                    # Fallback if using old structure
+                    p_link = preset_settings.get("persona_link", "")
+
+                v_gender = preset_settings.get("vocal_gender", "Default")
+                a_infl = preset_settings.get("audio_influence", 25)
+                wrd = preset_settings.get("weirdness", 50)
+                s_infl = preset_settings.get("style_influence", 50)
+                l_mode = preset_settings.get("lyrics_mode", "Default")
+                
                 from suno_generator import SunoGenerator
                 suno = SunoGenerator(
                     project_file=project_file, 
@@ -3441,12 +3636,12 @@ class MusicBotGUI:
                     delay=conf.get("suno_delay", 15),
                     startup_delay=conf.get("startup_delay", 5),
                     browser=batch_browser,
-                    audio_influence=conf.get("audio_influence", 25) if conf.get("audio_influence_enabled") else "Default",
-                    vocal_gender=conf.get("vocal_gender", "Default") if conf.get("vocal_gender_enabled") else "Default",
-                    weirdness=conf.get("weirdness", 50) if conf.get("weirdness_enabled") else "Default",
-                    style_influence=conf.get("style_influence", 50) if conf.get("style_influence_enabled") else "Default",
-                    lyrics_mode=conf.get("lyrics_mode", "Default") if conf.get("lyrics_mode_enabled") else "Default",
-                    persona_link=conf.get("suno_personas", {}).get(conf.get("suno_active_persona", ""), "") if conf.get("suno_persona_link_enabled") else "",
+                    audio_influence=a_infl if preset_settings.get("audio_influence_enabled") else "Default",
+                    vocal_gender=v_gender if preset_settings.get("vocal_gender_enabled") else "Default",
+                    weirdness=wrd if preset_settings.get("weirdness_enabled") else "Default",
+                    style_influence=s_infl if preset_settings.get("style_influence_enabled") else "Default",
+                    lyrics_mode=l_mode if preset_settings.get("lyrics_mode_enabled") else "Default",
+                    persona_link=p_link,
                     turbo=self.var_turbo.get(),
                     xlsx_lock=self.xlsx_lock
                 )
@@ -3461,6 +3656,16 @@ class MusicBotGUI:
             
             if (art_p_ids or art_i_ids) and not self.stop_requested:
                 logger.info("Batch Phase 3: Art Generation")
+                # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
+                artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+                preset_prompts = artist_preset.get("prompts", {})
+                m_prompts = {
+                    "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
+                    "visual_master_prompt": preset_prompts.get("visual_master_prompt"),
+                    "video_master_prompt": preset_prompts.get("video_master_prompt"),
+                    "art_master_prompt": preset_prompts.get("art_master_prompt")
+                }
+                
                 from gemini_prompter import GeminiPrompter
                 gemini_art = GeminiPrompter(
                     project_file=project_file,
@@ -3469,7 +3674,8 @@ class MusicBotGUI:
                     startup_delay=conf.get("startup_delay", 5),
                     language=conf.get("target_language", "Turkish"),
                     chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")),
-                    xlsx_lock=self.xlsx_lock
+                    xlsx_lock=self.xlsx_lock,
+                    master_prompts=m_prompts
                 )
                 
                 # Prompts via Browser

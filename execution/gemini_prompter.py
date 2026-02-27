@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class GeminiPrompter:
     def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
-                 language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None):
+                 language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None, master_prompts=None):
         self.xlsx_lock = xlsx_lock
         self.project_file = project_file
         self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
@@ -37,7 +37,7 @@ class GeminiPrompter:
         
         # Load Prompts
         self.prompts_path = os.path.join(os.path.dirname(self.metadata_path), "prompts.json")
-        self.load_prompts()
+        self.load_prompts(master_prompts)
         self.load_translations()
 
     def load_translations(self):
@@ -66,7 +66,7 @@ class GeminiPrompter:
         try: return val.format(**kwargs)
         except Exception: return val
 
-    def load_prompts(self):
+    def load_prompts(self, external_prompts=None):
         import json
         default_lyrics = """Sen profesyonel bir şarkı sözü yazarı ve müzik prodüktörüsün. Suno.ai modelinin en iyi şekilde besteleyebilmesi için, sana vereceğim temalarda içerik oluşturmanı istiyorum.
 Tema: {theme}
@@ -83,6 +83,15 @@ Video Prompt: [Müzik videosu için İngilizce, detaylı video üretim promptu]
         default_art = """Create a high-quality YouTube music thumbnail inspired by modern romantic/lofi/ballad compilation channels...
 Main title: “{title}”
 """ 
+
+        # If external prompts provided (profile snapshot), use them and skip file load
+        if external_prompts and isinstance(external_prompts, dict):
+            self.master_prompt_template = external_prompts.get("lyrics_master_prompt") or default_lyrics
+            self.visual_master_prompt = external_prompts.get("visual_master_prompt") or ""
+            self.video_master_prompt = external_prompts.get("video_master_prompt") or ""
+            self.art_master_prompt = external_prompts.get("art_master_prompt") or default_art
+            logger.info("Master prompts loaded from external profile configuration.")
+            return
 
         if os.path.exists(self.prompts_path):
             try:
