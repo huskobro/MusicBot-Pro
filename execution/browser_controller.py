@@ -162,10 +162,10 @@ class BrowserController:
                         "--no-first-run",
                         "--no-default-browser-check",
                         "--lang=tr-TR",
-                        "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints"
-                    ] + (["--profile-directory=Default"] if attempt == 1 else []) + 
-                      (["--password-store=basic", "--use-mock-keychain"] if platform.system() == "Darwin" else []),
-                    ignore_default_args=["--enable-automation"],
+                        "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints",
+                        "--profile-directory=Default"
+                    ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                    ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                     viewport=None, 
                     device_scale_factor=1,
                     locale="tr-TR",
