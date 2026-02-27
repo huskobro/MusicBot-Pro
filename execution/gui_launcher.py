@@ -1459,12 +1459,12 @@ class MusicBotGUI:
         self.f_run_ops = ttk.LabelFrame(self.root, text=self.t("global_settings"), padding=5)
         self.f_run_ops.pack(fill="x", padx=10, pady=(0, 5))
         
-        ttk.Checkbutton(self.f_run_ops, text=self.t("lyrics"), variable=self.var_run_lyrics, command=self.apply_filter).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text=self.t("music"), variable=self.var_run_music, command=self.apply_filter).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text=self.t("art_prompt"), variable=self.var_run_art_prompt, command=self.apply_filter).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self.apply_filter).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self.apply_filter).pack(side="left", padx=10)
-        ttk.Checkbutton(self.f_run_ops, text=self.t("compilation"), variable=self.var_run_compilation, command=self.apply_filter).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("lyrics"), variable=self.var_run_lyrics, command=self._on_global_step_change).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("music"), variable=self.var_run_music, command=self._on_global_step_change).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("art_prompt"), variable=self.var_run_art_prompt, command=self._on_global_step_change).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("art_image"), variable=self.var_run_art_image, command=self._on_global_step_change).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("video"), variable=self.var_run_video, command=self._on_global_step_change).pack(side="left", padx=10)
+        ttk.Checkbutton(self.f_run_ops, text=self.t("compilation"), variable=self.var_run_compilation, command=self._on_global_step_change).pack(side="left", padx=10)
 
         # Hidden vars for _quick_save_advanced compatibility (Vocal/Lyrics moved to status bar info only)
         self.var_vocal_gender_enabled = tk.BooleanVar(value=self.config.get("vocal_gender_enabled", False))
@@ -2351,6 +2351,13 @@ class MusicBotGUI:
             self.var_run_art_image.get(),
             self.var_run_video.get()
         ]
+
+    def _on_global_step_change(self, *args):
+        """When a global step checkbox is toggled, override all song-specific selections so UI Orbs sync instantly."""
+        tab = self.current_tab
+        if tab:
+            tab.song_steps.clear() # Clear specific overrides to force fallback to get_global_steps()
+        self.apply_filter()
 
     def deselect_all(self):
         tab = self.current_tab
@@ -3382,7 +3389,8 @@ class MusicBotGUI:
                         # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
                         artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
                         preset_settings = artist_preset.get("settings", {})
-                        p_link = preset_settings.get("suno_active_persona", "") if preset_settings.get("suno_persona_link_enabled") else ""
+                        p_alias = preset_settings.get("suno_active_persona", "")
+                        p_link = conf.get("suno_personas", {}).get(p_alias, "") if preset_settings.get("suno_persona_link_enabled") else ""
                         if not p_link:
                             # Fallback if using old structure
                             p_link = preset_settings.get("persona_link", "")
@@ -3664,7 +3672,8 @@ class MusicBotGUI:
                 # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
                 artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
                 preset_settings = artist_preset.get("settings", {})
-                p_link = preset_settings.get("suno_active_persona", "") if preset_settings.get("suno_persona_link_enabled") else ""
+                p_alias = preset_settings.get("suno_active_persona", "")
+                p_link = conf.get("suno_personas", {}).get(p_alias, "") if preset_settings.get("suno_persona_link_enabled") else ""
                 if not p_link:
                     # Fallback if using old structure
                     p_link = preset_settings.get("persona_link", "")

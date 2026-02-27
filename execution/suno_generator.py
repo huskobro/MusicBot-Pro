@@ -153,22 +153,22 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     if progress_callback: progress_callback(rid, f"Waiting {self.delay}s...")
                     time.sleep(self.delay)
                 
-                self.update_row_status(row_dict['_row_idx'], "Processing")
+                self.update_row_status(row_dict['_row_idx'], status="Processing")
                 if progress_callback: progress_callback(rid, "Generating Music... 🎵")
                 
                 try:
                     self.browser.ensure_alive()
                     success = self.process_row(row_dict, progress_callback=progress_callback)
                     if success:
-                        self.update_row_status(row_dict['_row_idx'], "Generated")
+                        self.update_row_status(row_dict['_row_idx'], status="Generated")
                         if progress_callback: progress_callback(rid, "Music Generated! 🎵")
                         processed_count += 1
                     else:
-                        self.update_row_status(row_dict['_row_idx'], "Failed")
+                        self.update_row_status(row_dict['_row_idx'], status="Failed")
                         if progress_callback: progress_callback(rid, "Generation Failed ❌")
                 except Exception as row_error:
                     logger.error(f"Row error: {row_error}")
-                    self.update_row_status(row_dict['_row_idx'], "Failed")
+                    self.update_row_status(row_dict['_row_idx'], status="Failed")
                     if progress_callback: progress_callback(rid, "Error ❌")
 
             return processed_count
@@ -302,7 +302,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     if i > 0:
                         time.sleep(self.delay)
                     
-                    self.update_row_status(row_dict['_row_idx'], "Processing")
+                    self.update_row_status(row_dict['_row_idx'], status="Processing")
                     
                     # [Safety] Skip generation if already done (and not forced)
                     status = str(row_dict.get('status', '')).lower()
@@ -316,9 +316,9 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     success = self._generate_single_no_wait(row_dict, progress_callback)
                     if success:
                         generated_ids.append(rid)
-                        self.update_row_status(row_dict['_row_idx'], "Generating...", music_status="Sıraya Alındı") 
+                        self.update_row_status(row_dict['_row_idx'], status="Generating...", music_status="Sıraya Alındı") 
                     else:
-                        self.update_row_status(row_dict['_row_idx'], "Failed")
+                        self.update_row_status(row_dict['_row_idx'], status="Failed")
                 
                 logger.info(f"Toplu Üretim Aşaması Tamamlandı. {len(generated_ids)} şarkı sıraya eklendi.")
             
