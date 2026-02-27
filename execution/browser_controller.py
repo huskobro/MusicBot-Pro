@@ -112,27 +112,17 @@ class BrowserController:
                 except Exception as e:
                     logger.warning(f"Failed to remove lock file {path}: {e}")
         
-            # Cleaning temporary/lock files that prevent Chrome from starting
-            conflict_patterns = [
-                "Singleton*", "Lock", "lock",
-                "*-journal", "*-wal", 
-                "DIPS-wal [0-9]*", "SharedStorage-wal [0-9]*", 
-                "LOG [0-9]*", "LOG [0-9]*.old",
-                "BrowserMetrics-spare [0-9]*", "Local State [0-9]*",
-                "Preferences [0-9]*", "* [0-9]*",
-                ".com.google.Chrome.*"
-            ]
+            # Clean iCloud-duplicated DB files inside Default/ that corrupt the profile
+            conflict_patterns = ["DIPS-wal [0-9]*", "SharedStorage-wal [0-9]*", 
+                                 "LOG [0-9]*", "LOG [0-9]*.old",
+                                 "BrowserMetrics-spare [0-9]*", "Local State [0-9]*",
+                                 "Preferences [0-9]*", "* [0-9]*"] # Broad check for (2), (3) etc
             for pattern in conflict_patterns:
                 for path in glob.glob(os.path.join(directory, pattern)):
                     try:
-                        if os.path.islink(path) or os.path.isfile(path):
-                            logger.info(f"Removing stale/conflict file: {path}")
+                        if os.path.isfile(path):
                             os.remove(path)
-                        elif os.path.isdir(path) and ".com.google.Chrome" in path:
-                            import shutil
-                            shutil.rmtree(path, ignore_errors=True)
-                    except Exception as e:
-                        logger.debug(f"Could not remove {path}: {e}")
+                    except Exception: pass
 
     def start(self):
         """Starts the Playwright persistent context with mandatory compatibility flags."""
@@ -161,10 +151,9 @@ class BrowserController:
                         "--disable-dev-shm-usage",
                         "--no-first-run",
                         "--no-default-browser-check",
-                        "--lang=tr-TR",
-                        "--disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints",
-                        "--profile-directory=Default"
-                    ] + (["--password-store=basic"] if platform.system() == "Darwin" else []),
+                        "--lang=tr-TR"
+                    ] + (["--profile-directory=Default"] if attempt == 1 else []) + # Try without specific profile dir if it fails
+                      (["--password-store=basic"] if platform.system() == "Darwin" else []),
                     ignore_default_args=["--enable-automation"] + (["--use-mock-keychain"] if platform.system() == "Darwin" else []),
                     viewport=None, 
                     device_scale_factor=1,
