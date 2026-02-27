@@ -282,22 +282,32 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 logger.info("--- Toplu Üretim Aşaması Başlıyor ---")
                 if progress_callback: progress_callback("global", "Toplu Üretim Başlatılıyor... 🚀")
                 
+                # INITIAL SETUP: Only once before the loop
+                if self.persona_link:
+                    logger.info(f"Toplu Üretim: Persona aktif ediliyor...")
+                    self._setup_persona_workflow(progress_callback)
+                else:
+                    logger.info(f"Toplu Üretim: Sayfa hazırlanıyor (/create)...")
+                    self.browser.goto(self.base_url, page=self.tab)
+                
+                time.sleep(3)
+                self._ensure_v5_active()
+
                 for i, row_dict in enumerate(rows_data):
                     if self.stop_requested: break
                     
                     rid = str(row_dict.get('id', ''))
                     
-                    # Ensure a fresh state for every song in batch mode by reloading
-                    if i >= 0: # Reload for every song to be absolutely sure
-                        if self.persona_link:
-                            logger.info(f"Toplu Üretim: {rid} ID'li şarkı için Persona tekrar aktif ediliyor...")
-                            self._setup_persona_workflow(progress_callback)
-                        else:
-                            logger.info(f"Toplu Üretim: {rid} ID'li şarkı için sayfa yenileniyor (/create)...")
-                            self.browser.goto(self.base_url, page=self.tab)
-                        
-                        time.sleep(3)
-                        self._ensure_v5_active()
+                    # SESSION HARDENING: Check if tab is alive every 10 songs or if crashed
+                    if i > 0 and i % 10 == 0:
+                        try:
+                            self.tab.url
+                        except Exception:
+                            logger.warning("Toplu Üretim: Tarayıcı sekmesi yanıt vermiyor. Yenileniyor...")
+                            if self.persona_link: self._setup_persona_workflow(progress_callback)
+                            else: self.browser.goto(self.base_url, page=self.tab)
+                            time.sleep(3)
+                            self._ensure_v5_active()
                     
                     if i > 0:
                         time.sleep(self.delay)
@@ -520,16 +530,19 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         time.sleep(2)
                 except Exception: pass
                 
-                # ===== PRE-PHASE A: REFRESH STATE =====
-                # Force a reload to guarantee the DOM isn't stale before we start scraping
-                logger.info("Taze veri çekmek için arayüz yenileniyor...")
-                if progress_callback: progress_callback("global", "Sayfa yenileniyor... 🔄")
-                try:
-                    self.tab.reload(timeout=45000)
-                    time.sleep(6)
-                    self._ensure_v5_active()
-                except Exception as e:
-                    logger.warning(f"Aşama A öncesi yenileme hatası: {e}")
+                # ===== PRE-PHASE A: REFRESH STATE (OPTIMIZED: Optional) =====
+                # Only reload if the generation phase was skipped or if we haven't reloaded in a while
+                if op_mode == "dl_only":
+                    logger.info("Taze veri çekmek için arayüz yenileniyor (dl_only)...")
+                    if progress_callback: progress_callback("global", "Sayfa yenileniyor... 🔄")
+                    try:
+                        self.tab.reload(timeout=45000)
+                        time.sleep(6)
+                        self._ensure_v5_active()
+                    except Exception as e:
+                        logger.warning(f"Aşama A öncesi yenileme hatası: {e}")
+                else:
+                    logger.info("Üretimden hemen sonra indirmeye geçiliyor, sayfa yenileme atlandı.")
 
                 # ===== PHASE A: FULL WATERFALL SCROLL =====
                 # Scroll through the entire song list to load everything into DOM
