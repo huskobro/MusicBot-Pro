@@ -2308,7 +2308,7 @@ class MusicBotGUI:
             s_sel = "☑️" if rid in tab.selected_songs else "☐"
             prog_bar = self.get_progress_bar(done_cnt + (1 if video_done else 0), 4)
             
-            steps = tab.song_steps.get(rid, [False]*5)
+            steps = tab.song_steps.get(rid, self.get_global_steps())
             s_rl = "🟣" if steps[0] else "☐"
             s_rm = "🔵" if steps[1] else "☐"
             s_rap = "🟡" if steps[2] else "☐"
@@ -2335,6 +2335,22 @@ class MusicBotGUI:
         for itm in tab.tree.get_children():
             tab.selected_songs.add(itm)
         self.apply_filter()
+
+    def tree_clear_selected(self):
+        tab = self.current_tab
+        if not tab: return
+        tab.selected_songs.clear()
+        self.apply_filter()
+
+    def get_global_steps(self):
+        """Returns the current state of UI global checkboxes for song step defaults."""
+        return [
+            self.var_run_lyrics.get(), 
+            self.var_run_music.get(),
+            self.var_run_art_prompt.get(),
+            self.var_run_art_image.get(),
+            self.var_run_video.get()
+        ]
 
     def deselect_all(self):
         tab = self.current_tab
@@ -2572,7 +2588,8 @@ class MusicBotGUI:
             
             elif column in ["#12", "#13", "#14", "#15", "#16"]: # L, M, AP, AI, V
                 idx = int(column[1:]) - 12
-                steps = tab.song_steps.get(item_id, [self.var_run_lyrics.get(), self.var_run_music.get(), self.var_run_art_prompt.get(), self.var_run_art_image.get(), self.var_run_video.get()]).copy()
+                # UI Global sync:
+                steps = tab.song_steps.get(item_id, self.get_global_steps()).copy()
                 while len(steps) < 5: steps.append(False)
                 
                 steps[idx] = not steps[idx]
