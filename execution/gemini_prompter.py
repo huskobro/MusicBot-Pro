@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 class GeminiPrompter:
     def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
-                 language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None, master_prompts=None):
+                 language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None, master_prompts=None,
+                 lyrics_mode="manual", gemini_api_key=""):
         self.xlsx_lock = xlsx_lock
         self.project_file = project_file
         self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
@@ -31,8 +32,19 @@ class GeminiPrompter:
             self.startup_delay = 5
         self.language = language
         self.chat_mode = chat_mode
-        self.browser = browser if browser else BrowserController(headless=headless)
-        self.tab = self.browser.get_page("default")
+        self.lyrics_mode = lyrics_mode  # "api" or "manual"
+        self.gemini_api_key = gemini_api_key
+        self.progress_callback_internal = None
+        self.artist_name = ""
+        self.artist_style = ""
+        
+        # Browser is optional for API mode
+        if self.lyrics_mode == "api" and not browser:
+            self.browser = None
+            self.tab = None
+        else:
+            self.browser = browser if browser else BrowserController(headless=headless)
+            self.tab = self.browser.get_page("default")
         self.base_url = "https://gemini.google.com/app"
         
         # Load Prompts
@@ -147,21 +159,23 @@ Main title: “{title}”
     def run(self, max_count=None, target_ids=None, progress_callback=None, force_update=False):
         self.progress_callback_internal = progress_callback
         try:
-            if not self.browser.context:
-                self.browser.start()
-            
-            if self.startup_delay > 0:
-                if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
-                time.sleep(self.startup_delay)
-            
-            self.browser.goto(self.base_url, page=self.tab)
-            time.sleep(3) 
+            # API mode doesn't need browser
+            if self.lyrics_mode != "api":
+                if not self.browser.context:
+                    self.browser.start()
+                
+                if self.startup_delay > 0:
+                    if progress_callback: progress_callback("global", f"Waiting {self.startup_delay}s (Startup Delay)...")
+                    time.sleep(self.startup_delay)
+                
+                self.browser.goto(self.base_url, page=self.tab)
+                time.sleep(3) 
 
-            # Check if login is needed
-            if "accounts.google.com" in self.tab.url:
-                logger.warning("--- LOGIN REQUIRED ---")
-                if progress_callback: progress_callback("global", "Gemini Login Required! Please check Chrome.")
-                time.sleep(1)
+                # Check if login is needed
+                if "accounts.google.com" in self.tab.url:
+                    logger.warning("--- LOGIN REQUIRED ---")
+                    if progress_callback: progress_callback("global", "Gemini Login Required! Please check Chrome.")
+                    time.sleep(1)
 
             if not os.path.exists(self.metadata_path):
                 logger.error("Input file not found.")
@@ -246,6 +260,34 @@ Main title: “{title}”
             
             if updates_needed:
                 wb.save(self.metadata_path)
+            
+            # --- Auto-fill empty style/suno_style from artist_style ---
+            if self.artist_style:
+                suno_style_col_idx = headers.get('suno_style') or headers.get('suno style')
+                style_fills_needed = False
+                
+                for rowdata in pending_rows:
+                    row_num = rowdata['row_idx']  # 1-indexed (header=1, data=2+)
+                    row_cells = ws[row_num]
+                    
+                    # Fill style column if empty
+                    if style_col_idx is not None:
+                        current_style = row_cells[style_col_idx].value
+                        if not current_style or not str(current_style).strip():
+                            ws.cell(row=row_num, column=style_col_idx + 1).value = self.artist_style
+                            rowdata['style'] = self.artist_style
+                            style_fills_needed = True
+                    
+                    # Fill suno_style column if empty
+                    if suno_style_col_idx is not None:
+                        current_suno = row_cells[suno_style_col_idx].value
+                        if not current_suno or not str(current_suno).strip():
+                            ws.cell(row=row_num, column=suno_style_col_idx + 1).value = self.artist_style
+                            style_fills_needed = True
+                
+                if style_fills_needed:
+                    wb.save(self.metadata_path)
+                    logger.info(f"Auto-filled empty style/suno_style columns from artist profile: {self.artist_style[:60]}...")
 
             if not pending_rows:
                 logger.info("Nothing to process in Gemini.")
@@ -266,25 +308,65 @@ Main title: “{title}”
                     logger.info(f"[Pass {pass_num}] Processing Song {i+1}/{len(rows)} ID: {row_id}")
                     self._prompt_injected_for_row_id = row_id
                     
-                    # Prevent crashes: Ensure browser is still alive before processing
-                    try:
-                        is_alive = self.browser.ensure_alive("default")
-                        if not is_alive: raise Exception("ensure_alive returned False")
-                        self.tab = self.browser.get_page("default")
-                    except Exception as e:
-                        logger.error(f"Browser recovery failed for song {row_id}, skipping: {e}")
-                        failed_ids.append(rowdata)
-                        continue
+                    # Prevent crashes: Ensure browser is still alive before processing (skip for API mode)
+                    if self.lyrics_mode != "api":
+                        try:
+                            is_alive = self.browser.ensure_alive("default")
+                            if not is_alive: raise Exception("ensure_alive returned False")
+                            self.tab = self.browser.get_page("default")
+                        except Exception as e:
+                            logger.error(f"Browser recovery failed for song {row_id}, skipping: {e}")
+                            failed_ids.append(rowdata)
+                            continue
 
-                    # Refresh Chat State based on Settings before starting a song
-                    self._start_new_chat()
+                        # Refresh Chat State based on Settings before starting a song
+                        self._start_new_chat()
+                    
+                    # --- Step 0: Auto-generate theme if empty (API mode only) ---
+                    if self.lyrics_mode == "api" and (not theme or not str(theme).strip()):
+                        if progress_callback: progress_callback(row_id, "Tema Üretiliyor... 💡")
+                        generated_theme = self.generate_theme_via_api()
+                        if generated_theme:
+                            theme = generated_theme
+                            # Write theme back to Excel
+                            try:
+                                from openpyxl import load_workbook
+                                lock = self.xlsx_lock
+                                if lock: lock.acquire()
+                                try:
+                                    wb_t = load_workbook(self.metadata_path)
+                                    ws_t = wb_t.active
+                                    # Find prompt column
+                                    prompt_col = None
+                                    for c in range(1, ws_t.max_column + 1):
+                                        h = ws_t.cell(row=1, column=c).value
+                                        if h and str(h).strip().lower() in ["prompt", "tema", "theme"]:
+                                            prompt_col = c
+                                            break
+                                    if prompt_col:
+                                        ws_t.cell(row=rowdata['row_idx'], column=prompt_col).value = theme
+                                        wb_t.save(self.metadata_path)
+                                        logger.info(f"Auto-generated theme saved to Excel: {theme}")
+                                finally:
+                                    if lock: lock.release()
+                            except Exception as te:
+                                logger.error(f"Failed to save auto-generated theme: {te}")
+                        else:
+                            logger.warning(f"Theme generation failed for {row_id}, skipping.")
+                            failed_ids.append(rowdata)
+                            continue
                     
                     # --- Step 1: Lyrics ---
                     final_title = ""
                     final_style = style_init
                     if (self.use_gemini_lyrics and not rowdata.get('existing_lyrics')) or force_update:
                         if progress_callback: progress_callback(row_id, f"Step 1: Lyrics (Deneme {pass_num})... ✍️")
-                        lyrics_res = self.generate_content(theme, style=style_init)
+                        
+                        # Route based on lyrics_mode
+                        if self.lyrics_mode == "api":
+                            lyrics_res = self.generate_content_via_api(theme, style=style_init)
+                        else:
+                            lyrics_res = self.generate_content(theme, style=style_init)
                         
                         if lyrics_res:
                             output_payload = lyrics_res.copy()
@@ -383,6 +465,192 @@ Main title: “{title}”
         finally:
              logger.info("Gemini finished.")
 
+    def generate_theme_via_api(self):
+        """Generate a song theme/topic using the Gemini API when Excel prompt column is empty."""
+        try:
+            if not self.gemini_api_key:
+                logger.error("Cannot generate theme: API key not set.")
+                return None
+            
+            import requests as _requests
+            
+            artist_ctx = ""
+            if self.artist_name:
+                artist_ctx += f"Sanatçı: {self.artist_name}\n"
+            if self.artist_style:
+                artist_ctx += f"Müzik Tarzı: {self.artist_style}\n"
+            
+            theme_prompt = f"""Sen profesyonel bir müzik prodüktörüsün. Bana bir şarkı için tek bir yaratıcı tema/konu cümlesi üret.
+
+{artist_ctx}Dil: {self.language}
+
+Kurallar:
+- Sadece TEK BİR kısa tema cümlesi yaz (maksimum 15 kelime)
+- Dramatik, duygusal ve özgün olsun
+- Başka hiçbir şey yazma, sadece tema cümlesini yaz
+- Markdown veya etiket kullanma
+
+Örnek temalar:
+- Gece yarısı tangosunda saklanan sır
+- Kırık kalple yapılan son tango dansı
+- Şehir ışıkları altında edilen dramatik itiraf
+- Dans ederken yavaşça kırılan kalp
+- Yasak bir aşkın gece yarısı buluşması
+
+Şimdi yeni ve özgün bir tema üret:"""
+            
+            url = "https://api.kie.ai/gemini-3-flash/v1/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.gemini_api_key}"
+            }
+            payload = {
+                "messages": [{"role": "user", "content": [{"type": "text", "text": theme_prompt}]}],
+                "include_thoughts": False,
+                "reasoning_effort": "low"
+            }
+            
+            resp = _requests.post(url, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                theme_text = choices[0].get("message", {}).get("content", "").strip()
+                # Clean up: remove quotes, dashes, markdown
+                theme_text = theme_text.strip('"\'-•– ').strip()
+                if theme_text:
+                    logger.info(f"Auto-generated theme: {theme_text}")
+                    return theme_text
+            
+            logger.error("Theme generation returned empty response.")
+            return None
+        except Exception as e:
+            logger.error(f"Theme generation error: {e}")
+            return None
+
+    def generate_content_via_api(self, theme, style=None):
+        """Generate lyrics content using Gemini 3 Flash API (kie.ai endpoint) instead of browser automation."""
+        try:
+            if not self.gemini_api_key:
+                logger.error("Gemini API key is not set!")
+                if self.progress_callback_internal:
+                    self.progress_callback_internal("global", self.t("log_gemini_api_no_key"))
+                return None
+            
+            import requests as _requests
+            
+            # Build prompt using same template as browser method
+            full_prompt = self.master_prompt_template.replace("{theme}", str(theme)).replace("{language}", str(self.language)).replace("{style}", str(self.artist_style))
+            
+            if style:
+                full_prompt += f"\n\n[IMPORTANT] Target Music Style: {style}\nPlease ensure all outputs (lyrics, art, video, style) follow this style precisely."
+            
+            logger.info("Calling Gemini 3 Flash API (kie.ai)...")
+            if self.progress_callback_internal:
+                self.progress_callback_internal("global", self.t("log_gemini_api_call"))
+            
+            url = "https://api.kie.ai/gemini-3-flash/v1/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.gemini_api_key}"
+            }
+            payload = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": full_prompt}
+                        ]
+                    }
+                ],
+                "include_thoughts": False,
+                "reasoning_effort": "high"
+            }
+            
+            resp = _requests.post(url, headers=headers, json=payload, timeout=120)
+            resp.raise_for_status()
+            
+            data = resp.json()
+            response_text = ""
+            # OpenAI-compatible response format
+            choices = data.get("choices", [])
+            if choices:
+                message = choices[0].get("message", {})
+                response_text = message.get("content", "").strip()
+            
+            if not response_text:
+                logger.error("Gemini API returned empty response.")
+                return None
+            
+            logger.info(f"Gemini API response received. Length: {len(response_text)}")
+            if self.progress_callback_internal:
+                self.progress_callback_internal("global", self.t("log_gemini_api_success"))
+            
+            # === Parse response with SAME logic as browser-based generate_content ===
+            result = {"status": "TAMAM"}
+            lines = response_text.split('\n')
+            current_section = None
+            buffer = []
+            
+            for line in lines:
+                clean_line = line.strip()
+                tag_check = clean_line.replace("*", "").replace("#", "").strip().lower()
+                
+                if tag_check.startswith("başlık"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    parts = clean_line.split(":", 1)
+                    val = parts[1].strip() if len(parts) > 1 else ""
+                    result["title"] = val.replace("[", "").replace("]", "")
+                    current_section = None
+                    buffer = []
+                elif tag_check.startswith("sözler"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "lyrics"
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("stil"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "style"
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("görsel prompt"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "visual_prompt"
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                elif tag_check.startswith("video prompt"):
+                    if current_section: result[current_section] = "\n".join(buffer).strip()
+                    current_section = "video_prompt"
+                    parts = clean_line.split(":", 1)
+                    buffer = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+                else:
+                    if current_section: buffer.append(line)
+            
+            if current_section: result[current_section] = "\n".join(buffer).strip()
+            
+            # Check for Outro (YARIM Status trigger) + Ensure Style is generated
+            if "lyrics" in result:
+                l_text = result["lyrics"].lower()
+                has_outro = "[outro]" in l_text or "outro" in l_text[-150:]
+                has_style = "style" in result and len(result["style"]) > 3
+                
+                if not has_outro or not has_style:
+                    logger.warning(f"Song marked as YARIM. Outro found: {has_outro}, Style found: {has_style}")
+                    result["status"] = "YARIM"
+            
+            # Unify art prompt naming
+            if "visual_prompt" in result:
+                result["cover_art_prompt"] = result["visual_prompt"]
+            
+            return result
+        except Exception as e:
+            logger.error(f"Gemini API Error: {e}")
+            logger.error(traceback.format_exc())
+            if self.progress_callback_internal:
+                self.progress_callback_internal("global", self.t("log_gemini_api_error", error=str(e)))
+            return None
+
     def generate_content(self, theme, style=None):
         try:
             if getattr(self, "_page_injected", False):
@@ -408,7 +676,7 @@ Main title: “{title}”
                 return None
 
             # Using .replace() instead of .format() for better robustness against unknown braces in template
-            full_prompt = self.master_prompt_template.replace("{theme}", str(theme)).replace("{language}", str(self.language))
+            full_prompt = self.master_prompt_template.replace("{theme}", str(theme)).replace("{language}", str(self.language)).replace("{style}", str(self.artist_style))
             
             # Inject style instruction if provided
             if style:

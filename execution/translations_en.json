@@ -233,5 +233,14 @@
     "log_gemini_visual_saved": "Visual Prompt Ready! ✅",
     "log_gemini_video_saved": "Video Prompt Ready! ✅",
     "log_gemini_no_input": "Could not find Gemini input box!",
-    "log_gemini_injecting": "Injecting prompt into Gemini..."
+    "log_gemini_injecting": "Injecting prompt into Gemini...",
+    "lyrics_gen_mode_label": "Lyrics Writing Mode:",
+    "lyrics_gen_mode_api": "API (Gemini 3 Flash)",
+    "lyrics_gen_mode_manual": "Manual (Browser)",
+    "gemini_api_key_label": "Gemini API Key:",
+    "show_api_key": "Show",
+    "log_gemini_api_call": "Calling Gemini API...",
+    "log_gemini_api_success": "Gemini API response received! ✅",
+    "log_gemini_api_error": "Gemini API error: {error}",
+    "log_gemini_api_no_key": "Gemini API key not found! Please enter it in Settings."
 }

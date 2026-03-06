@@ -191,6 +191,9 @@ class SettingsDialog(tk.Toplevel):
         self.effect_vars = {}
         self.var_suno_batch = None
         self.var_batch_op = None
+        self.var_lyrics_gen_mode = None
+        self.ent_gemini_api_key = None
+        self.var_show_api_key = None
 
         # --- TAB 0: Profiles ---
         self.tab_presets = ttk.Frame(self.notebook)
@@ -335,6 +338,32 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_gemini, text=self.app.t("gen_visual_prompts"), variable=self.var_visual).pack(anchor="w")
         self.var_video = tk.BooleanVar(value=config.get("gemini_video", False))
         ttk.Checkbutton(f_gemini, text=self.app.t("gen_video_prompts"), variable=self.var_video).pack(anchor="w")
+
+        # --- Lyrics Generation Mode (API vs Manual) ---
+        ttk.Separator(f_gemini, orient="horizontal").pack(fill="x", pady=8)
+        
+        f_lyrics_mode = ttk.Frame(f_gemini)
+        f_lyrics_mode.pack(fill="x", pady=2)
+        ttk.Label(f_lyrics_mode, text=self.app.t("lyrics_gen_mode_label"), font=("Helvetica", 10, "bold")).pack(anchor="w")
+        
+        self.var_lyrics_gen_mode = tk.StringVar(value=config.get("lyrics_gen_mode", "manual"))
+        f_mode_radios = ttk.Frame(f_gemini)
+        f_mode_radios.pack(fill="x", pady=2)
+        ttk.Radiobutton(f_mode_radios, text=self.app.t("lyrics_gen_mode_api"), variable=self.var_lyrics_gen_mode, value="api").pack(side="left", padx=(0, 15))
+        ttk.Radiobutton(f_mode_radios, text=self.app.t("lyrics_gen_mode_manual"), variable=self.var_lyrics_gen_mode, value="manual").pack(side="left")
+        
+        # --- Gemini API Key ---
+        f_api_key = ttk.Frame(f_gemini)
+        f_api_key.pack(fill="x", pady=(5, 2))
+        ttk.Label(f_api_key, text=self.app.t("gemini_api_key_label")).pack(side="left")
+        self.ent_gemini_api_key = ttk.Entry(f_api_key, show="*")
+        self.ent_gemini_api_key.pack(side="left", fill="x", expand=True, padx=5)
+        self.ent_gemini_api_key.insert(0, config.get("gemini_api_key", ""))
+        
+        self.var_show_api_key = tk.BooleanVar(value=False)
+        def toggle_api_key_visibility():
+            self.ent_gemini_api_key.config(show="" if self.var_show_api_key.get() else "*")
+        ttk.Checkbutton(f_api_key, text=self.app.t("show_api_key"), variable=self.var_show_api_key, command=toggle_api_key_visibility).pack(side="left")
         
         # 3. Automation Delays
         f_suno = ttk.LabelFrame(scroll_frame, text=self.app.t("automation_delays"), padding=10)
@@ -755,6 +784,8 @@ class SettingsDialog(tk.Toplevel):
         if self.var_style: settings_snapshot["gemini_style"] = self.var_style.get()
         if self.var_visual: settings_snapshot["gemini_visual"] = self.var_visual.get()
         if self.var_video: settings_snapshot["gemini_video"] = self.var_video.get()
+        if self.var_lyrics_gen_mode: settings_snapshot["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
+        if self.ent_gemini_api_key: settings_snapshot["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
         
         try:
             if self.entry_delay: settings_snapshot["suno_delay"] = int(self.entry_delay.get())
@@ -863,6 +894,10 @@ class SettingsDialog(tk.Toplevel):
         if self.var_style: self.var_style.set(settings.get("gemini_style", True))
         if self.var_visual: self.var_visual.set(settings.get("gemini_visual", True))
         if self.var_video: self.var_video.set(settings.get("gemini_video", False))
+        if self.var_lyrics_gen_mode: self.var_lyrics_gen_mode.set(settings.get("lyrics_gen_mode", "manual"))
+        if self.ent_gemini_api_key:
+            self.ent_gemini_api_key.delete(0, tk.END)
+            self.ent_gemini_api_key.insert(0, settings.get("gemini_api_key", ""))
         
         if self.entry_delay:
             self.entry_delay.delete(0, tk.END)
@@ -1093,6 +1128,8 @@ class SettingsDialog(tk.Toplevel):
             if self.var_style: self.config["gemini_style"] = self.var_style.get()
             if self.var_visual: self.config["gemini_visual"] = self.var_visual.get()
             if self.var_video: self.config["gemini_video"] = self.var_video.get()
+            if self.var_lyrics_gen_mode: self.config["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
+            if self.ent_gemini_api_key: self.config["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
             
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
@@ -3355,8 +3392,12 @@ class MusicBotGUI:
                     s_steps = conf.get("global_steps", [False]*6)[:5]
                 while len(s_steps) < 5: s_steps.append(False)
 
-                # Start browser IF NEEDED
-                browser_needed = s_steps[0] or s_steps[1] or s_steps[2]
+                # --- PROMPT ISOLATION: Get artist preset early for mode detection ---
+                artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+
+                # Start browser IF NEEDED (API lyrics mode doesn't need browser)
+                lyrics_needs_browser = s_steps[0] and artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")) != "api"
+                browser_needed = lyrics_needs_browser or s_steps[1] or s_steps[2]
                 if browser_needed and not common_browser and not self.stop_requested:
                     try:
                         base_path = os.path.expanduser("~/Documents/MusicBot_Workspace/chrome_profiles")
@@ -3371,9 +3412,9 @@ class MusicBotGUI:
 
                 try:
                     # --- Step 1: Lyrics & Gemini ---
-                    if s_steps[0] and not self.stop_requested and common_browser:
+                    lyrics_api_mode = artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")) == "api"
+                    if s_steps[0] and not self.stop_requested and (common_browser or lyrics_api_mode):
                         # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
-                        artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
                         preset_prompts = artist_preset.get("prompts", {})
                         m_prompts = {
                             "lyrics_master_prompt": preset_prompts.get("lyrics_master_prompt"),
@@ -3382,19 +3423,24 @@ class MusicBotGUI:
                             "art_master_prompt": preset_prompts.get("art_master_prompt")
                         }
                         
-                        common_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
+                        if common_browser:
+                            common_browser.humanizer_enabled = global_human and conf.get("h_activate_gemini", True)
                         from gemini_prompter import GeminiPrompter
                         gemini = GeminiPrompter(
                             project_file=project_file, 
-                            browser=common_browser, 
+                            browser=common_browser if not lyrics_api_mode else None, 
                             use_gemini_lyrics=s_steps[0], 
                             generate_visual=s_steps[2], 
                             generate_video=s_steps[4] if len(s_steps) > 4 else False, 
                             language=conf.get("target_language", "Turkish"), 
                             chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")), 
                             xlsx_lock=self.xlsx_lock,
-                            master_prompts=m_prompts
+                            master_prompts=m_prompts,
+                            lyrics_mode=artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")),
+                            gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", ""))
                         )
+                        gemini.artist_name = artist_preset.get("settings", {}).get("artist_name", conf.get("artist_name", ""))
+                        gemini.artist_style = artist_preset.get("settings", {}).get("artist_style", conf.get("artist_style", ""))
                         gemini.run(target_ids=[song_id], progress_callback=progress_callback, force_update=force_update)
                     
                     # --- Step 2: Music ---
@@ -3619,8 +3665,7 @@ class MusicBotGUI:
             return tab.song_steps.get(sid) or conf.get("global_steps", [False]*6)[:5]
 
         try:
-            # 1. Establish SINGLE Browser Session for Phases 1 & 2 & 3
-            # We use one browser session for everything to avoid startups/shutdowns
+            # 1. Determine if browser is needed
             # ---------------- PROFILE LOGIC ----------------
             p_disk_name = profile_name.strip().replace(" ", "_")
             
@@ -3628,23 +3673,34 @@ class MusicBotGUI:
             profile_path = os.path.join(base_path, p_disk_name)
             # -----------------------------------------------
 
-            from browser_controller import BrowserController
-            h_conf = {
-                "level": conf.get("humanizer_level", "MEDIUM"),
-                "speed": conf.get("humanizer_speed", 1.0),
-                "retries": conf.get("humanizer_retries", 1),
-                "adaptive": conf.get("humanizer_adaptive", True)
-            }
-            batch_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
-            batch_browser.start()
-            self.active_browsers[profile_name] = batch_browser
+            # Check if any non-API step needs a browser
+            artist_preset_batch = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
+            batch_lyrics_api_mode = artist_preset_batch.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")) == "api"
+            
+            suno_ids_check = [id for id in target_ids if get_song_steps(id)[1]]
+            art_ids_check = [id for id in target_ids if get_song_steps(id)[2]]
+            browser_needed_batch = bool(suno_ids_check) or bool(art_ids_check) or (not batch_lyrics_api_mode and any(get_song_steps(id)[0] for id in target_ids))
+            
+            batch_browser = None
+            if browser_needed_batch:
+                from browser_controller import BrowserController
+                h_conf = {
+                    "level": conf.get("humanizer_level", "MEDIUM"),
+                    "speed": conf.get("humanizer_speed", 1.0),
+                    "retries": conf.get("humanizer_retries", 1),
+                    "adaptive": conf.get("humanizer_adaptive", True)
+                }
+                batch_browser = BrowserController(headless=False, profile_path=profile_path, humanizer_config=h_conf)
+                batch_browser.start()
+                self.active_browsers[profile_name] = batch_browser
             global_human = conf.get("humanizer_enabled", True)
             
             # --- PHASE 1: LYRICS & PREP (Gemini) ---
             gemini_ids = [id for id in target_ids if get_song_steps(id)[0]] # Step 1 enabled
             if gemini_ids:
                 logger.info(f"Batch Phase 1: Gemini Lyrics ({len(gemini_ids)} songs)")
-                batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
+                if batch_browser:
+                    batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_gemini", True)
                 
                 # --- PROMPT ISOLATION: Get master prompts from this profile's preset snapshot ---
                 artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
@@ -3659,7 +3715,7 @@ class MusicBotGUI:
                 from gemini_prompter import GeminiPrompter
                 gemini = GeminiPrompter(
                     project_file=project_file, 
-                    browser=batch_browser,
+                    browser=batch_browser if not batch_lyrics_api_mode else None,
                     use_gemini_lyrics=conf.get("gemini_lyrics", True),
                     generate_visual=False, 
                     generate_video=False,
@@ -3668,8 +3724,12 @@ class MusicBotGUI:
                     language=conf.get("target_language", "Turkish"),
                     chat_mode=conf.get("gemini_chat_mode", self.t("gemini_mode_new")),
                     xlsx_lock=self.xlsx_lock,
-                    master_prompts=m_prompts
+                    master_prompts=m_prompts,
+                    lyrics_mode=artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")),
+                    gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", ""))
                 )
+                gemini.artist_name = artist_preset.get("settings", {}).get("artist_name", conf.get("artist_name", ""))
+                gemini.artist_style = artist_preset.get("settings", {}).get("artist_style", conf.get("artist_style", ""))
                 # Gemini doesn't have internal batch support yet, so we loop but REUSE browser
                 for idx, song_id in enumerate(gemini_ids):
                     if self.stop_requested: break
@@ -3762,7 +3822,8 @@ class MusicBotGUI:
                         gemini_art.generate_art_images(target_ids=[song_id], progress_callback=progress_callback)
 
             # Clean up browser
-            batch_browser.stop()
+            if batch_browser:
+                batch_browser.stop()
             if profile_name in self.active_browsers:
                 del self.active_browsers[profile_name]
 
