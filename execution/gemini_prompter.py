@@ -510,7 +510,7 @@ Kurallar:
                 "reasoning_effort": "low"
             }
             
-            resp = _requests.post(url, headers=headers, json=payload, timeout=30)
+            resp = _requests.post(url, headers=headers, json=payload, timeout=60)
             resp.raise_for_status()
             
             data = resp.json()
@@ -568,7 +568,7 @@ Kurallar:
                 "reasoning_effort": "high"
             }
             
-            resp = _requests.post(url, headers=headers, json=payload, timeout=120)
+            resp = _requests.post(url, headers=headers, json=payload, timeout=60)
             resp.raise_for_status()
             
             data = resp.json()
