@@ -365,6 +365,14 @@ class SettingsDialog(tk.Toplevel):
             self.ent_gemini_api_key.config(show="" if self.var_show_api_key.get() else "*")
         ttk.Checkbutton(f_api_key, text=self.app.t("show_api_key"), variable=self.var_show_api_key, command=toggle_api_key_visibility).pack(side="left")
         
+        # --- API Reasoning Effort ---
+        f_reasoning = ttk.Frame(f_gemini)
+        f_reasoning.pack(fill="x", pady=(2, 5))
+        ttk.Label(f_reasoning, text=self.app.t("reasoning_effort_label")).pack(side="left")
+        self.var_reasoning_effort = tk.StringVar(value=config.get("reasoning_effort", "low"))
+        ttk.Radiobutton(f_reasoning, text="Low", variable=self.var_reasoning_effort, value="low").pack(side="left", padx=(10, 5))
+        ttk.Radiobutton(f_reasoning, text="High", variable=self.var_reasoning_effort, value="high").pack(side="left")
+        
         # 3. Automation Delays
         f_suno = ttk.LabelFrame(scroll_frame, text=self.app.t("automation_delays"), padding=10)
         f_suno.pack(fill="x", padx=10, pady=5)
@@ -786,6 +794,7 @@ class SettingsDialog(tk.Toplevel):
         if self.var_video: settings_snapshot["gemini_video"] = self.var_video.get()
         if self.var_lyrics_gen_mode: settings_snapshot["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
         if self.ent_gemini_api_key: settings_snapshot["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
+        settings_snapshot["reasoning_effort"] = self.var_reasoning_effort.get()
         
         try:
             if self.entry_delay: settings_snapshot["suno_delay"] = int(self.entry_delay.get())
@@ -898,6 +907,8 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_gemini_api_key:
             self.ent_gemini_api_key.delete(0, tk.END)
             self.ent_gemini_api_key.insert(0, settings.get("gemini_api_key", ""))
+        if hasattr(self, 'var_reasoning_effort'):
+            self.var_reasoning_effort.set(settings.get("reasoning_effort", "low"))
         
         if self.entry_delay:
             self.entry_delay.delete(0, tk.END)
@@ -1130,6 +1141,7 @@ class SettingsDialog(tk.Toplevel):
             if self.var_video: self.config["gemini_video"] = self.var_video.get()
             if self.var_lyrics_gen_mode: self.config["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
             if self.ent_gemini_api_key: self.config["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
+            self.config["reasoning_effort"] = self.var_reasoning_effort.get()
             
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
@@ -3437,7 +3449,8 @@ class MusicBotGUI:
                             xlsx_lock=self.xlsx_lock,
                             master_prompts=m_prompts,
                             lyrics_mode=artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")),
-                            gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", ""))
+                            gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", "")),
+                            reasoning_effort=artist_preset.get("settings", {}).get("reasoning_effort", conf.get("reasoning_effort", "low"))
                         )
                         gemini.artist_name = artist_preset.get("settings", {}).get("artist_name", conf.get("artist_name", ""))
                         gemini.artist_style = artist_preset.get("settings", {}).get("artist_style", conf.get("artist_style", ""))
@@ -3726,7 +3739,8 @@ class MusicBotGUI:
                     xlsx_lock=self.xlsx_lock,
                     master_prompts=m_prompts,
                     lyrics_mode=artist_preset.get("settings", {}).get("lyrics_gen_mode", conf.get("lyrics_gen_mode", "manual")),
-                    gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", ""))
+                    gemini_api_key=artist_preset.get("settings", {}).get("gemini_api_key", conf.get("gemini_api_key", "")),
+                    reasoning_effort=artist_preset.get("settings", {}).get("reasoning_effort", conf.get("reasoning_effort", "low"))
                 )
                 gemini.artist_name = artist_preset.get("settings", {}).get("artist_name", conf.get("artist_name", ""))
                 gemini.artist_style = artist_preset.get("settings", {}).get("artist_style", conf.get("artist_style", ""))

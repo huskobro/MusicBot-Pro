@@ -239,6 +239,7 @@
     "lyrics_gen_mode_manual": "Manuel (Tarayıcı)",
     "gemini_api_key_label": "Gemini API Anahtarı:",
     "show_api_key": "Göster",
+    "reasoning_effort_label": "API Düşünme Seviyesi:",
     "log_gemini_api_call": "Gemini API çağrısı yapılıyor...",
     "log_gemini_api_success": "Gemini API yanıtı alındı! ✅",
     "log_gemini_api_error": "Gemini API hatası: {error}",

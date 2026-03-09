@@ -14,7 +14,7 @@ class GeminiPrompter:
     def __init__(self, project_file, output_dir=None, headless=False, 
                  use_gemini_lyrics=True, generate_visual=True, generate_video=True, generate_style=False, startup_delay=5, 
                  language="Turkish", browser=None, chat_mode="New Chat", xlsx_lock=None, master_prompts=None,
-                 lyrics_mode="manual", gemini_api_key=""):
+                 lyrics_mode="manual", gemini_api_key="", reasoning_effort="low"):
         self.xlsx_lock = xlsx_lock
         self.project_file = project_file
         self.output_dir = output_dir if output_dir else os.path.dirname(project_file)
@@ -35,6 +35,7 @@ class GeminiPrompter:
         self.lyrics_mode = lyrics_mode  # "api" or "manual"
         self.gemini_api_key = gemini_api_key
         self.progress_callback_internal = None
+        self.reasoning_effort = reasoning_effort if reasoning_effort in ("low", "high") else "low"
         self.artist_name = ""
         self.artist_style = ""
         
@@ -507,7 +508,7 @@ Kurallar:
             payload = {
                 "messages": [{"role": "user", "content": [{"type": "text", "text": theme_prompt}]}],
                 "include_thoughts": False,
-                "reasoning_effort": "low"
+                "reasoning_effort": self.reasoning_effort
             }
             
             resp = _requests.post(url, headers=headers, json=payload, timeout=60)
@@ -565,7 +566,7 @@ Kurallar:
                     }
                 ],
                 "include_thoughts": False,
-                "reasoning_effort": "high"
+                "reasoning_effort": self.reasoning_effort
             }
             
             resp = _requests.post(url, headers=headers, json=payload, timeout=60)
