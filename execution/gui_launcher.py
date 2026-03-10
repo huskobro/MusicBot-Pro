@@ -3095,13 +3095,18 @@ class MusicBotGUI:
                         video_dir = self.config.get("video_custom_output_path") or os.path.join(workspace, "Output_Videos")
                     
                     if os.path.exists(video_dir):
+                        # Create output dir for compilations
+                        long_videos_dir = os.path.join(os.path.dirname(video_dir), "long_videos")
+                        if not os.path.exists(long_videos_dir):
+                            os.makedirs(long_videos_dir, exist_ok=True)
+                            
                         # Get all .mp4 files in the video dir, excluding existing compilations
                         all_vids = [os.path.join(video_dir, f) for f in os.listdir(video_dir) if f.endswith(".mp4") and not f.startswith("Compilation_")]
                         all_vids.sort() # Sort by name (ids usually)
                         
                         if all_vids:
                             from video_merger import VideoMerger
-                            merger = VideoMerger(output_dir=video_dir)
+                            merger = VideoMerger(output_dir=long_videos_dir)
                             compilation_name = f"Compilation_{profile_name}_{int(time.time())}.mp4"
                             target_duration = self.config.get("target_col_duration", 0)
                             success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration)
