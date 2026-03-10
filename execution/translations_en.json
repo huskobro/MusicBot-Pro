@@ -61,6 +61,8 @@
     "suno_batch_delay_label": "Batch Mode Inter-Song Delay (s):",
     "target_duration_label": "Max Video Duration (Minutes, 0=Unltd):",
     "fade_out_label": "Compilation Transition Effect (Fade Out)",
+    "shuffle_label": "Shuffle Videos (Random Order)",
+    "compilation_settings": "Long Video / Compilation Settings",
     "startup_delay_label": "Browser Startup Delay (s):",
     "lang_reg": "Language & Regional",
     "target_lang_label": "Target Song Language:",

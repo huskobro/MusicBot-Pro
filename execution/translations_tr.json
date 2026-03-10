@@ -61,6 +61,8 @@
     "suno_batch_delay_label": "Toplu Mod Şarkı Arası Gecikme (sn):",
     "target_duration_label": "Maksimum Video Süresi (Dakika, 0=Sınırsız):",
     "fade_out_label": "Birleştirme Geçiş Efekti (Fade Out)",
+    "shuffle_label": "Videoları Karışık Birleştir (Shuffle)",
+    "compilation_settings": "Uzun Video / Birleştirme Ayarları",
     "startup_delay_label": "Tarayıcı Başlangıç Gecikmesi (sn):",
     "lang_reg": "Dil ve Bölgesel",
     "target_lang_label": "Hedef Şarkı Dili:",

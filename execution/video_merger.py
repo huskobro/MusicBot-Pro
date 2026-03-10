@@ -19,7 +19,7 @@ class VideoMerger:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def merge_videos(self, video_paths, base_output_filename, target_duration_mins=0, fade_out_enabled=False):
+    def merge_videos(self, video_paths, base_output_filename, target_duration_mins=0, fade_out_enabled=False, shuffle_enabled=False):
         """
         Concatenates multiple video files into one or more files based on target duration.
         """
@@ -29,6 +29,11 @@ class VideoMerger:
         if not valid_paths:
             logger.warning("No valid videos to merge.")
             return False
+
+        if shuffle_enabled:
+            import random
+            random.shuffle(valid_paths)
+            logger.info("Shuffle enabled: Video order randomized.")
 
         try:
             logger.info(f"Merging {len(valid_paths)} videos. Target duration: {target_duration_mins} mins.")

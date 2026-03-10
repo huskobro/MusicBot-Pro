@@ -168,6 +168,7 @@ class SettingsDialog(tk.Toplevel):
         self.var_def_video = None
         self.var_def_compilation = None
         self.var_fade_out = None
+        self.var_shuffle_enabled = None
         self.var_persona_link_enabled = None
         self.combo_persona_select = None
         self.var_gender_enabled = None
@@ -376,6 +377,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Radiobutton(f_reasoning, text="High", variable=self.var_reasoning_effort, value="high").pack(side="left")
         
         self.var_fade_out = tk.BooleanVar(value=config.get("fade_out_enabled", False))
+        self.var_shuffle_enabled = tk.BooleanVar(value=config.get("shuffle_enabled", False))
         
         # 3. Automation Delays
         f_suno = ttk.LabelFrame(scroll_frame, text=self.app.t("automation_delays"), padding=10)
@@ -401,14 +403,10 @@ class SettingsDialog(tk.Toplevel):
         self.entry_batch_delay.pack(fill="x", pady=2)
 
         
-        # 3.6 Target Compilation Duration
-        ttk.Label(f_suno, text=self.app.t("target_duration_label")).pack(anchor="w")
-        self.entry_target_duration = tk.Spinbox(f_suno, from_=0, to_=600, width=10)
-        self.entry_target_duration.delete(0, tk.END)
-        self.entry_target_duration.insert(0, str(config.get("target_col_duration", 0)))
-        self.entry_target_duration.pack(fill="x", pady=2)
-
-        ttk.Checkbutton(f_suno, text=self.app.t("fade_out_label"), variable=self.var_fade_out).pack(anchor="w", pady=2)
+        # self.entry_target_duration.insert(0, str(config.get("target_col_duration", 0))) # MOVED TO VIDEO TAB
+        # self.entry_target_duration.pack(fill="x", pady=2) # MOVED TO VIDEO TAB
+        
+        # ttk.Checkbutton(f_suno, text=self.app.t("fade_out_label"), variable=self.var_fade_out).pack(anchor="w", pady=2) # MOVED TO VIDEO TAB
         # 4. Language
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
@@ -646,12 +644,23 @@ class SettingsDialog(tk.Toplevel):
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_same_label"), variable=self.var_video_output_mode, value="profile").pack(anchor="w")
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_custom_label"), variable=self.var_video_output_mode, value="custom").pack(anchor="w")
         
-        f_custom_path = ttk.Frame(f_v_assets)
-        f_custom_path.pack(fill="x", pady=2)
         self.ent_video_custom_path = ttk.Entry(f_custom_path)
         self.ent_video_custom_path.insert(0, config.get("video_custom_output_path", ""))
         self.ent_video_custom_path.pack(side="left", fill="x", expand=True)
         ttk.Button(f_custom_path, text="...", width=3, command=lambda: self.browse_folder(self.ent_video_custom_path)).pack(side="left", padx=2)
+
+        # 4. Compilation Settings (Long Video) - NEW SECTION RELOCATED FROM GENERAL
+        f_v_comp = ttk.LabelFrame(v_scroll_frame, text=self.app.t("compilation_settings"), padding=10)
+        f_v_comp.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(f_v_comp, text=self.app.t("target_duration_label")).pack(anchor="w")
+        self.entry_target_duration = tk.Spinbox(f_v_comp, from_=0, to_=600, width=10)
+        self.entry_target_duration.delete(0, tk.END)
+        self.entry_target_duration.insert(0, str(config.get("target_col_duration", 0)))
+        self.entry_target_duration.pack(fill="x", pady=2)
+        
+        ttk.Checkbutton(f_v_comp, text=self.app.t("fade_out_label"), variable=self.var_fade_out).pack(anchor="w", pady=2)
+        ttk.Checkbutton(f_v_comp, text=self.app.t("shuffle_label"), variable=self.var_shuffle_enabled).pack(anchor="w", pady=2)
 
         # --- TAB 3: Prompts ---
         self.tab_prompts = ttk.Frame(self.notebook)
@@ -809,6 +818,7 @@ class SettingsDialog(tk.Toplevel):
         if self.ent_gemini_api_key: settings_snapshot["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
         settings_snapshot["reasoning_effort"] = self.var_reasoning_effort.get()
         if self.var_fade_out: settings_snapshot["fade_out_enabled"] = self.var_fade_out.get()
+        if self.var_shuffle_enabled: settings_snapshot["shuffle_enabled"] = self.var_shuffle_enabled.get()
         
         try:
             if self.entry_delay: settings_snapshot["suno_delay"] = int(self.entry_delay.get())
@@ -929,6 +939,8 @@ class SettingsDialog(tk.Toplevel):
             self.var_reasoning_effort.set(settings.get("reasoning_effort", "low"))
         if self.var_fade_out:
             self.var_fade_out.set(settings.get("fade_out_enabled", False))
+        if self.var_shuffle_enabled:
+            self.var_shuffle_enabled.set(settings.get("shuffle_enabled", False))
         
         if self.entry_delay:
             self.entry_delay.delete(0, tk.END)
@@ -1167,6 +1179,7 @@ class SettingsDialog(tk.Toplevel):
             if self.ent_gemini_api_key: self.config["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
             self.config["reasoning_effort"] = self.var_reasoning_effort.get()
             if self.var_fade_out: self.config["fade_out_enabled"] = self.var_fade_out.get()
+            if self.var_shuffle_enabled: self.config["shuffle_enabled"] = self.var_shuffle_enabled.get()
             
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
@@ -2439,7 +2452,8 @@ class MusicBotGUI:
             self.var_run_music.get(),
             self.var_run_art_prompt.get(),
             self.var_run_art_image.get(),
-            self.var_run_video.get()
+            self.var_run_video.get(),
+            self.var_run_compilation.get()
         ]
 
     def _on_global_step_change(self, *args):
@@ -3119,7 +3133,8 @@ class MusicBotGUI:
                             compilation_name = f"Compilation_{profile_name}_{int(time.time())}.mp4"
                             target_duration = self.config.get("target_col_duration", 0)
                             fade_out = self.config.get("fade_out_enabled", False)
-                            success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration, fade_out_enabled=fade_out)
+                            shuffle = self.config.get("shuffle_enabled", False)
+                            success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration, fade_out_enabled=fade_out, shuffle_enabled=shuffle)
                             if success:
                                 logger.info(self.t("log_merge_success").format(path=compilation_name))
                             else:
