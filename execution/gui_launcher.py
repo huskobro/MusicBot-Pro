@@ -644,6 +644,8 @@ class SettingsDialog(tk.Toplevel):
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_same_label"), variable=self.var_video_output_mode, value="profile").pack(anchor="w")
         ttk.Radiobutton(f_v_assets, text=self.app.t("video_output_custom_label"), variable=self.var_video_output_mode, value="custom").pack(anchor="w")
         
+        f_custom_path = ttk.Frame(f_v_assets)
+        f_custom_path.pack(fill="x", pady=2)
         self.ent_video_custom_path = ttk.Entry(f_custom_path)
         self.ent_video_custom_path.insert(0, config.get("video_custom_output_path", ""))
         self.ent_video_custom_path.pack(side="left", fill="x", expand=True)
@@ -662,7 +664,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(f_v_comp, text=self.app.t("fade_out_label"), variable=self.var_fade_out).pack(anchor="w", pady=2)
         ttk.Checkbutton(f_v_comp, text=self.app.t("shuffle_label"), variable=self.var_shuffle_enabled).pack(anchor="w", pady=2)
 
-        # --- TAB 3: Prompts ---
+        # --- TAB 4: Prompts ---
         self.tab_prompts = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_prompts, text=self.app.t("prompts"))
         
@@ -711,7 +713,7 @@ class SettingsDialog(tk.Toplevel):
         
         self.load_prompts_data()
 
-        # --- TAB: Activity Log (MOVED TO END) ---
+        # --- TAB 5: Activity Log ---
         self.tab_logs = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_logs, text=self.app.t("log"))
         

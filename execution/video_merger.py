@@ -10,6 +10,7 @@ except ImportError:
         from moviepy.video.compositing.concatenate import concatenate_videoclips
     except ImportError:
         from moviepy.editor import concatenate_videoclips
+from moviepy import afx
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,9 @@ class VideoMerger:
                     codec="libx264",
                     audio_codec="aac",
                     threads=4,
-                    logger=None
+                    logger=None,
+                    temp_audiofile=os.path.join(self.output_dir, f"temp_audio_{part_num}.m4a"),
+                    remove_temp=True
                 )
                 final_clip.close()
                 logger.info(f"Successfully merged video saved to: {out_path}")
@@ -107,10 +110,10 @@ class VideoMerger:
                     clip = VideoFileClip(path)
                     
                     if fade_out_enabled:
-                        # Apply 2 second fade out to audio
+                        # Apply 2 second fade out to audio using MoviePy 2.x FX pipeline
                         try:
                             if clip.audio:
-                                clip = clip.with_audio(clip.audio.audio_fadeout(2))
+                                clip = clip.with_effects([afx.AudioFadeOut(2)])
                         except Exception as fade_err:
                             logger.error(f"Failed to apply fade out to {path}: {fade_err}")
                             
