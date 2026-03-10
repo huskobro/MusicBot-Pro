@@ -57,7 +57,7 @@ class VideoMerger:
                 try:
                     with open(txt_path, 'w', encoding='utf-8') as f:
                         for ts, name in timestamps_to_write:
-                            f.write(f"{ts} - {name}\n")
+                            f.write(f"{ts} {name}\n")
                     logger.info(f"Timestamps saved to: {txt_path}")
                 except Exception as e:
                     logger.error(f"Failed to write timestamps to {txt_path}: {e}")
