@@ -167,6 +167,7 @@ class SettingsDialog(tk.Toplevel):
         self.var_def_art_i = None
         self.var_def_video = None
         self.var_def_compilation = None
+        self.var_fade_out = None
         self.var_persona_link_enabled = None
         self.combo_persona_select = None
         self.var_gender_enabled = None
@@ -374,6 +375,8 @@ class SettingsDialog(tk.Toplevel):
         ttk.Radiobutton(f_reasoning, text="Low", variable=self.var_reasoning_effort, value="low").pack(side="left", padx=(10, 5))
         ttk.Radiobutton(f_reasoning, text="High", variable=self.var_reasoning_effort, value="high").pack(side="left")
         
+        self.var_fade_out = tk.BooleanVar(value=config.get("fade_out_enabled", False))
+        
         # 3. Automation Delays
         f_suno = ttk.LabelFrame(scroll_frame, text=self.app.t("automation_delays"), padding=10)
         f_suno.pack(fill="x", padx=10, pady=5)
@@ -404,6 +407,8 @@ class SettingsDialog(tk.Toplevel):
         self.entry_target_duration.delete(0, tk.END)
         self.entry_target_duration.insert(0, str(config.get("target_col_duration", 0)))
         self.entry_target_duration.pack(fill="x", pady=2)
+
+        ttk.Checkbutton(f_suno, text=self.app.t("fade_out_label"), variable=self.var_fade_out).pack(anchor="w", pady=2)
         # 4. Language
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
@@ -803,6 +808,7 @@ class SettingsDialog(tk.Toplevel):
         if self.var_lyrics_gen_mode: settings_snapshot["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
         if self.ent_gemini_api_key: settings_snapshot["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
         settings_snapshot["reasoning_effort"] = self.var_reasoning_effort.get()
+        if self.var_fade_out: settings_snapshot["fade_out_enabled"] = self.var_fade_out.get()
         
         try:
             if self.entry_delay: settings_snapshot["suno_delay"] = int(self.entry_delay.get())
@@ -921,6 +927,8 @@ class SettingsDialog(tk.Toplevel):
             self.ent_gemini_api_key.insert(0, settings.get("gemini_api_key", ""))
         if hasattr(self, 'var_reasoning_effort'):
             self.var_reasoning_effort.set(settings.get("reasoning_effort", "low"))
+        if self.var_fade_out:
+            self.var_fade_out.set(settings.get("fade_out_enabled", False))
         
         if self.entry_delay:
             self.entry_delay.delete(0, tk.END)
@@ -1158,6 +1166,7 @@ class SettingsDialog(tk.Toplevel):
             if self.var_lyrics_gen_mode: self.config["lyrics_gen_mode"] = self.var_lyrics_gen_mode.get()
             if self.ent_gemini_api_key: self.config["gemini_api_key"] = self.ent_gemini_api_key.get().strip()
             self.config["reasoning_effort"] = self.var_reasoning_effort.get()
+            if self.var_fade_out: self.config["fade_out_enabled"] = self.var_fade_out.get()
             
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
@@ -3109,7 +3118,8 @@ class MusicBotGUI:
                             merger = VideoMerger(output_dir=long_videos_dir)
                             compilation_name = f"Compilation_{profile_name}_{int(time.time())}.mp4"
                             target_duration = self.config.get("target_col_duration", 0)
-                            success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration)
+                            fade_out = self.config.get("fade_out_enabled", False)
+                            success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration, fade_out_enabled=fade_out)
                             if success:
                                 logger.info(self.t("log_merge_success").format(path=compilation_name))
                             else:

@@ -19,7 +19,7 @@ class VideoMerger:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def merge_videos(self, video_paths, base_output_filename, target_duration_mins=0):
+    def merge_videos(self, video_paths, base_output_filename, target_duration_mins=0, fade_out_enabled=False):
         """
         Concatenates multiple video files into one or more files based on target duration.
         """
@@ -100,6 +100,15 @@ class VideoMerger:
             for i, path in enumerate(valid_paths):
                 try:
                     clip = VideoFileClip(path)
+                    
+                    if fade_out_enabled:
+                        # Apply 2 second fade out to audio
+                        try:
+                            if clip.audio:
+                                clip = clip.with_audio(clip.audio.audio_fadeout(2))
+                        except Exception as fade_err:
+                            logger.error(f"Failed to apply fade out to {path}: {fade_err}")
+                            
                     clip_len = clip.duration
                     
                     # If adding this clip exceeds target duration (and it's not the very first clip in the chunk)
