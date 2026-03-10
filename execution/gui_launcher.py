@@ -156,6 +156,7 @@ class SettingsDialog(tk.Toplevel):
         self.var_visual = None
         self.var_video = None
         self.entry_delay = None
+        self.entry_target_duration = None
         self.entry_startup = None
         self.combo_lang = None
         self.combo_ui_lang = None
@@ -395,7 +396,14 @@ class SettingsDialog(tk.Toplevel):
         self.entry_batch_delay.delete(0, tk.END)
         self.entry_batch_delay.insert(0, str(config.get("suno_batch_delay", 5)))
         self.entry_batch_delay.pack(fill="x", pady=2)
+
         
+        # 3.6 Target Compilation Duration
+        ttk.Label(f_suno, text=self.app.t("target_duration_label")).pack(anchor="w")
+        self.entry_target_duration = tk.Spinbox(f_suno, from_=0, to_=600, width=10)
+        self.entry_target_duration.delete(0, tk.END)
+        self.entry_target_duration.insert(0, str(config.get("target_col_duration", 0)))
+        self.entry_target_duration.pack(fill="x", pady=2)
         # 4. Language
         f_lang = ttk.LabelFrame(scroll_frame, text=self.app.t("lang_reg"), padding=10)
         f_lang.pack(fill="x", padx=10, pady=5)
@@ -808,6 +816,10 @@ class SettingsDialog(tk.Toplevel):
             if hasattr(self, 'entry_batch_delay'): settings_snapshot["suno_batch_delay"] = int(self.entry_batch_delay.get())
         except (ValueError, TypeError): settings_snapshot["suno_batch_delay"] = 5
         
+        try:
+            if hasattr(self, 'entry_target_duration'): settings_snapshot["target_col_duration"] = int(self.entry_target_duration.get())
+        except (ValueError, TypeError): settings_snapshot["target_col_duration"] = 0
+        
         if self.combo_lang: settings_snapshot["target_language"] = self.combo_lang.get()
         if self.ent_artist_name: settings_snapshot["artist_name"] = self.ent_artist_name.get()
         if self.ent_artist_style: settings_snapshot["artist_style"] = self.ent_artist_style.get()
@@ -919,6 +931,10 @@ class SettingsDialog(tk.Toplevel):
         if hasattr(self, 'entry_batch_delay') and self.entry_batch_delay:
             self.entry_batch_delay.delete(0, tk.END)
             self.entry_batch_delay.insert(0, str(settings.get("suno_batch_delay", "5")))
+        
+        if hasattr(self, 'entry_target_duration') and self.entry_target_duration:
+            self.entry_target_duration.delete(0, tk.END)
+            self.entry_target_duration.insert(0, str(settings.get("target_col_duration", "0")))
         if self.combo_lang: self.combo_lang.set(settings.get("target_language", "Turkish"))
         
         if self.ent_artist_name:
@@ -1146,6 +1162,7 @@ class SettingsDialog(tk.Toplevel):
             if self.entry_delay: self.config["suno_delay"] = int(self.entry_delay.get())
             if self.entry_startup: self.config["startup_delay"] = int(self.entry_startup.get())
             if hasattr(self, 'entry_batch_delay'): self.config["suno_batch_delay"] = int(self.entry_batch_delay.get())
+            if hasattr(self, 'entry_target_duration'): self.config["target_col_duration"] = int(self.entry_target_duration.get())
             if self.combo_lang: self.config["target_language"] = self.combo_lang.get()
             if self.combo_ui_lang: self.config["ui_language"] = self.combo_ui_lang.get()
             if self.var_log_at_start: self.config["log_open_at_start"] = self.var_log_at_start.get()
@@ -3086,7 +3103,8 @@ class MusicBotGUI:
                             from video_merger import VideoMerger
                             merger = VideoMerger(output_dir=video_dir)
                             compilation_name = f"Compilation_{profile_name}_{int(time.time())}.mp4"
-                            success = merger.merge_videos(all_vids, compilation_name)
+                            target_duration = self.config.get("target_col_duration", 0)
+                            success = merger.merge_videos(all_vids, compilation_name, target_duration_mins=target_duration)
                             if success:
                                 logger.info(self.t("log_merge_success").format(path=compilation_name))
                             else:

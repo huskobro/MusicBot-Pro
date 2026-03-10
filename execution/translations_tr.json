@@ -59,6 +59,7 @@
     "automation_delays": "Otomasyon Gecikmeleri",
     "suno_delay_label": "Suno Üretim Gecikmesi (sn):",
     "suno_batch_delay_label": "Toplu Mod Şarkı Arası Gecikme (sn):",
+    "target_duration_label": "Hedef Birleştirme Süresi (Dk):",
     "startup_delay_label": "Tarayıcı Başlangıç Gecikmesi (sn):",
     "lang_reg": "Dil ve Bölgesel",
     "target_lang_label": "Hedef Şarkı Dili:",
