@@ -861,10 +861,22 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
 
             def fill_field(el, val):
                 if not el or val is None: return
+                try:
+                    el.scroll_into_view_if_needed()
+                    # JS native setter ensures React state is properly updated
+                    self.tab.evaluate(r"""(args) => {
+                        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set ||
+                                           Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                        if (nativeSetter) nativeSetter.call(args.el, '');
+                        else args.el.value = '';
+                        args.el.dispatchEvent(new Event('input', { bubbles: true }));
+                        args.el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }""", {"el": el})
+                    time.sleep(0.1)
+                except Exception: pass
                 h_enabled = getattr(self.browser, "humanizer_enabled", True)
                 if self.turbo or not h_enabled:
                     try:
-                        el.scroll_into_view_if_needed()
                         el.fill(str(val))
                     except Exception:
                         self.browser.humanizer.type_text(self.tab, el, val)
