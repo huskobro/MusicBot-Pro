@@ -160,11 +160,11 @@ class SettingsDialog(tk.Toplevel):
         f_adv_suno.pack(fill="both", expand=True, padx=10, pady=10)
 
 
-        # Persona Profile Section
+        # Voice Profile Section
         self.var_persona_link_enabled = tk.BooleanVar(value=config.get("suno_persona_link_enabled", False))
         ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_persona_label"), variable=self.var_persona_link_enabled).grid(row=1, column=0, sticky="w", pady=2)
         
-        # Frame for Persona Manager
+        # Frame for Voice Manager
         f_persona_mgr = ttk.Frame(f_adv_suno)
         f_persona_mgr.grid(row=1, column=1, sticky="ew", pady=2)
         

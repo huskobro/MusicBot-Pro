@@ -17,7 +17,7 @@ def download_range():
     project_file = "/Users/huseyincoskun/Documents/MusicBot_Workspace/camille_noctra.xlsx"
     profile_name = "Camille Noctra"
     output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
-    persona_link = "https://suno.com/persona/86b7202e-c347-4efc-8286-301d8c366e72"
+    persona_link = "https://suno.com/voice/86b7202e-c347-4efc-8286-301d8c366e72"
     
     h_conf = {
         "level": "YÜKSEK",

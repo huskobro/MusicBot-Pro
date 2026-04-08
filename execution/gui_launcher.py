@@ -218,7 +218,7 @@ class SettingsDialog(tk.Toplevel):
         self.combo_preset_select.pack(side="left", fill="x", expand=True, padx=10)
         self.combo_preset_select.bind("<<ComboboxSelected>>", lambda e: self.load_preset())
 
-        # 2. Management & Alias Row (Persona style)
+        # 2. Management & Alias Row (Voice style)
         f_mgmt = ttk.Frame(f_presets)
         f_mgmt.pack(fill="x", pady=(0, 15))
         
@@ -443,15 +443,15 @@ class SettingsDialog(tk.Toplevel):
         f_adv_suno.pack(fill="both", expand=True, padx=10, pady=10)
 
 
-        # Persona Profile Section
+        # Voice Profile Section
         self.var_persona_link_enabled = tk.BooleanVar(value=config.get("suno_persona_link_enabled", False))
         ttk.Checkbutton(f_adv_suno, text=self.app.t("enable_persona_label"), variable=self.var_persona_link_enabled).grid(row=0, column=0, sticky="w", pady=2)
         
-        # Frame for Persona Manager
+        # Frame for Voice Manager
         f_persona_mgr = ttk.Frame(f_adv_suno)
         f_persona_mgr.grid(row=0, column=1, sticky="ew", pady=2)
         
-        # Load Personas
+        # Load Voices
         self.personas = config.get("suno_personas", {}) # Dict: {Alias: Link}
         self.active_persona_alias = config.get("suno_active_persona", "")
         
@@ -2581,7 +2581,7 @@ class MusicBotGUI:
                 if gender and gender != "Default":
                     parts.append(f"🎤 {gender}")
             
-            # Active Persona
+            # Active Voice
             persona = s.get("suno_active_persona", "")
             if persona:
                 parts.append(f"👤 {persona}")
@@ -3510,7 +3510,7 @@ class MusicBotGUI:
                     if s_steps[1] and not self.stop_requested and common_browser:
                         common_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
                         
-                        # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
+                        # --- SUNO ISOLATION: Get voice and gender from this profile's preset snapshot ---
                         artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
                         preset_settings = artist_preset.get("settings", {})
                         p_alias = preset_settings.get("suno_active_persona", "")
@@ -3808,7 +3808,7 @@ class MusicBotGUI:
                 logger.info(f"Batch Phase 2: Suno Batch ({len(suno_ids)} songs)")
                 batch_browser.humanizer_enabled = global_human and self.config.get("h_activate_suno", True)
                 
-                # --- SUNO ISOLATION: Get persona and gender from this profile's preset snapshot ---
+                # --- SUNO ISOLATION: Get voice and gender from this profile's preset snapshot ---
                 artist_preset = snapshot_config.get("artist_presets", {}).get(profile_name, {}) if snapshot_config else {}
                 preset_settings = artist_preset.get("settings", {})
                 p_alias = preset_settings.get("suno_active_persona", "")

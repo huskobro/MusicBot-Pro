@@ -45,11 +45,11 @@ class SunoGenerator:
                 if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
                 time.sleep(self.startup_delay)
             
-            # --- Persona Workflow (Before reaching /create) ---
+            # --- Voice Workflow (Before reaching /create) ---
             if self.persona_link:
                 success = self._setup_persona_workflow(progress_callback)
                 if not success:
-                    logger.warning("Persona workflow failed, falling back to direct navigation.")
+                    logger.warning("Voice workflow failed, falling back to direct navigation.")
                     self.browser.goto(self.base_url, page=self.tab)
             else:
                 self.browser.goto(self.base_url, page=self.tab)
@@ -163,7 +163,7 @@ class SunoGenerator:
                 if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
                 time.sleep(self.startup_delay)
             
-            # --- Common Setup (Persona / Login / v5) ---
+            # --- Common Setup (Voice / Login / v5) ---
             # Reuse logic from run(), or extract to common _init_session()
             if self.persona_link:
                 success = self._setup_persona_workflow(progress_callback)
@@ -234,7 +234,7 @@ class SunoGenerator:
                     # Ensure a fresh state for every song in batch mode by reloading
                     if i >= 0: # Reload for every song to be absolutely sure
                         if self.persona_link:
-                            logger.info(f"Batch: Re-activating Persona for song {rid}...")
+                            logger.info(f"Batch: Re-activating Voice for song {rid}...")
                             self._setup_persona_workflow(progress_callback)
                         else:
                             logger.info(f"Batch: Reloading /create for song {rid}...")
@@ -402,18 +402,58 @@ class SunoGenerator:
                 except:
                     el.fill(str(val))
 
-            fill_field(textareas[0], content)
-            
-            style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
-            if style_textarea.is_visible():
-                fill_field(style_textarea, style)
+            # Lyrics: find by placeholder containing 'lyric'
+            lyrics_textarea = self.tab.locator("textarea[placeholder*='lyric' i]").first
+            if lyrics_textarea.is_visible():
+                fill_field(lyrics_textarea, content)
             else:
-                 if len(textareas) > 1: fill_field(textareas[1], style)
-            
+                fill_field(textareas[0], content)
+
+            # Style: find the textarea near 'Exclude styles' input (sibling in Styles section)
+            style_textarea = self.tab.evaluate(r"""() => {
+                const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                if (excludeInput) {
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                return true;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }
+                return false;
+            }""")
+            if style_textarea:
+                self.tab.evaluate(r"""(styleText) => {
+                    const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                    if (!excludeInput) return;
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                                if (nativeSetter) nativeSetter.call(ta, styleText);
+                                else ta.value = styleText;
+                                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                                ta.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }""", str(style))
+            else:
+                if len(textareas) > 2: fill_field(textareas[2], style)
+                elif len(textareas) > 1: fill_field(textareas[1], style)
+
             if input_title:
                 try: fill_field(input_title, suno_title)
                 except: pass
-                
+
             # Adv Options
             self._setup_lyrics_mode()
             self._setup_advanced_options()
@@ -630,10 +670,10 @@ class SunoGenerator:
 
 
     def _setup_persona_workflow(self, progress_callback=None):
-        """Navigates to persona page, clicks 'Create with Persona', and handles v5 modal."""
+        """Navigates to voice page, clicks 'Create with Voice', and handles v5 modal."""
         try:
-            logger.info(f"Navigating to Persona Link: {self.persona_link}")
-            if progress_callback: progress_callback("global", "Persona Profili Seçiliyor... 👤")
+            logger.info(f"Navigating to Voice Link: {self.persona_link}")
+            if progress_callback: progress_callback("global", "Voice Profili Seçiliyor... 👤")
             self.browser.goto(self.persona_link, page=self.tab)
             time.sleep(5)
 
@@ -642,7 +682,7 @@ class SunoGenerator:
                     const btns = Array.from(document.querySelectorAll('button'));
                     const btn = btns.find(b => {
                         const txt = (b.innerText || "").toLowerCase();
-                        return txt.includes('create') && txt.includes('persona');
+                        return txt.includes('create') && txt.includes('voice');
                     });
                     
                     if (btn) {
@@ -659,9 +699,9 @@ class SunoGenerator:
                     return "not_found";
                 }""")
 
-            # Click "Create with Persona" with retries
+            # Click "Create with Voice" with retries
             clicked = False
-            logger.info("Waiting for 'Create with Persona' button...")
+            logger.info("Waiting for 'Create with Voice' button...")
             
             # First attempt loop (Wait up to ~15s)
             for attempt in range(5): 
@@ -675,7 +715,7 @@ class SunoGenerator:
 
             # If not found, try refresh (User request for soft 404/slow load)
             if not clicked:
-                logger.warning("'Create with Persona' button not found or inactive. Refreshing page in 3s...")
+                logger.warning("'Create with Voice' button not found or inactive. Refreshing page in 3s...")
                 time.sleep(3)
                 self.browser.goto(self.persona_link, page=self.tab)
                 time.sleep(5) # Wait for reload
@@ -690,16 +730,16 @@ class SunoGenerator:
                     time.sleep(3)
 
             if clicked:
-                logger.info("Clicked 'Create with Persona'. Waiting for /create page...")
+                logger.info("Clicked 'Create with Voice'. Waiting for /create page...")
                 time.sleep(5)
-                # Handle "Store as persona" or "Switch to v5" modals if they appear
+                # Handle "Store as voice" or "Switch to v5" modals if they appear
                 self._handle_v5_switch_modal()
                 return True
             else:
-                logger.warning("'Create with Persona' button not found after refresh and retries.")
+                logger.warning("'Create with Voice' button not found after refresh and retries.")
                 return False
         except Exception as e:
-            logger.error(f"Persona workflow failed: {e}")
+            logger.error(f"Voice workflow failed: {e}")
             return False
 
     def _handle_v5_switch_modal(self):
@@ -816,35 +856,54 @@ class SunoGenerator:
                         el.fill(str(val))
                     except: pass
 
-            fill_field(textareas[0], content)
-            
-            # Style: try placeholder match first, then section-based lookup
-            style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
-            if style_textarea.is_visible():
-                fill_field(style_textarea, style)
+            # Lyrics: find by placeholder containing 'lyric'
+            lyrics_textarea = self.tab.locator("textarea[placeholder*='lyric' i]").first
+            if lyrics_textarea.is_visible():
+                fill_field(lyrics_textarea, content)
             else:
-                style_found = self.tab.evaluate(r"""() => {
-                    const headers = document.querySelectorAll('div[role="button"]');
-                    for (const h of headers) {
-                        if (h.textContent.trim() === 'Styles') {
-                            let container = h.parentElement;
-                            for (let d = 0; d < 5 && container; d++) {
-                                const ta = container.querySelector('textarea');
-                                if (ta && ta.offsetParent !== null) {
-                                    ta.scrollIntoView({ block: 'center' });
-                                    return true;
-                                }
-                                container = container.parentElement;
+                fill_field(textareas[0], content)
+
+            # Style: find the textarea near 'Exclude styles' input (sibling in Styles section)
+            style_textarea = self.tab.evaluate(r"""() => {
+                const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                if (excludeInput) {
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                return true;
                             }
                         }
+                        container = container.parentElement;
                     }
-                    return false;
-                }""")
-                if style_found and len(textareas) > 1:
-                    fill_field(textareas[1], style)
-                elif len(textareas) > 1:
-                    fill_field(textareas[1], style)
-            
+                }
+                return false;
+            }""")
+            if style_textarea:
+                self.tab.evaluate(r"""(styleText) => {
+                    const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                    if (!excludeInput) return;
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                                if (nativeSetter) nativeSetter.call(ta, styleText);
+                                else ta.value = styleText;
+                                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                                ta.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }""", str(style))
+            else:
+                if len(textareas) > 2: fill_field(textareas[2], style)
+                elif len(textareas) > 1: fill_field(textareas[1], style)
+
             # Title fill
             if input_title:
                 try:
@@ -868,7 +927,7 @@ class SunoGenerator:
                     }""", str(suno_title))
                     time.sleep(1)
 
-            # --- Persona & Advanced Options Setup ---
+            # --- Voice & Advanced Options Setup ---
             self._setup_lyrics_mode()
             self._setup_advanced_options()
 

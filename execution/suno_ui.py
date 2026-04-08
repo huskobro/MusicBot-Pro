@@ -1,6 +1,6 @@
 """
 UI interaction mixin for SunoGenerator.
-Handles persona workflow, v5 switching, advanced options, lyrics mode,
+Handles voice workflow, v5 switching, advanced options, lyrics mode,
 captcha detection, and alert sounds.
 """
 import os
@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class SunoUIMixin:
-    """Suno website UI interactions: persona, advanced options, captcha, alerts."""
+    """Suno website UI interactions: voice, advanced options, captcha, alerts."""
 
     def _setup_persona_workflow(self, progress_callback=None):
-        """Navigates to persona page, clicks 'Create with Persona', and handles v5 modal."""
+        """Navigates to voice page, clicks 'Create with Voice', and handles v5 modal."""
         try:
-            logger.info(f"Navigating to Persona Link: {self.persona_link}")
-            if progress_callback: progress_callback("global", "Persona Profili Seçiliyor... 👤")
+            logger.info(f"Navigating to Voice Link: {self.persona_link}")
+            if progress_callback: progress_callback("global", "Voice Profili Seçiliyor... 👤")
             self.browser.goto(self.persona_link, page=self.tab)
             time.sleep(3 if self.turbo else 5)
 
@@ -28,7 +28,7 @@ class SunoUIMixin:
                     const btns = Array.from(document.querySelectorAll('button'));
                     const btn = btns.find(b => {
                         const txt = (b.innerText || "").toLowerCase();
-                        return txt.includes('create') && txt.includes('persona');
+                        return txt.includes('create') && txt.includes('voice');
                     });
                     
                     if (btn) {
@@ -46,7 +46,7 @@ class SunoUIMixin:
                 }""")
 
             clicked = False
-            logger.info("Waiting for 'Create with Persona' button...")
+            logger.info("Waiting for 'Create with Voice' button...")
 
             for attempt in range(5):
                 status = find_and_click()
@@ -58,7 +58,7 @@ class SunoUIMixin:
                 time.sleep(3)
 
             if not clicked:
-                logger.warning("'Create with Persona' button not found or inactive. Refreshing page in 3s...")
+                logger.warning("'Create with Voice' button not found or inactive. Refreshing page in 3s...")
                 time.sleep(3)
                 self.browser.goto(self.persona_link, page=self.tab)
                 time.sleep(5)
@@ -72,15 +72,15 @@ class SunoUIMixin:
                     time.sleep(3)
 
             if clicked:
-                logger.info("Clicked 'Create with Persona'. Waiting for /create page...")
+                logger.info("Clicked 'Create with Voice'. Waiting for /create page...")
                 time.sleep(5)
                 self._handle_v5_switch_modal()
                 return True
             else:
-                logger.warning("'Create with Persona' button not found after refresh and retries.")
+                logger.warning("'Create with Voice' button not found after refresh and retries.")
                 return False
         except Exception as e:
-            logger.error(f"Persona workflow failed: {e}")
+            logger.error(f"Voice workflow failed: {e}")
             return False
 
     def _handle_v5_switch_modal(self):

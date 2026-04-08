@@ -17,7 +17,7 @@ def run_test_range():
     project_file = "/Users/huseyincoskun/Documents/MusicBot_Workspace/olivia_rodrigo.xlsx"
     profile_name = "Olivia Rodrigo"
     output_media = os.path.join("/Users/huseyincoskun/Documents/MusicBot_Workspace", "output_media", profile_name)
-    persona_link = "https://suno.com/persona/6b8123d4-b425-4dd5-be4d-0e2d736c045c"
+    persona_link = "https://suno.com/voice/6b8123d4-b425-4dd5-be4d-0e2d736c045c"
     
     h_conf = {
         "level": "YÜKSEK",

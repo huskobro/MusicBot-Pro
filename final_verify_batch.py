@@ -17,7 +17,7 @@ def final_verification():
     project_file = "/Users/huseyincoskun/Documents/MusicBot_Workspace/camille_noctra.xlsx"
     profile_name = "Camille Noctra"
     output_media = os.path.join(os.path.dirname(project_file), "output_media", profile_name)
-    persona_link = "https://suno.com/persona/86b7202e-c347-4efc-8286-301d8c366e72"
+    persona_link = "https://suno.com/voice/86b7202e-c347-4efc-8286-301d8c366e72"
     
     h_conf = {
         "level": "YÜKSEK",
@@ -49,7 +49,7 @@ def final_verification():
         
         print("\nVerification process finished.")
         print("Expected results:")
-        print("1. All 3 songs generated with Camille Noctra persona.")
+        print("1. All 3 songs generated with Camille Noctra voice.")
         print("2. System waited until all songs reached 'Hazır!' state.")
         print("3. Exactly songs 121, 122, 123 were downloaded (both versions).")
         time.sleep(10)

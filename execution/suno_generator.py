@@ -82,11 +82,11 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
                 time.sleep(self.startup_delay)
             
-            # --- Persona Workflow (Before reaching /create) ---
+            # --- Voice Workflow (Before reaching /create) ---
             if self.persona_link:
                 success = self._setup_persona_workflow(progress_callback)
                 if not success:
-                    logger.warning("Persona akışı başarısız oldu, doğrudan yenilemeye geçiliyor.")
+                    logger.warning("Voice akışı başarısız oldu, doğrudan yenilemeye geçiliyor.")
                     self.browser.goto(self.base_url, page=self.tab)
             else:
                 self.browser.goto(self.base_url, page=self.tab)
@@ -210,7 +210,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 if progress_callback: progress_callback("global", f"Bekleniyor: {self.startup_delay}sn (Başlangıç Gecikmesi)...")
                 time.sleep(self.startup_delay)
             
-            # --- Common Setup (Persona / Login / v5) ---
+            # --- Common Setup (Voice / Login / v5) ---
             # Reuse logic from run(), or extract to common _init_session()
             if self.persona_link:
                 success = self._setup_persona_workflow(progress_callback)
@@ -298,7 +298,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                 
                 # INITIAL SETUP: Only once before the loop
                 if self.persona_link:
-                    logger.info(f"Toplu Üretim: Persona aktif ediliyor...")
+                    logger.info(f"Toplu Üretim: Voice aktif ediliyor...")
                     self._setup_persona_workflow(progress_callback)
                 else:
                     logger.info(f"Toplu Üretim: Sayfa hazırlanıyor (/create)...")
@@ -874,18 +874,62 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     except Exception:
                         el.fill(str(val))
 
-            fill_field(textareas[0], content)
-            
-            style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
-            if style_textarea.is_visible():
-                fill_field(style_textarea, style)
+            # Lyrics: find by placeholder containing 'lyric'
+            lyrics_textarea = self.tab.locator("textarea[placeholder*='lyric' i]").first
+            if lyrics_textarea.is_visible():
+                fill_field(lyrics_textarea, content)
             else:
-                 if len(textareas) > 1: fill_field(textareas[1], style)
-            
+                fill_field(textareas[0], content)
+
+            # Style: find the textarea near 'Exclude styles' input (sibling in Styles section)
+            style_textarea = self.tab.evaluate(r"""() => {
+                // Find the Exclude styles input as anchor
+                const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                if (excludeInput) {
+                    // Walk up to find the section container, then find the textarea within it
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                return true;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }
+                return false;
+            }""")
+            if style_textarea:
+                # Use the located styles textarea via JS
+                self.tab.evaluate(r"""(styleText) => {
+                    const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                    if (!excludeInput) return;
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                                if (nativeSetter) nativeSetter.call(ta, styleText);
+                                else ta.value = styleText;
+                                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                                ta.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }""", str(style))
+            else:
+                # Fallback: last visible textarea (skip lyrics and enhance)
+                if len(textareas) > 2: fill_field(textareas[2], style)
+                elif len(textareas) > 1: fill_field(textareas[1], style)
+
             if input_title:
                 try: fill_field(input_title, suno_title)
                 except Exception: pass
-                
+
             # Adv Options
             self._setup_lyrics_mode()
             self._setup_advanced_options()
@@ -1013,35 +1057,55 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                         el.fill(str(val))
                     except Exception: pass
 
-            fill_field(textareas[0], content)
-            
-            # Style: try placeholder match first, then section-based lookup
-            style_textarea = self.tab.locator("textarea[placeholder*='style' i]").first
-            if style_textarea.is_visible():
-                fill_field(style_textarea, style)
+            # Lyrics: find by placeholder containing 'lyric'
+            lyrics_textarea = self.tab.locator("textarea[placeholder*='lyric' i]").first
+            if lyrics_textarea.is_visible():
+                fill_field(lyrics_textarea, content)
             else:
-                style_found = self.tab.evaluate(r"""() => {
-                    const headers = document.querySelectorAll('div[role="button"]');
-                    for (const h of headers) {
-                        if (h.textContent.trim() === 'Styles') {
-                            let container = h.parentElement;
-                            for (let d = 0; d < 5 && container; d++) {
-                                const ta = container.querySelector('textarea');
-                                if (ta && ta.offsetParent !== null) {
-                                    ta.scrollIntoView({ block: 'center' });
-                                    return true;
-                                }
-                                container = container.parentElement;
+                fill_field(textareas[0], content)
+
+            # Style: find the textarea near 'Exclude styles' input (sibling in Styles section)
+            style_textarea = self.tab.evaluate(r"""() => {
+                const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                if (excludeInput) {
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                return true;
                             }
                         }
+                        container = container.parentElement;
                     }
-                    return false;
-                }""")
-                if style_found and len(textareas) > 1:
-                    fill_field(textareas[1], style)
-                elif len(textareas) > 1:
-                    fill_field(textareas[1], style)
-            
+                }
+                return false;
+            }""")
+            if style_textarea:
+                self.tab.evaluate(r"""(styleText) => {
+                    const excludeInput = document.querySelector('input[placeholder*="Exclude" i]');
+                    if (!excludeInput) return;
+                    let container = excludeInput.parentElement;
+                    for (let d = 0; d < 8 && container; d++) {
+                        const tas = container.querySelectorAll('textarea');
+                        for (const ta of tas) {
+                            if (ta.offsetParent !== null && !ta.placeholder.toLowerCase().includes('lyric') && !ta.placeholder.toLowerCase().includes('enhance')) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                                if (nativeSetter) nativeSetter.call(ta, styleText);
+                                else ta.value = styleText;
+                                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                                ta.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                        container = container.parentElement;
+                    }
+                }""", str(style))
+            else:
+                # Fallback: last visible textarea (skip lyrics and enhance)
+                if len(textareas) > 2: fill_field(textareas[2], style)
+                elif len(textareas) > 1: fill_field(textareas[1], style)
+
             # Title fill
             if input_title:
                 try:
@@ -1065,7 +1129,7 @@ class SunoGenerator(SunoExcelMixin, SunoDownloaderMixin, SunoUIMixin):
                     }""", str(suno_title))
                     time.sleep(1)
 
-            # --- Persona & Advanced Options Setup ---
+            # --- Voice & Advanced Options Setup ---
             self._setup_lyrics_mode()
             self._setup_advanced_options()
 
