@@ -130,7 +130,7 @@ class SunoUIMixin:
 
     def _setup_advanced_options(self):
         try:
-            logger.info("Expanding Advanced Options panel...")
+            logger.info("Expanding More Options panel...")
 
             for attempt in range(3):
                 exclude_visible = self.tab.evaluate("""() => {
@@ -139,25 +139,28 @@ class SunoUIMixin:
                 }""")
 
                 if exclude_visible:
-                    logger.info("Advanced Options already expanded.")
+                    logger.info("More Options already expanded.")
                     break
 
                 clicked = self.tab.evaluate("""() => {
-                    const candidates = Array.from(document.querySelectorAll('div[role="button"]'));
-                    const advBtn = candidates.find(el => el.textContent.trim() === 'Advanced Options');
-                    if (advBtn) {
-                        advBtn.scrollIntoView({ block: 'center' });
-                        advBtn.click();
+                    const candidates = Array.from(document.querySelectorAll('div[role="button"], button'));
+                    const btn = candidates.find(el => {
+                        const txt = el.textContent.trim();
+                        return txt === 'More Options' || txt === 'Advanced Options';
+                    });
+                    if (btn) {
+                        btn.scrollIntoView({ block: 'center' });
+                        btn.click();
                         return true;
                     }
                     return false;
                 }""")
 
                 if clicked:
-                    logger.info(f"Clicked Advanced Options (attempt {attempt+1})")
+                    logger.info(f"Clicked More Options (attempt {attempt+1})")
                     time.sleep(3)
                 else:
-                    logger.warning(f"Advanced Options button not found (attempt {attempt+1})")
+                    logger.warning(f"More Options button not found (attempt {attempt+1})")
                     time.sleep(2)
 
             exclude_visible = self.tab.evaluate("""() => {
@@ -165,7 +168,7 @@ class SunoUIMixin:
                 return inp && inp.offsetParent !== null;
             }""")
             if not exclude_visible:
-                logger.warning("Advanced Options panel did NOT expand.")
+                logger.warning("More Options panel did NOT expand.")
                 return
 
             # Vocal Gender Selection

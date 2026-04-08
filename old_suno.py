@@ -397,9 +397,22 @@ class SunoGenerator:
                         input_title = title_loc_alt.nth(i); break
 
             def fill_field(el, val):
+                if not el or val is None: return
+                try:
+                    el.scroll_into_view_if_needed()
+                    self.tab.evaluate(r"""(el) => {
+                        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set ||
+                                           Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                        if (nativeSetter) nativeSetter.call(el, '');
+                        else el.value = '';
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }""", el)
+                    time.sleep(0.1)
+                except Exception: pass
                 try:
                     self.browser.humanizer.type_text(self.tab, el, val)
-                except:
+                except Exception:
                     el.fill(str(val))
 
             # Lyrics: find by placeholder containing 'lyric'
@@ -1127,45 +1140,48 @@ class SunoGenerator:
 
     def _setup_advanced_options(self):
         try:
-            logger.info("Expanding Advanced Options panel...")
-            
+            logger.info("Expanding More Options panel...")
+
             for attempt in range(3):
                 # Check if already expanded
                 exclude_visible = self.tab.evaluate("""() => {
                     const inp = document.querySelector('input[placeholder*="Exclude" i]');
                     return inp && inp.offsetParent !== null;
                 }""")
-                
+
                 if exclude_visible:
-                    logger.info("Advanced Options already expanded.")
+                    logger.info("More Options already expanded.")
                     break
-                
-                # Click the Advanced Options div[role=button] — exact text match
+
+                # Click the More Options button — supports both old and new Suno UI names
                 clicked = self.tab.evaluate("""() => {
-                    const candidates = Array.from(document.querySelectorAll('div[role="button"]'));
-                    const advBtn = candidates.find(el => el.textContent.trim() === 'Advanced Options');
-                    if (advBtn) {
-                        advBtn.scrollIntoView({ block: 'center' });
-                        advBtn.click();
+                    const candidates = Array.from(document.querySelectorAll('div[role="button"], button'));
+                    const btn = candidates.find(el => {
+                        const txt = el.textContent.trim();
+                        return txt === 'More Options' || txt === 'Advanced Options';
+                    });
+                    if (btn) {
+                        btn.scrollIntoView({ block: 'center' });
+                        btn.click();
                         return true;
                     }
                     return false;
                 }""")
-                
+
                 if clicked:
-                    logger.info(f"Clicked Advanced Options (attempt {attempt+1})")
+                    logger.info(f"Clicked More Options (attempt {attempt+1})")
                     time.sleep(3)
                 else:
-                    logger.warning(f"Advanced Options button not found (attempt {attempt+1})")
+                    logger.warning(f"More Options button not found (attempt {attempt+1})")
                     time.sleep(2)
-            
+
             # Verify
             exclude_visible = self.tab.evaluate("""() => {
                 const inp = document.querySelector('input[placeholder*="Exclude" i]');
                 return inp && inp.offsetParent !== null;
             }""")
             if not exclude_visible:
-                logger.warning("Advanced Options panel did NOT expand.")
+                logger.warning("More Options panel did NOT expand.")
                 return
 
             # Vocal Gender
